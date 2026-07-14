@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, isNotNull, sql } from "drizzle-orm";
 import { withDatabase } from "@/lib/db/client";
 import {
   claimEvidence,
@@ -7,6 +7,7 @@ import {
   filings,
   researchAlerts,
   researchClaims,
+  researchEvidence,
   thesisSnapshots,
 } from "@/lib/db/schema";
 
@@ -18,45 +19,15 @@ type ClaimTemplate = {
   riskClaim: boolean;
 };
 
-const CLAIM_TEMPLATES: ClaimTemplate[] = [
-  {
-    kind: "capacity-growth",
-    title: (company) => `${company} capacity expansion`,
-    statement: (company) => `${company} is expanding powered data center and accelerator capacity to capture AI demand.`,
-    categories: ["Capacity"],
-    riskClaim: false,
-  },
-  {
-    kind: "demand-growth",
-    title: (company) => `${company} AI demand growth`,
-    statement: (company) => `${company} is converting AI infrastructure demand into durable revenue and contracted workloads.`,
-    categories: ["Demand"],
-    riskClaim: false,
-  },
-  {
-    kind: "funding-risk",
-    title: (company) => `${company} funding and liquidity risk`,
-    statement: (company) => `${company}'s growth remains dependent on continued access to capital and sufficient liquidity.`,
-    categories: ["Funding"],
-    riskClaim: true,
-  },
-  {
-    kind: "customer-risk",
-    title: (company) => `${company} customer concentration risk`,
-    statement: (company) => `${company}'s returns remain sensitive to customer concentration and contract durability.`,
-    categories: ["Customer"],
-    riskClaim: true,
-  },
-  {
-    kind: "execution-risk",
-    title: (company) => `${company} execution risk`,
-    statement: (company) => `${company}'s thesis depends on delivering infrastructure on schedule and sustaining utilization.`,
-    categories: ["Execution"],
-    riskClaim: true,
-  },
+export const CLAIM_TEMPLATES: ClaimTemplate[] = [
+  { kind: "capacity-growth", title: (c) => `${c} capacity expansion`, statement: (c) => `${c} is expanding powered data center and accelerator capacity to capture AI demand.`, categories: ["Capacity"], riskClaim: false },
+  { kind: "demand-growth", title: (c) => `${c} AI demand growth`, statement: (c) => `${c} is converting AI infrastructure demand into durable revenue and contracted workloads.`, categories: ["Demand"], riskClaim: false },
+  { kind: "funding-risk", title: (c) => `${c} funding and liquidity risk`, statement: (c) => `${c}'s growth remains dependent on continued access to capital and sufficient liquidity.`, categories: ["Funding"], riskClaim: true },
+  { kind: "customer-risk", title: (c) => `${c} customer concentration risk`, statement: (c) => `${c}'s returns remain sensitive to customer concentration and contract durability.`, categories: ["Customer"], riskClaim: true },
+  { kind: "execution-risk", title: (c) => `${c} execution risk`, statement: (c) => `${c}'s thesis depends on delivering infrastructure on schedule and sustaining utilization.`, categories: ["Execution"], riskClaim: true },
 ];
 
-const POSITIVE_PATTERN = /\b(additional|award|contracted|expanded|expansion|growth|increase|increased|new capacity|sufficient|strong)\b/i;
+const POSITIVE_PATTERN = /\b(additional|award|backlog|contracted|expanded|expansion|growth|increase|increased|new capacity|sufficient|strong)\b/i;
 const NEGATIVE_PATTERN = /\b(adverse|concentration|constraint|debt|decrease|decreased|delay|dependent|impair|loss|risk|uncertain)\b/i;
 
 export function classifyAlertCategory(value: string) {
@@ -95,16 +66,19 @@ function groupKey(filingId: string, eventKey: string, changeType: string, catego
   return `${filingId}:${eventKey}:${changeType}:${category}`;
 }
 
-export async function generateResearchAlerts() {
-  const result = await withDatabase(async (db) => {
-    const companyRows = await db.select().from(companies);
-    const claimByCompanyAndKind = new Map<string, { id: string; template: ClaimTemplate }>();
+function evidenceScore(quality: number, documentDate: string) {
+  const ageDays = Math.max(0, (Date.now() - new Date(`${documentDate}T00:00:00Z`).valueOf()) / 86_400_000);
+  const base = quality >= 90 ? 10 : quality >= 80 ? 8 : quality >= 70 ? 6 : 4;
+  return Math.max(2, Math.round(base * (ageDays <= 180 ? 1 : ageDays <= 365 ? 0.8 : 0.55)));
+}
 
+export async function seedResearchClaims() {
+  return withDatabase(async (db) => {
+    const companyRows = await db.select().from(companies);
     for (const company of companyRows) {
       for (const template of CLAIM_TEMPLATES) {
-        const id = `${company.id}:${template.kind}`;
         await db.insert(researchClaims).values({
-          id,
+          id: `${company.id}:${template.kind}`,
           companyId: company.id,
           theme: "Neoclouds",
           kind: template.kind,
@@ -112,168 +86,133 @@ export async function generateResearchAlerts() {
           statement: template.statement(company.name),
         }).onConflictDoUpdate({
           target: researchClaims.id,
-          set: {
-            title: template.title(company.name),
-            statement: template.statement(company.name),
-            updatedAt: new Date(),
-          },
+          set: { title: template.title(company.name), statement: template.statement(company.name), updatedAt: new Date() },
         });
-        claimByCompanyAndKind.set(`${company.id}:${template.kind}`, { id, template });
       }
     }
+    return companyRows;
+  });
+}
 
-    const changes = await db
-      .select({ change: filingChanges, filing: filings, company: companies })
+export async function generateResearchAlerts() {
+  const companyRows = await seedResearchClaims();
+  if (!companyRows) throw new Error("DATABASE_URL is required to generate research alerts.");
+  const result = await withDatabase(async (db) => {
+    const claimByCompanyAndKind = new Map<string, { id: string; template: ClaimTemplate }>();
+    for (const company of companyRows) for (const template of CLAIM_TEMPLATES) {
+      claimByCompanyAndKind.set(`${company.id}:${template.kind}`, { id: `${company.id}:${template.kind}`, template });
+    }
+
+    const changes = await db.select({ change: filingChanges, filing: filings, company: companies })
       .from(filingChanges)
       .innerJoin(filings, eq(filingChanges.currentFilingId, filings.id))
       .innerJoin(companies, eq(filings.companyId, companies.id))
       .orderBy(asc(filings.filedAt));
-
-    const existingAlerts = await db
-      .select({ alert: researchAlerts, change: filingChanges })
+    const existing = await db.select({ alert: researchAlerts, change: filingChanges })
       .from(researchAlerts)
-      .innerJoin(filingChanges, eq(researchAlerts.filingChangeId, filingChanges.id));
-    const statusPriority: Record<string, number> = { unread: 0, dismissed: 1, reviewed: 2, watching: 3 };
-    const statusByGroup = new Map<string, string>();
-    for (const { alert, change } of existingAlerts) {
-      const key = groupKey(alert.filingId, change.eventCode ?? change.sectionTitle, change.changeType, alert.category);
-      const existingStatus = statusByGroup.get(key) ?? "unread";
-      if ((statusPriority[alert.status] ?? 0) > (statusPriority[existingStatus] ?? 0)) statusByGroup.set(key, alert.status);
-      else if (!statusByGroup.has(key)) statusByGroup.set(key, existingStatus);
-    }
-
-    await db.delete(claimEvidence);
-    await db.delete(thesisSnapshots);
-    await db.delete(researchAlerts);
+      .innerJoin(filingChanges, eq(researchAlerts.filingChangeId, filingChanges.id))
+      .where(eq(researchAlerts.alertType, "filing_change"));
+    const statusByGroup = new Map(existing.map(({ alert, change }) => [groupKey(alert.filingId ?? "", change.eventCode ?? change.sectionTitle, change.changeType, alert.category), alert.status]));
+    await db.delete(claimEvidence).where(isNotNull(claimEvidence.filingChangeId));
+    await db.delete(researchAlerts).where(eq(researchAlerts.alertType, "filing_change"));
 
     type ChangeRow = (typeof changes)[number];
-    const alertGroups = new Map<string, { category: string; rows: Array<ChangeRow & { impact: "strengthens" | "weakens" | "watch" }> }>();
+    const groups = new Map<string, { category: string; rows: Array<ChangeRow & { impact: "strengthens" | "weakens" | "watch" }> }>();
     let linkedEvidence = 0;
-    for (const { change, filing, company } of changes) {
-      if (!isAlertEligibleChange(change.changeType)) continue;
-      if (change.changeType === "new_event" && (change.relevanceScore ?? 0) < 45) continue;
-      const sourceText = [change.sectionTitle, change.summary, change.currentText, change.previousText].filter(Boolean).join(" ");
-      const category = change.changeType === "new_event" ? change.category : classifyAlertCategory(sourceText);
+    for (const row of changes) {
+      const { change, filing, company } = row;
+      if (!isAlertEligibleChange(change.changeType) || (change.changeType === "new_event" && (change.relevanceScore ?? 0) < 45)) continue;
+      const text = [change.sectionTitle, change.summary, change.currentText, change.previousText].filter(Boolean).join(" ");
+      const category = change.changeType === "new_event" ? change.category : classifyAlertCategory(text);
       if (category === "Other" && change.significance !== "high") continue;
-
-      const impact = classifyAlertImpact(sourceText, change.changeType);
+      const impact = classifyAlertImpact(text, change.changeType);
       const key = groupKey(filing.id, change.eventCode ?? change.sectionTitle, change.changeType, category);
-      const group = alertGroups.get(key) ?? { category, rows: [] };
-      group.rows.push({ change, filing, company, impact });
-      alertGroups.set(key, group);
+      const group = groups.get(key) ?? { category, rows: [] };
+      group.rows.push({ ...row, impact });
+      groups.set(key, group);
 
-      for (const template of CLAIM_TEMPLATES.filter((candidate) => candidate.categories.includes(category))) {
+      for (const template of CLAIM_TEMPLATES.filter((item) => item.categories.includes(category))) {
         const claim = claimByCompanyAndKind.get(`${company.id}:${template.kind}`);
         if (!claim) continue;
-        const evidenceImpact = classifyClaimImpact(impact, template.riskClaim);
-        const baseScore = change.relevanceScore !== null
-          ? change.relevanceScore >= 75 ? 12 : change.relevanceScore >= 55 ? 7 : 3
-          : change.significance === "high" ? 12 : change.significance === "medium" ? 7 : 3;
-        const signedScore = evidenceImpact === "supports" ? baseScore : evidenceImpact === "weakens" ? -baseScore : 0;
-        await db.insert(claimEvidence).values({
-          id: `${claim.id}:${change.id}`,
-          claimId: claim.id,
-          filingChangeId: change.id,
-          impact: evidenceImpact,
-          impactScore: signedScore,
-          rationale: change.relevanceReason ?? `${change.significance} significance ${category.toLowerCase()} change ${evidenceImpact} this claim.`,
-        }).onConflictDoUpdate({
-          target: [claimEvidence.claimId, claimEvidence.filingChangeId],
-          set: { impact: evidenceImpact, impactScore: signedScore, rationale: change.relevanceReason ?? `${change.significance} significance ${category.toLowerCase()} change ${evidenceImpact} this claim.` },
-        });
+        const claimImpact = classifyClaimImpact(impact, template.riskClaim);
+        const base = change.relevanceScore !== null ? (change.relevanceScore >= 75 ? 12 : change.relevanceScore >= 55 ? 7 : 3) : (change.significance === "high" ? 12 : change.significance === "medium" ? 7 : 3);
+        const signed = claimImpact === "supports" ? base : claimImpact === "weakens" ? -base : 0;
+        await db.insert(claimEvidence).values({ id: `${claim.id}:${change.id}`, claimId: claim.id, filingChangeId: change.id, impact: claimImpact, impactScore: signed, rationale: change.relevanceReason ?? `${category} disclosure ${claimImpact} this claim.` })
+          .onConflictDoUpdate({ target: [claimEvidence.claimId, claimEvidence.filingChangeId], set: { impact: claimImpact, impactScore: signed, rationale: change.relevanceReason ?? `${category} disclosure ${claimImpact} this claim.` } });
         linkedEvidence += 1;
       }
     }
 
-    const significanceRank: Record<string, number> = { low: 0, medium: 1, high: 2 };
-    const impactRank: Record<string, number> = { watch: 0, strengthens: 1, weakens: 2 };
-    for (const [key, group] of alertGroups) {
-      const representative = [...group.rows].sort((left, right) =>
-        (significanceRank[right.change.significance] ?? 0) - (significanceRank[left.change.significance] ?? 0),
-      )[0];
-      const significance = representative.change.significance;
-      const impact = [...group.rows].sort((left, right) => impactRank[right.impact] - impactRank[left.impact])[0].impact;
-      const status = statusByGroup.get(key) ?? "unread";
+    const rank: Record<string, number> = { low: 0, medium: 1, high: 2 };
+    for (const [key, group] of groups) {
+      const representative = [...group.rows].sort((a, b) => (rank[b.change.significance] ?? 0) - (rank[a.change.significance] ?? 0))[0];
       const count = group.rows.length;
-      const changeLabel = representative.change.changeType.replaceAll("_", " ");
-      const eventTitle = representative.change.eventType
-        ? `${representative.company.name}: ${representative.change.eventType}`
-        : `${representative.company.name}: ${group.category.toLowerCase()} disclosure ${changeLabel}`;
       await db.insert(researchAlerts).values({
-        id: `alert-group:${representative.change.id}`,
-        companyId: representative.company.id,
-        filingId: representative.filing.id,
-        filingChangeId: representative.change.id,
-        category: group.category,
-        significance,
-        impact,
-        title: eventTitle,
-        summary: count === 1
-          ? representative.change.relevanceReason ?? representative.change.summary
-          : representative.change.eventType
-            ? `${count} material excerpts support this ${group.category.toLowerCase()} event signal.`
-            : `${count} related passages marked ${changeLabel} in ${representative.change.sectionTitle}.`,
-        status,
-        reviewedAt: status === "reviewed" ? new Date() : null,
+        id: `alert-group:${representative.change.id}`, companyId: representative.company.id, filingId: representative.filing.id,
+        filingChangeId: representative.change.id, alertType: "filing_change", category: group.category,
+        significance: representative.change.significance, impact: representative.impact,
+        title: representative.change.eventType ? `${representative.company.name}: ${representative.change.eventType}` : `${representative.company.name}: ${group.category.toLowerCase()} disclosure changed`,
+        summary: count === 1 ? representative.change.relevanceReason ?? representative.change.summary : `${count} related passages support this ${group.category.toLowerCase()} signal.`,
+        status: statusByGroup.get(key) ?? "unread",
       });
     }
 
-    const claims = await db.select().from(researchClaims);
-    for (const claim of claims) {
-      const evidence = await db
-        .select({ evidence: claimEvidence, filing: filings })
-        .from(claimEvidence)
-        .innerJoin(filingChanges, eq(claimEvidence.filingChangeId, filingChanges.id))
-        .innerJoin(filings, eq(filingChanges.currentFilingId, filings.id))
-        .where(eq(claimEvidence.claimId, claim.id))
-        .orderBy(asc(filings.filedAt));
-
-      let score = 50;
-      let supporting = 0;
-      let weakening = 0;
-      const byDate = new Map<string, typeof evidence>();
-      for (const row of evidence) {
-        score = clampScore(score + row.evidence.impactScore);
-        if (row.evidence.impact === "supports") supporting += 1;
-        if (row.evidence.impact === "weakens") weakening += 1;
-        const dated = byDate.get(row.filing.filedAt) ?? [];
-        dated.push(row);
-        byDate.set(row.filing.filedAt, dated);
-      }
-      await db.update(researchClaims).set({ supportScore: score, updatedAt: new Date() }).where(eq(researchClaims.id, claim.id));
-
-      let cumulativeScore = 50;
-      let cumulativeEvidence = 0;
-      let cumulativeSupporting = 0;
-      let cumulativeWeakening = 0;
-      for (const [snapshotDate, rows] of byDate) {
-        for (const row of rows) {
-          cumulativeScore = clampScore(cumulativeScore + row.evidence.impactScore);
-          cumulativeEvidence += 1;
-          if (row.evidence.impact === "supports") cumulativeSupporting += 1;
-          if (row.evidence.impact === "weakens") cumulativeWeakening += 1;
-        }
-        await db.insert(thesisSnapshots).values({
-          id: `${claim.id}:${snapshotDate}`,
-          claimId: claim.id,
-          snapshotDate,
-          supportScore: cumulativeScore,
-          evidenceCount: cumulativeEvidence,
-          supportingCount: cumulativeSupporting,
-          weakeningCount: cumulativeWeakening,
-        }).onConflictDoUpdate({
-          target: [thesisSnapshots.claimId, thesisSnapshots.snapshotDate],
-          set: {
-            supportScore: cumulativeScore,
-            evidenceCount: cumulativeEvidence,
-            supportingCount: cumulativeSupporting,
-            weakeningCount: cumulativeWeakening,
-          },
-        });
+    await db.execute(sql`DELETE FROM claim_evidence ce USING research_evidence re WHERE ce.research_evidence_id = re.id AND re.review_status <> 'accepted'`);
+    const accepted = await db.select().from(researchEvidence).where(eq(researchEvidence.reviewStatus, "accepted"));
+    for (const evidence of accepted) {
+      const category = classifyAlertCategory(`${evidence.topic} ${evidence.sectionTitle} ${evidence.excerpt}`);
+      if (category === "Other") continue;
+      const alertImpact = classifyAlertImpact(evidence.excerpt, "evidence");
+      for (const template of CLAIM_TEMPLATES.filter((item) => item.categories.includes(category))) {
+        const claim = claimByCompanyAndKind.get(`${evidence.companyId}:${template.kind}`);
+        if (!claim) continue;
+        const impact = classifyClaimImpact(alertImpact, template.riskClaim);
+        const base = evidenceScore(evidence.sourceQuality, evidence.documentDate);
+        const signed = impact === "supports" ? base : impact === "weakens" ? -base : 0;
+        await db.insert(claimEvidence).values({
+          id: `${claim.id}:${evidence.id}`, claimId: claim.id, researchEvidenceId: evidence.id, impact, impactScore: signed,
+          rationale: `${evidence.sourceType} evidence classified as ${category.toLowerCase()} ${impact} this claim.`,
+        }).onConflictDoUpdate({ target: [claimEvidence.claimId, claimEvidence.researchEvidenceId], set: { impact, impactScore: signed, rationale: `${evidence.sourceType} evidence classified as ${category.toLowerCase()} ${impact} this claim.` } });
+        linkedEvidence += 1;
+        if (Math.abs(signed) >= 6) await db.insert(researchAlerts).values({
+          id: `claim-alert:${claim.id}:${evidence.id}`, companyId: evidence.companyId, claimId: claim.id, researchEvidenceId: evidence.id,
+          alertType: "claim_impact", category, significance: Math.abs(signed) >= 9 ? "high" : "medium",
+          impact: impact === "supports" ? "strengthens" : impact === "weakens" ? "weakens" : "watch",
+          title: `${template.title(companyRows.find((item) => item.id === evidence.companyId)?.name ?? "Company")} ${impact}`,
+          summary: `${evidence.documentTitle}: ${evidence.excerpt.slice(0, 240)}`,
+        }).onConflictDoNothing();
       }
     }
 
-    return { claims: companyRows.length * CLAIM_TEMPLATES.length, alerts: alertGroups.size, evidence: linkedEvidence };
+    await db.delete(thesisSnapshots);
+    const claims = await db.select().from(researchClaims);
+    for (const claim of claims) {
+      const rows = await db.execute(sql`
+        SELECT ce.*, COALESCE(f.filed_at, re.document_date) AS evidence_date
+        FROM claim_evidence ce
+        LEFT JOIN filing_changes fc ON fc.id = ce.filing_change_id
+        LEFT JOIN filings f ON f.id = fc.current_filing_id
+        LEFT JOIN research_evidence re ON re.id = ce.research_evidence_id
+        WHERE ce.claim_id = ${claim.id}
+        ORDER BY evidence_date ASC, ce.created_at ASC
+      `);
+      const evidence = rows.rows as Array<{ impact: string; impact_score: number; evidence_date: string }>;
+      let score = 50, supporting = 0, weakening = 0;
+      const byDate = new Map<string, typeof evidence>();
+      for (const item of evidence) byDate.set(item.evidence_date, [...(byDate.get(item.evidence_date) ?? []), item]);
+      let evidenceCount = 0;
+      for (const [date, datedEvidence] of byDate) {
+        for (const item of datedEvidence) {
+          score = clampScore(score + item.impact_score);
+          evidenceCount += 1;
+          if (item.impact === "supports") supporting += 1;
+          if (item.impact === "weakens") weakening += 1;
+        }
+        await db.insert(thesisSnapshots).values({ id: `${claim.id}:${date}`, claimId: claim.id, snapshotDate: date, supportScore: score, evidenceCount, supportingCount: supporting, weakeningCount: weakening });
+      }
+      await db.update(researchClaims).set({ supportScore: score, updatedAt: new Date() }).where(eq(researchClaims.id, claim.id));
+    }
+    return { claims: claims.length, alerts: groups.size, evidence: linkedEvidence };
   });
   if (!result) throw new Error("DATABASE_URL is required to generate research alerts.");
   return result;

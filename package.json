@@ -17,12 +17,16 @@
     "db:process:ir": "tsx --env-file=.env.local scripts/process-ir-queue.ts",
     "db:refresh": "tsx --env-file=.env.local scripts/backfill-sec-details.ts --force",
     "db:alerts": "tsx --env-file=.env.local scripts/generate-alerts.ts",
+    "research:cycle": "tsx --env-file=.env.local scripts/run-research-cycle.ts",
+    "research:embeddings": "tsx --env-file=.env.local scripts/backfill-research-embeddings.ts",
     "db:generate": "drizzle-kit generate",
     "db:setup": "pnpm db:migrate && pnpm db:backfill && pnpm db:backfill:ir",
-    "test": "pnpm run build && node --test tests/rendered-html.test.mjs && tsx --test tests/sec-normalize.test.ts tests/sec-ingest.test.ts tests/sec-extract.test.ts tests/sec-event-policy.test.ts tests/ir-normalize.test.ts tests/ir-extract.test.ts tests/filing-compare.test.ts tests/alert-classification.test.ts tests/research-evidence.test.ts",
+    "test": "pnpm run build && node --test tests/rendered-html.test.mjs && tsx --test tests/sec-normalize.test.ts tests/sec-ingest.test.ts tests/sec-extract.test.ts tests/sec-event-policy.test.ts tests/ir-normalize.test.ts tests/ir-extract.test.ts tests/filing-compare.test.ts tests/alert-classification.test.ts tests/research-evidence.test.ts tests/memo-verification.test.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^4.0.11",
+    "ai": "^7.0.23",
     "cheerio": "^1.2.0",
     "drizzle-orm": "^0.45.2",
     "lucide-react": "^1.24.0",
@@ -30,7 +34,8 @@
     "pg": "^8.22.0",
     "react": "19.2.6",
     "react-dom": "19.2.6",
-    "unpdf": "^1.6.2"
+    "unpdf": "^1.6.2",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",

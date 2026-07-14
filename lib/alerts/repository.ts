@@ -8,6 +8,7 @@ import {
   filings,
   researchAlerts,
   researchClaims,
+  researchEvidence,
   thesisSnapshots,
 } from "@/lib/db/schema";
 
@@ -21,34 +22,36 @@ type AlertFilters = {
 export async function listResearchAlerts(filters: AlertFilters = {}): Promise<AlertsResponse> {
   const result = await withDatabase(async (db) => {
     const rows = await db
-      .select({ alert: researchAlerts, company: companies, filing: filings, change: filingChanges })
+      .select({ alert: researchAlerts, company: companies, filing: filings, change: filingChanges, evidence: researchEvidence })
       .from(researchAlerts)
       .innerJoin(companies, eq(researchAlerts.companyId, companies.id))
-      .innerJoin(filings, eq(researchAlerts.filingId, filings.id))
-      .innerJoin(filingChanges, eq(researchAlerts.filingChangeId, filingChanges.id))
-      .orderBy(desc(filings.filedAt), desc(researchAlerts.createdAt));
+      .leftJoin(filings, eq(researchAlerts.filingId, filings.id))
+      .leftJoin(filingChanges, eq(researchAlerts.filingChangeId, filingChanges.id))
+      .leftJoin(researchEvidence, eq(researchAlerts.researchEvidenceId, researchEvidence.id))
+      .orderBy(desc(researchAlerts.createdAt));
 
-    const allAlerts: ResearchAlert[] = rows.map(({ alert, company, filing, change }) => ({
+    const allAlerts: ResearchAlert[] = rows.map(({ alert, company, filing, change, evidence }) => ({
       id: alert.id,
       companyId: company.id,
       companyName: company.name,
       ticker: company.ticker,
-      filingId: filing.id,
-      formType: filing.formType,
-      filedAt: filing.filedAt,
-      sourceUrl: filing.sourceUrl,
+      filingId: filing?.id ?? null,
+      formType: filing?.formType ?? evidence?.sourceType ?? "Reviewed evidence",
+      filedAt: filing?.filedAt ?? evidence?.documentDate ?? alert.createdAt.toISOString().slice(0, 10),
+      sourceUrl: filing?.sourceUrl ?? evidence?.sourceUrl ?? null,
+      alertType: alert.alertType as ResearchAlert["alertType"],
       category: alert.category,
       significance: alert.significance as ResearchAlert["significance"],
       impact: alert.impact as ResearchAlert["impact"],
       title: alert.title,
       summary: alert.summary,
-      sectionTitle: change.sectionTitle,
-      changeType: change.changeType as ResearchAlert["changeType"],
-      similarity: change.similarity,
-      eventType: change.eventType,
-      eventCode: change.eventCode,
-      relevanceScore: change.relevanceScore,
-      relevanceReason: change.relevanceReason,
+      sectionTitle: change?.sectionTitle ?? evidence?.sectionTitle ?? "Accepted evidence",
+      changeType: change?.changeType as ResearchAlert["changeType"] ?? "reviewed_evidence",
+      similarity: change?.similarity ?? null,
+      eventType: change?.eventType ?? null,
+      eventCode: change?.eventCode ?? null,
+      relevanceScore: change?.relevanceScore ?? evidence?.sourceQuality ?? null,
+      relevanceReason: change?.relevanceReason ?? alert.summary,
       status: alert.status as AlertStatus,
       createdAt: alert.createdAt.toISOString(),
     }));

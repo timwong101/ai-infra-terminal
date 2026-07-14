@@ -1,5 +1,6 @@
 import { listResearchEvidence, syncResearchEvidence, updateEvidenceReview } from "@/lib/research/evidence";
 import type { EvidenceReviewStatus, ResearchSourceKind } from "@/lib/research/types";
+import { generateResearchAlerts } from "@/lib/alerts/generate";
 
 export async function GET(request: Request) {
   try {
@@ -26,7 +27,8 @@ export async function PATCH(request: Request) {
       return Response.json({ error: "Evidence ids and a valid review status are required." }, { status: 400 });
     }
     const updated = await updateEvidenceReview(body.ids.slice(0, 1_000), body.status, body.note);
-    return Response.json({ updated });
+    const thesisSync = await generateResearchAlerts();
+    return Response.json({ updated, thesisSync });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Unable to update evidence." }, { status: 500 });
   }

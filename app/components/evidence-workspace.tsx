@@ -44,7 +44,7 @@ export function EvidenceWorkspace({ onBuildComparison }: Props) {
 
   useEffect(() => {
     const controller = new AbortController();
-    void load(controller.signal);
+    queueMicrotask(() => void load(controller.signal));
     return () => controller.abort();
   }, [load]);
 
@@ -117,7 +117,7 @@ export function EvidenceWorkspace({ onBuildComparison }: Props) {
           {status === "loading" && <div className="workspace-state"><LoaderCircle className="drawer-spinner" size={24} /><strong>Building unified evidence catalog</strong><span>Normalizing SEC and IR passages with source provenance.</span></div>}
           {status === "error" && <div className="workspace-state error"><strong>Evidence workspace unavailable</strong><span>{error}</span><button className="command-button" onClick={() => void load()}>Try again</button></div>}
           {status === "ready" && <div className="evidence-catalog-list">
-            {visibleItems.map((item) => <article className={`catalog-row ${selected?.id === item.id ? "selected" : ""}`} key={item.id} tabIndex={0} aria-selected={selected?.id === item.id} onClick={() => setSelected(item)} onKeyDown={(event) => { if (event.key === "Enter") setSelected(item); }}>
+            {visibleItems.map((item) => <article className={`catalog-row ${selected?.id === item.id ? "selected" : ""}`} key={item.id} tabIndex={0} onClick={() => setSelected(item)} onKeyDown={(event) => { if (event.key === "Enter") setSelected(item); }}>
               <div className="catalog-row-main"><div className="catalog-badges"><span className={`review-badge ${item.reviewStatus}`}>{item.reviewStatus}</span><span>{item.sourceType}</span><span>{item.topic}</span></div><h3>{item.companyName} <em>{item.ticker}</em></h3><p>{item.excerpt}</p><div className="catalog-meta"><span>{formatDate(item.documentDate)}</span><span>{item.sectionTitle}</span>{item.pageNumber && <span>Page {item.pageNumber}</span>}<span>Quality {item.sourceQuality}</span></div></div>
               <div className="review-actions"><button className={item.reviewStatus === "accepted" ? "active accept" : ""} onClick={(event) => { event.stopPropagation(); void updateReview([item.id], "accepted"); }} aria-label="Accept evidence" title="Accept evidence"><Check size={15} /></button><button className={item.reviewStatus === "rejected" ? "active reject" : ""} onClick={(event) => { event.stopPropagation(); void updateReview([item.id], "rejected"); }} aria-label="Reject evidence" title="Reject evidence"><X size={15} /></button></div>
             </article>)}

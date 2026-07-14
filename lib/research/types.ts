@@ -66,6 +66,11 @@ export type ComparisonMemo = {
   status: "draft" | "final";
   sections: ComparisonMemoSection[];
   citations: ResearchEvidenceItem[];
+  generation?: {
+    engine: string;
+    retrievalMode: string;
+    verification: { passed: boolean; rejectedClaims: number; checkedClaims: number; allowedCitations: number };
+  };
   createdAt: string;
   updatedAt: string;
 };

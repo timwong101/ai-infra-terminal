@@ -100,7 +100,20 @@ The **Evidence Feed** workspace materializes extracted SEC and IR passages into 
 
 Only evidence explicitly marked `accepted` is eligible for comparison memos. Filters support company, topic, source family, review state, and full-text matching; visible results can be reviewed individually or in a batch. Rejected passages remain auditable but are excluded from generation.
 
-The **Memos** workspace compares two companies using a deterministic grounded draft. It organizes accepted passages into exposure, advantages, risks, catalysts, and open questions; every supported statement links to its citation in the saved evidence packet. Confidence combines evidence quality, source diversity, company coverage, balance, and recency. Each memo stores the exact evidence snapshot used at generation time, so later ingestion or review changes do not silently rewrite research history.
+The **Memos** workspace compares two companies using Postgres full-text retrieval plus optional pgvector similarity. With `OPENAI_API_KEY`, the AI SDK creates a structured draft; without one, the deterministic grounded engine remains fully usable. Both paths reject unsupported or cross-company citations before saving. Confidence combines evidence quality, source diversity, company coverage, balance, and recency. Each memo stores the prompt, model, engine, token usage, verification result, and exact evidence snapshot, so later changes do not silently rewrite research history.
+
+The **Theses** workspace is a durable claim ledger. Accepted evidence and material filing changes link to capacity, demand, funding, customer, and execution claims, with weighted impact scores and chronological history. Reviewing evidence immediately rebuilds the affected thesis state and creates alerts for meaningful new support or contradiction.
+
+The **Operations** workspace shows ingestion queue health and durable pipeline runs. Run the complete SEC, IR, evidence, embedding, and thesis pipeline locally with `pnpm research:cycle`. The included GitHub Actions workflow can run it every six hours after `DATABASE_URL`, `SEC_USER_AGENT`, and optionally `OPENAI_API_KEY` are added as repository secrets. The database URL must point to a hosted Postgres instance reachable from GitHub Actions.
+
+AI settings are optional:
+
+```env
+OPENAI_API_KEY=""
+AI_MEMO_MODEL="gpt-5-mini"
+AI_EMBEDDING_MODEL="text-embedding-3-small"
+SCHEDULE_SECRET="replace-with-a-long-random-value"
+```
 
 ## PostgreSQL Evidence History
 
@@ -132,4 +145,4 @@ pnpm build
 pnpm test
 ```
 
-There is intentionally no authentication, external LLM, or live market-price integration in this version. SEC and investor-relations evidence is real, and comparison drafts are deterministic so the claim-to-citation behavior can be evaluated before an LLM is introduced. Several broader research-source integrations and overview metrics remain mock while the research model is refined.
+There is intentionally no authentication or live market-price integration in this version. SEC and investor-relations evidence is real, while AI generation is optional and always constrained by the saved evidence packet. Several broader research-source integrations and overview metrics remain mock while the research model is refined.

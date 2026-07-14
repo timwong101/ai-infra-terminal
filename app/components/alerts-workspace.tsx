@@ -45,8 +45,6 @@ export function AlertsWorkspace({ onOpenFiling, onUnreadChange }: AlertsWorkspac
   useEffect(() => {
     const controller = new AbortController();
     const params = new URLSearchParams({ status, company, category, significance });
-    setLoading(true);
-    setError("");
     fetch(`/api/alerts?${params}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         const result = await response.json() as AlertsResponse | { error: string };
@@ -140,7 +138,7 @@ export function AlertsWorkspace({ onOpenFiling, onUnreadChange }: AlertsWorkspac
                 <div className="alert-meta"><span>{alert.companyName} ({alert.ticker})</span><span>{alert.formType}</span><span>{alert.filedAt}</span>{alert.eventCode && <span>Item {alert.eventCode}</span>}<span>{alert.sectionTitle}</span>{alert.similarity !== null && <span>{alert.similarity}% overlap</span>}</div>
               </div>
               <div className="alert-actions">
-                <button onClick={() => onOpenFiling(alert.filingId)} title="Review source evidence"><FileSearch size={15} /><span>Evidence</span></button>
+                {alert.filingId ? <button onClick={() => onOpenFiling(alert.filingId!)} title="Review source evidence"><FileSearch size={15} /><span>Evidence</span></button> : alert.sourceUrl ? <a className="alert-source-button" href={alert.sourceUrl} target="_blank" rel="noreferrer" title="Open source evidence"><FileSearch size={15} /><span>Evidence</span></a> : null}
                 <button className={alert.status === "watching" ? "selected" : ""} disabled={updatingAlert === alert.id} onClick={() => void updateStatus(alert, alert.status === "watching" ? "unread" : "watching")} title="Watch alert" aria-label="Watch alert"><Eye size={15} /></button>
                 <button disabled={updatingAlert === alert.id} onClick={() => void updateStatus(alert, "reviewed")} title="Mark reviewed" aria-label="Mark reviewed"><Check size={15} /></button>
                 <button disabled={updatingAlert === alert.id} onClick={() => void updateStatus(alert, "dismissed")} title="Dismiss alert" aria-label="Dismiss alert"><ArchiveX size={15} /></button>

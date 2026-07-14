@@ -1,4 +1,4 @@
-import { date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, vector } from "drizzle-orm/pg-core";
 
 export const companies = pgTable("companies", {
   id: text("id").primaryKey(),
@@ -169,21 +169,26 @@ export const researchClaims = pgTable("research_claims", {
 export const claimEvidence = pgTable("claim_evidence", {
   id: text("id").primaryKey(),
   claimId: text("claim_id").notNull().references(() => researchClaims.id, { onDelete: "cascade" }),
-  filingChangeId: text("filing_change_id").notNull().references(() => filingChanges.id, { onDelete: "cascade" }),
+  filingChangeId: text("filing_change_id").references(() => filingChanges.id, { onDelete: "cascade" }),
+  researchEvidenceId: text("research_evidence_id"),
   impact: text("impact").notNull(),
   impactScore: integer("impact_score").notNull(),
   rationale: text("rationale").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   uniqueIndex("claim_evidence_claim_change_unique").on(table.claimId, table.filingChangeId),
+  uniqueIndex("claim_evidence_claim_research_unique").on(table.claimId, table.researchEvidenceId),
   index("claim_evidence_claim_idx").on(table.claimId),
 ]);
 
 export const researchAlerts = pgTable("research_alerts", {
   id: text("id").primaryKey(),
   companyId: text("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
-  filingId: text("filing_id").notNull().references(() => filings.id, { onDelete: "cascade" }),
-  filingChangeId: text("filing_change_id").notNull().references(() => filingChanges.id, { onDelete: "cascade" }),
+  filingId: text("filing_id").references(() => filings.id, { onDelete: "cascade" }),
+  filingChangeId: text("filing_change_id").references(() => filingChanges.id, { onDelete: "cascade" }),
+  claimId: text("claim_id").references(() => researchClaims.id, { onDelete: "cascade" }),
+  researchEvidenceId: text("research_evidence_id"),
+  alertType: text("alert_type").default("filing_change").notNull(),
   category: text("category").notNull(),
   significance: text("significance").notNull(),
   impact: text("impact").notNull(),
@@ -195,6 +200,7 @@ export const researchAlerts = pgTable("research_alerts", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   uniqueIndex("research_alerts_change_unique").on(table.filingChangeId),
+  uniqueIndex("research_alerts_claim_evidence_unique").on(table.claimId, table.researchEvidenceId),
   index("research_alerts_status_significance_idx").on(table.status, table.significance),
   index("research_alerts_company_idx").on(table.companyId),
 ]);
@@ -229,6 +235,8 @@ export const researchEvidence = pgTable("research_evidence", {
   pageNumber: integer("page_number"),
   sourceQuality: integer("source_quality").notNull(),
   contentHash: text("content_hash").notNull(),
+  embedding: vector("embedding", { dimensions: 1536 }),
+  embeddedAt: timestamp("embedded_at", { withTimezone: true }),
   reviewStatus: text("review_status").default("unreviewed").notNull(),
   reviewNote: text("review_note"),
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
@@ -259,3 +267,42 @@ export const comparisonMemos = pgTable("comparison_memos", {
   index("comparison_memos_company_pair_idx").on(table.companyAId, table.companyBId),
   index("comparison_memos_updated_idx").on(table.updatedAt),
 ]);
+
+export const memoGenerations = pgTable("memo_generations", {
+  id: text("id").primaryKey(),
+  memoId: text("memo_id").references(() => comparisonMemos.id, { onDelete: "set null" }),
+  companyAId: text("company_a_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  companyBId: text("company_b_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  topic: text("topic").notNull(),
+  question: text("question").notNull(),
+  prompt: text("prompt").notNull(),
+  model: text("model").notNull(),
+  engine: text("engine").notNull(),
+  retrievalMode: text("retrieval_mode").notNull(),
+  status: text("status").default("running").notNull(),
+  output: jsonb("output"),
+  evidenceSnapshot: jsonb("evidence_snapshot").notNull(),
+  verification: jsonb("verification"),
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  totalTokens: integer("total_tokens"),
+  error: text("error"),
+  startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("memo_generations_status_idx").on(table.status, table.createdAt),
+  index("memo_generations_pair_idx").on(table.companyAId, table.companyBId),
+]);
+
+export const researchCycleRuns = pgTable("research_cycle_runs", {
+  id: text("id").primaryKey(),
+  trigger: text("trigger").notNull(),
+  status: text("status").default("running").notNull(),
+  stage: text("stage").default("starting").notNull(),
+  metrics: jsonb("metrics").default({}).notNull(),
+  error: text("error"),
+  startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("research_cycle_runs_status_idx").on(table.status, table.startedAt)]);

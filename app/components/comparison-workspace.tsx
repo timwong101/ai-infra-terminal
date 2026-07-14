@@ -71,7 +71,7 @@ export function ComparisonWorkspace({ onReviewEvidence }: Props) {
       <header className="workspace-title-row"><div><p className="breadcrumb">Research workspace / Grounded analysis</p><h1>Comparison Memos</h1><p className="workspace-subtitle">Generate an auditable comparison using accepted evidence only.</p></div><button className="command-button" onClick={onReviewEvidence}><BookOpenText size={16} /> Review evidence</button></header>
       <div className="comparison-layout">
         <aside className="comparison-builder panel">
-          <div className="catalog-heading"><div><h2>New comparison</h2><span>Deterministic grounded draft</span></div><Scale size={17} /></div>
+          <div className="catalog-heading"><div><h2>New comparison</h2><span>Hybrid retrieval · verified citations</span></div><Scale size={17} /></div>
           <div className="builder-form">
             <label>Company A<select value={companyA} onChange={(event) => setCompanyA(event.target.value)}><option value="">Choose company</option>{evidence?.companies.map((company) => <option value={company.id} key={company.id}>{company.name} ({company.ticker}) · {acceptedCounts.get(company.id) ?? 0} accepted</option>)}</select></label>
             <label>Company B<select value={companyB} onChange={(event) => setCompanyB(event.target.value)}><option value="">Choose company</option>{evidence?.companies.map((company) => <option value={company.id} key={company.id}>{company.name} ({company.ticker}) · {acceptedCounts.get(company.id) ?? 0} accepted</option>)}</select></label>
@@ -86,7 +86,7 @@ export function ComparisonWorkspace({ onReviewEvidence }: Props) {
 
         <section className="memo-document panel">
           {selectedMemo ? <>
-            <header className="memo-document-header"><div><span className="section-kicker">Saved evidence snapshot</span><h2>{selectedMemo.title}</h2><p>{selectedMemo.question}</p></div><span className="draft-badge">Draft</span></header>
+            <header className="memo-document-header"><div><span className="section-kicker">Saved evidence snapshot</span><h2>{selectedMemo.title}</h2><p>{selectedMemo.question}</p></div><div className="memo-run-badges"><span className="draft-badge">Draft</span>{selectedMemo.generation && <><span className="draft-badge">{selectedMemo.generation.engine.replaceAll("-", " ")}</span><span className="draft-badge">{selectedMemo.generation.retrievalMode}</span></>}</div></header>
             <section className="memo-score-strip"><div><span>Confidence</span><strong className={scoreTone(selectedMemo.confidenceScore)}>{selectedMemo.confidenceScore}</strong></div><div><span>Evidence quality</span><strong>{selectedMemo.evidenceQualityScore}</strong></div><div><span>Source diversity</span><strong>{selectedMemo.sourceDiversityScore}</strong></div><div><span>Citations</span><strong>{selectedMemo.citations.length}</strong></div></section>
             <div className="memo-document-body">
               {selectedMemo.sections.map((section) => <section className="grounded-section" key={section.key}><h3>{section.title}</h3>{section.claims.length ? <div className="grounded-claims">{section.claims.map((claim, index) => <article key={`${claim.companyId}-${index}`}><span>{companyName(claim.companyId)}</span><p>{claim.text} {claim.citationIds.map((id) => <a href={`#citation-${citationIndex.get(id)}`} key={id}>[{citationIndex.get(id)}]</a>)}</p></article>)}</div> : <p className="missing-evidence">No accepted evidence matched this section. Treat it as an explicit research gap.</p>}</section>)}

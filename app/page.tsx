@@ -24,6 +24,7 @@ import {
   ShieldCheck,
   Sparkles,
   Star,
+  Target,
   X,
   Zap,
 } from "lucide-react";
@@ -31,6 +32,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertsWorkspace } from "@/app/components/alerts-workspace";
 import { ComparisonWorkspace } from "@/app/components/comparison-workspace";
 import { EvidenceWorkspace } from "@/app/components/evidence-workspace";
+import { OperationsWorkspace } from "@/app/components/operations-workspace";
+import { ThesisWorkspace } from "@/app/components/thesis-workspace";
 import secEvidenceCacheJson from "@/data/generated/sec-evidence.json";
 import irEvidenceCacheJson from "@/data/generated/ir-evidence.json";
 import type {
@@ -107,9 +110,10 @@ const navItems = [
   { label: "Companies", icon: Building2 },
   { label: "Themes", icon: Layers3 },
   { label: "Evidence Feed", icon: FileText },
+  { label: "Theses", icon: Target },
   { label: "Memos", icon: Sparkles },
   { label: "Alerts", icon: Bell },
-  { label: "Sources", icon: Database },
+  { label: "Operations", icon: Database },
 ];
 
 const themeGroups = [
@@ -625,6 +629,10 @@ export default function Home() {
           <EvidenceWorkspace onBuildComparison={() => setActiveNav("Memos")} />
         ) : activeNav === "Memos" ? (
           <ComparisonWorkspace onReviewEvidence={() => setActiveNav("Evidence Feed")} />
+        ) : activeNav === "Theses" ? (
+          <ThesisWorkspace />
+        ) : activeNav === "Operations" ? (
+          <OperationsWorkspace />
         ) : (
         <div className="dashboard">
           <div className="title-row">
