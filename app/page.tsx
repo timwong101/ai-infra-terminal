@@ -31,6 +31,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertsWorkspace } from "@/app/components/alerts-workspace";
 import { ComparisonWorkspace } from "@/app/components/comparison-workspace";
+import { CompanyIntelligenceWorkspace } from "@/app/components/company-intelligence-workspace";
 import { EvidenceWorkspace } from "@/app/components/evidence-workspace";
 import { OperationsWorkspace } from "@/app/components/operations-workspace";
 import { ThesisWorkspace } from "@/app/components/thesis-workspace";
@@ -629,6 +630,8 @@ export default function Home() {
           <EvidenceWorkspace onBuildComparison={() => setActiveNav("Memos")} />
         ) : activeNav === "Memos" ? (
           <ComparisonWorkspace onReviewEvidence={() => setActiveNav("Evidence Feed")} />
+        ) : activeNav === "Companies" ? (
+          <CompanyIntelligenceWorkspace />
         ) : activeNav === "Theses" ? (
           <ThesisWorkspace />
         ) : activeNav === "Operations" ? (

@@ -248,6 +248,71 @@ export const researchEvidence = pgTable("research_evidence", {
   index("research_evidence_review_topic_idx").on(table.reviewStatus, table.topic),
 ]);
 
+export const reportingPeriods = pgTable("reporting_periods", {
+  id: text("id").primaryKey(),
+  companyId: text("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  periodKey: text("period_key").notNull(),
+  label: text("label").notNull(),
+  calendarYear: integer("calendar_year").notNull(),
+  calendarQuarter: integer("calendar_quarter").notNull(),
+  periodStart: date("period_start").notNull(),
+  periodEnd: date("period_end").notNull(),
+  latestDocumentDate: date("latest_document_date").notNull(),
+  evidenceCount: integer("evidence_count").default(0).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("reporting_periods_company_key_unique").on(table.companyId, table.periodKey),
+  index("reporting_periods_company_date_idx").on(table.companyId, table.periodEnd),
+]);
+
+export const companyMetrics = pgTable("company_metrics", {
+  id: text("id").primaryKey(),
+  companyId: text("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  periodId: text("period_id").notNull().references(() => reportingPeriods.id, { onDelete: "cascade" }),
+  sourceEvidenceId: text("source_evidence_id").notNull().references(() => researchEvidence.id, { onDelete: "cascade" }),
+  metricKey: text("metric_key").notNull(),
+  label: text("label").notNull(),
+  category: text("category").notNull(),
+  normalizedValue: text("normalized_value").notNull(),
+  displayValue: text("display_value").notNull(),
+  unit: text("unit").notNull(),
+  context: text("context").notNull(),
+  confidence: integer("confidence").notNull(),
+  documentDate: date("document_date").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("company_metrics_evidence_key_unique").on(table.sourceEvidenceId, table.metricKey),
+  index("company_metrics_period_key_idx").on(table.periodId, table.metricKey),
+]);
+
+export const periodComparisons = pgTable("period_comparisons", {
+  id: text("id").primaryKey(),
+  companyId: text("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  currentPeriodId: text("current_period_id").notNull().references(() => reportingPeriods.id, { onDelete: "cascade" }),
+  previousPeriodId: text("previous_period_id").references(() => reportingPeriods.id, { onDelete: "cascade" }),
+  currentMetricId: text("current_metric_id").references(() => companyMetrics.id, { onDelete: "cascade" }),
+  previousMetricId: text("previous_metric_id").references(() => companyMetrics.id, { onDelete: "set null" }),
+  comparisonKey: text("comparison_key").notNull(),
+  comparisonKind: text("comparison_kind").notNull(),
+  category: text("category").notNull(),
+  label: text("label").notNull(),
+  direction: text("direction").notNull(),
+  significance: text("significance").notNull(),
+  currentValue: text("current_value"),
+  previousValue: text("previous_value"),
+  deltaPercent: integer("delta_percent"),
+  summary: text("summary").notNull(),
+  currentText: text("current_text"),
+  previousText: text("previous_text"),
+  evidenceIds: jsonb("evidence_ids").default([]).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("period_comparisons_period_key_unique").on(table.currentPeriodId, table.comparisonKey),
+  index("period_comparisons_company_period_idx").on(table.companyId, table.currentPeriodId),
+]);
+
 export const comparisonMemos = pgTable("comparison_memos", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),

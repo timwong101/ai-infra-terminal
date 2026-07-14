@@ -19,9 +19,10 @@
     "db:alerts": "tsx --env-file=.env.local scripts/generate-alerts.ts",
     "research:cycle": "tsx --env-file=.env.local scripts/run-research-cycle.ts",
     "research:embeddings": "tsx --env-file=.env.local scripts/backfill-research-embeddings.ts",
+    "research:intelligence": "tsx --env-file=.env.local scripts/sync-company-intelligence.ts",
     "db:generate": "drizzle-kit generate",
     "db:setup": "pnpm db:migrate && pnpm db:backfill && pnpm db:backfill:ir",
-    "test": "pnpm run build && node --test tests/rendered-html.test.mjs && tsx --test tests/sec-normalize.test.ts tests/sec-ingest.test.ts tests/sec-extract.test.ts tests/sec-event-policy.test.ts tests/ir-normalize.test.ts tests/ir-extract.test.ts tests/filing-compare.test.ts tests/alert-classification.test.ts tests/research-evidence.test.ts tests/memo-verification.test.ts",
+    "test": "pnpm run build && node --test tests/rendered-html.test.mjs && tsx --test tests/sec-normalize.test.ts tests/sec-ingest.test.ts tests/sec-extract.test.ts tests/sec-event-policy.test.ts tests/ir-normalize.test.ts tests/ir-extract.test.ts tests/filing-compare.test.ts tests/alert-classification.test.ts tests/research-evidence.test.ts tests/memo-verification.test.ts tests/company-intelligence.test.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },
   "dependencies": {

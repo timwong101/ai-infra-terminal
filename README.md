@@ -104,6 +104,16 @@ The **Memos** workspace compares two companies using Postgres full-text retrieva
 
 The **Theses** workspace is a durable claim ledger. Accepted evidence and material filing changes link to capacity, demand, funding, customer, and execution claims, with weighted impact scores and chronological history. Reviewing evidence immediately rebuilds the affected thesis state and creates alerts for meaningful new support or contradiction.
 
+The **Companies** workspace turns that source catalog into quarter-over-quarter company intelligence. Source dates are grouped into explicit calendar quarters rather than guessed fiscal periods. Deterministic extraction captures only stated metrics such as revenue, backlog, contract value, liquidity, debt, GPU count, and active or planned power capacity; every value and disclosure change retains its exact source excerpt and URL. Analysts can compare any two available periods, inspect stronger, weaker, or more uncertain disclosure language, and move directly from a reported change to its evidence.
+
+Rebuild reporting periods, normalized metrics, and material comparisons from the durable evidence catalog with:
+
+```bash
+pnpm research:intelligence
+```
+
+The scheduled research cycle performs this step automatically after SEC and IR evidence synchronization, so opening the site reads persisted intelligence instead of refetching and recomputing every document.
+
 The **Operations** workspace shows ingestion queue health and durable pipeline runs. Run the complete SEC, IR, evidence, embedding, and thesis pipeline locally with `pnpm research:cycle`. The included GitHub Actions workflow can run it every six hours after `DATABASE_URL`, `SEC_USER_AGENT`, and optionally `OPENAI_API_KEY` are added as repository secrets. The database URL must point to a hosted Postgres instance reachable from GitHub Actions.
 
 AI settings are optional:

@@ -11,6 +11,7 @@ import { processIrExtractionQueue, syncIrCatalog } from "@/lib/ir/pipeline";
 import type { IrEvidenceCache } from "@/lib/ir/types";
 import { syncResearchEvidence } from "@/lib/research/evidence";
 import { backfillResearchEmbeddings } from "@/lib/research/search";
+import { syncCompanyIntelligence } from "@/lib/company-intelligence/service";
 import { validateSecUserAgent } from "@/lib/sec/client";
 import { refreshSecEvidence } from "@/lib/sec/ingest";
 import { syncSecFilingEvidence } from "@/lib/sec/persist";
@@ -34,6 +35,8 @@ export async function runResearchCycle(trigger = "manual") {
     metrics.irExtraction = await processIrExtractionQueue(5);
     await stage("syncing-evidence");
     metrics.evidence = await syncResearchEvidence();
+    await stage("updating-company-intelligence");
+    metrics.companyIntelligence = await syncCompanyIntelligence();
     await stage("embedding-evidence");
     metrics.embeddings = await backfillResearchEmbeddings(30);
     await stage("updating-theses");
