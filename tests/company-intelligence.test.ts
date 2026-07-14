@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { compareDisclosureTone, compareMetricValues, extractMetricsFromText } from "@/lib/company-intelligence/extract";
+import { resolveDocumentPeriods, type PeriodDocument } from "@/lib/company-intelligence/period-resolver";
 import { periodForDate } from "@/lib/company-intelligence/service";
 
 test("extracts explicit infrastructure and financial metrics with normalized units", () => {
@@ -42,10 +43,41 @@ test("compares normalized values with materiality bands", () => {
 
 test("assigns source dates to stable calendar-quarter boundaries", () => {
   assert.deepEqual(periodForDate("2026-05-07"), {
-    periodKey: "2026-Q2", label: "Q2 2026", calendarYear: 2026, calendarQuarter: 2,
+    periodKey: "calendar:2026-Q2", label: "Calendar Q2 2026", calendarYear: 2026, calendarQuarter: 2,
     periodStart: "2026-04-01", periodEnd: "2026-06-30",
   });
-  assert.equal(periodForDate("2025-12-31").periodKey, "2025-Q4");
+  assert.equal(periodForDate("2025-12-31").periodKey, "calendar:2025-Q4");
+});
+
+function periodDocument(overrides: Partial<PeriodDocument>): PeriodDocument {
+  return {
+    companyId: "iren", sourceKind: "sec", sourceDocumentId: "filing", sourceType: "SEC 10-Q",
+    documentTitle: "IREN quarterly filing", sourceUrl: "https://example.com/filing", documentDate: "2026-05-08",
+    periodOfReport: "2026-03-31", evidenceCount: 4, ...overrides,
+  };
+}
+
+test("anchors earnings documents to the SEC period of report", () => {
+  const resolved = resolveDocumentPeriods([
+    periodDocument({}),
+    periodDocument({ sourceKind: "ir", sourceDocumentId: "presentation", sourceType: "Presentation", documentTitle: "IREN Q3 FY 26 Results Presentation", sourceUrl: "https://example.com/deck", documentDate: "2026-05-07", periodOfReport: null }),
+  ]);
+  assert.equal(resolved[0].periodKey, "quarter:2026-03-31");
+  assert.equal(resolved[0].resolutionConfidence, 100);
+  assert.equal(resolved[1].periodKey, resolved[0].periodKey);
+  assert.equal(resolved[1].label, "Q3 FY2026");
+  assert.equal(resolved[1].resolutionMethod, "matched-periodic-filing");
+});
+
+test("keeps annual periods separate and marks undated news as calendar fallback", () => {
+  const resolved = resolveDocumentPeriods([
+    periodDocument({ sourceType: "SEC 10-K", periodOfReport: "2025-12-31", documentDate: "2026-03-02" }),
+    periodDocument({ sourceKind: "ir", sourceDocumentId: "news", sourceType: "Press Release", documentTitle: "New data center campus announced", sourceUrl: "https://example.com/news", documentDate: "2026-06-03", periodOfReport: null }),
+  ]);
+  assert.equal(resolved[0].periodKind, "annual");
+  assert.equal(resolved[0].periodKey, "annual:2025-12-31");
+  assert.equal(resolved[1].periodKind, "calendar-fallback");
+  assert.equal(resolved[1].resolutionConfidence, 45);
 });
 
 test("identifies stronger and more uncertain disclosure language", () => {

@@ -68,6 +68,7 @@ export type SecFilingDetail = {
   ticker: string;
   formType: string;
   filedAt: string;
+  periodOfReport?: string | null;
   accessionNumber: string;
   documentTitle: string;
   sourceUrl: string;

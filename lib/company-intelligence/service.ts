@@ -1,12 +1,17 @@
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { compareDisclosureTone, compareMetricValues, extractMetricsFromText } from "@/lib/company-intelligence/extract";
+import { calendarPeriodForDate, resolveDocumentPeriods } from "@/lib/company-intelligence/period-resolver";
 import type { CompanyIntelligenceResponse, IntelligenceComparison, IntelligencePeriod } from "@/lib/company-intelligence/types";
 import { withDatabase } from "@/lib/db/client";
 import {
   companies,
   companyMetrics,
+  earningsPackageDocuments,
+  earningsPackages,
   filingChanges,
   filings,
+  irDocuments,
+  irSourceDocuments,
   periodComparisons,
   reportingPeriods,
   researchClaims,
@@ -16,7 +21,9 @@ import type { ResearchEvidenceItem } from "@/lib/research/types";
 
 type PeriodShape = {
   id: string; companyId: string; periodKey: string; label: string; calendarYear: number; calendarQuarter: number;
-  periodStart: string; periodEnd: string; latestDocumentDate: string; evidenceCount: number;
+  periodKind: string; periodBasis: string; fiscalYear: number | null; fiscalQuarter: number | null;
+  resolutionMethod: string; resolutionConfidence: number; periodStart: string; periodEnd: string;
+  latestDocumentDate: string; evidenceCount: number;
 };
 
 type MetricShape = {
@@ -25,20 +32,7 @@ type MetricShape = {
 };
 
 export function periodForDate(value: string) {
-  const date = new Date(`${value}T00:00:00Z`);
-  const year = date.getUTCFullYear();
-  const quarter = Math.floor(date.getUTCMonth() / 3) + 1;
-  const startMonth = (quarter - 1) * 3;
-  const start = new Date(Date.UTC(year, startMonth, 1));
-  const end = new Date(Date.UTC(year, startMonth + 3, 0));
-  return {
-    periodKey: `${year}-Q${quarter}`,
-    label: `Q${quarter} ${year}`,
-    calendarYear: year,
-    calendarQuarter: quarter,
-    periodStart: start.toISOString().slice(0, 10),
-    periodEnd: end.toISOString().slice(0, 10),
-  };
+  return calendarPeriodForDate(value);
 }
 
 function bestMetric(metrics: MetricShape[], key: string) {
@@ -51,34 +45,105 @@ export async function syncCompanyIntelligence() {
   const result = await withDatabase(async (db) => {
     const evidenceRows = await db.select().from(researchEvidence).orderBy(asc(researchEvidence.documentDate));
     const companyRows = await db.select().from(companies);
+    const filingRows = await db.select().from(filings);
+    const irDocumentRows = await db.select().from(irDocuments);
+    const irSourceDocumentRows = await db.select().from(irSourceDocuments);
     await db.delete(reportingPeriods);
 
-    const periodGroups = new Map<string, { companyId: string; dates: string[]; evidenceIds: string[] }>();
+    const filingsById = new Map(filingRows.map((filing) => [filing.id, filing]));
+    const documentGroups = new Map<string, {
+      companyId: string; sourceKind: string; sourceDocumentId: string; sourceType: string; documentTitle: string;
+      sourceUrl: string; documentDate: string; periodOfReport: string | null; extractionStatus: string | null;
+      evidenceIds: string[]; excerpts: string[];
+    }>();
+    for (const filing of filingRows) documentGroups.set(`sec:${filing.id}`, {
+      companyId: filing.companyId, sourceKind: "sec", sourceDocumentId: filing.id, sourceType: `SEC ${filing.formType}`,
+      documentTitle: filing.documentTitle, sourceUrl: filing.sourceUrl, documentDate: filing.filedAt,
+      periodOfReport: filing.periodOfReport, extractionStatus: null, evidenceIds: [], excerpts: [],
+    });
+    for (const document of irDocumentRows) documentGroups.set(`ir:${document.id}`, {
+      companyId: document.companyId, sourceKind: "ir", sourceDocumentId: document.id, sourceType: document.documentType,
+      documentTitle: document.title, sourceUrl: document.sourceUrl, documentDate: document.publishedAt,
+      periodOfReport: null, extractionStatus: "completed", evidenceIds: [], excerpts: [],
+    });
+    const extractedIrUrls = new Set(irDocumentRows.map((document) => document.sourceUrl));
+    for (const document of irSourceDocumentRows) {
+      if (extractedIrUrls.has(document.sourceUrl)) continue;
+      documentGroups.set(`ir-catalog:${document.id}`, {
+        companyId: document.companyId, sourceKind: "ir-catalog", sourceDocumentId: document.id, sourceType: document.documentType,
+        documentTitle: document.title, sourceUrl: document.sourceUrl, documentDate: document.publishedAt,
+        periodOfReport: null, extractionStatus: document.extractionStatus, evidenceIds: [], excerpts: [],
+      });
+    }
     for (const evidence of evidenceRows) {
-      const period = periodForDate(evidence.documentDate);
-      const key = `${evidence.companyId}:${period.periodKey}`;
-      const group = periodGroups.get(key) ?? { companyId: evidence.companyId, dates: [], evidenceIds: [] };
-      group.dates.push(evidence.documentDate);
+      const key = `${evidence.sourceKind}:${evidence.sourceDocumentId}`;
+      const filing = evidence.sourceKind === "sec" ? filingsById.get(evidence.sourceDocumentId) : undefined;
+      const group = documentGroups.get(key) ?? {
+        companyId: evidence.companyId, sourceKind: evidence.sourceKind, sourceDocumentId: evidence.sourceDocumentId,
+        sourceType: evidence.sourceType, documentTitle: evidence.documentTitle, sourceUrl: evidence.sourceUrl, documentDate: evidence.documentDate,
+        periodOfReport: filing?.periodOfReport ?? null, extractionStatus: null, evidenceIds: [], excerpts: [],
+      };
       group.evidenceIds.push(evidence.id);
+      if (group.excerpts.length < 5) group.excerpts.push(evidence.excerpt);
+      documentGroups.set(key, group);
+    }
+
+    const resolvedDocuments = resolveDocumentPeriods([...documentGroups.values()].map((document) => ({
+      ...document, content: document.excerpts.join(" "), evidenceCount: document.evidenceIds.length,
+    })));
+    const resolutionByDocument = new Map(resolvedDocuments.map((document) => [`${document.sourceKind}:${document.sourceDocumentId}`, document]));
+    const periodGroups = new Map<string, { companyId: string; documents: typeof resolvedDocuments; evidenceIds: string[] }>();
+    for (const document of resolvedDocuments) {
+      const key = `${document.companyId}:${document.periodKey}`;
+      const group = periodGroups.get(key) ?? { companyId: document.companyId, documents: [], evidenceIds: [] };
+      group.documents.push(document);
+      group.evidenceIds.push(...(documentGroups.get(`${document.sourceKind}:${document.sourceDocumentId}`)?.evidenceIds ?? []));
       periodGroups.set(key, group);
     }
 
     const periods: PeriodShape[] = [];
     for (const [key, group] of periodGroups) {
       const periodKey = key.slice(group.companyId.length + 1);
-      const period = periodForDate(group.dates[0]);
+      const selected = [...group.documents].sort((left, right) =>
+        Number(right.fiscalQuarter !== null) - Number(left.fiscalQuarter !== null) || right.resolutionConfidence - left.resolutionConfidence,
+      )[0];
+      const resolutionAnchor = [...group.documents].sort(
+        (left, right) => right.resolutionConfidence - left.resolutionConfidence,
+      )[0];
+      const calendar = periodForDate(selected.periodEnd);
       const row: PeriodShape = {
-        id: `period:${group.companyId}:${periodKey}`, companyId: group.companyId, ...period,
-        latestDocumentDate: [...group.dates].sort().at(-1)!, evidenceCount: group.evidenceIds.length,
+        id: `period:${group.companyId}:${periodKey}`, companyId: group.companyId, periodKey, label: selected.label,
+        calendarYear: calendar.calendarYear, calendarQuarter: calendar.calendarQuarter, periodKind: selected.periodKind,
+        periodBasis: group.documents.some((item) => item.periodBasis === "reported") ? "reported" : selected.periodBasis,
+        fiscalYear: selected.fiscalYear, fiscalQuarter: selected.fiscalQuarter, resolutionMethod: resolutionAnchor.resolutionMethod,
+        resolutionConfidence: Math.max(...group.documents.map((item) => item.resolutionConfidence)),
+        periodStart: selected.periodStart, periodEnd: selected.periodEnd,
+        latestDocumentDate: group.documents.map((item) => item.documentDate).sort().at(-1)!, evidenceCount: group.evidenceIds.length,
       };
       await db.insert(reportingPeriods).values(row);
       periods.push(row);
+
+      const packageId = `package:${group.companyId}:${periodKey}`;
+      await db.insert(earningsPackages).values({
+        id: packageId, companyId: group.companyId, periodId: row.id, packageKey: periodKey, label: row.label,
+        documentCount: group.documents.length, evidenceCount: group.evidenceIds.length,
+        latestDocumentDate: row.latestDocumentDate, resolutionConfidence: row.resolutionConfidence,
+      });
+      await db.insert(earningsPackageDocuments).values(group.documents.map((document) => ({
+        id: `package-document:${document.sourceKind}:${document.sourceDocumentId}`, packageId,
+        sourceKind: document.sourceKind, sourceDocumentId: document.sourceDocumentId, sourceType: document.sourceType,
+        documentTitle: document.documentTitle, sourceUrl: document.sourceUrl, publicationDate: document.documentDate, periodOfReport: document.periodOfReport ?? null,
+        resolutionMethod: document.resolutionMethod, resolutionConfidence: document.resolutionConfidence,
+        extractionStatus: document.extractionStatus ?? null,
+        evidenceCount: document.evidenceCount,
+      })));
     }
 
     const periodByCompanyKey = new Map(periods.map((period) => [`${period.companyId}:${period.periodKey}`, period]));
     const metrics: MetricShape[] = [];
     for (const evidence of evidenceRows) {
-      const period = periodByCompanyKey.get(`${evidence.companyId}:${periodForDate(evidence.documentDate).periodKey}`);
+      const resolution = resolutionByDocument.get(`${evidence.sourceKind}:${evidence.sourceDocumentId}`);
+      const period = resolution ? periodByCompanyKey.get(`${evidence.companyId}:${resolution.periodKey}`) : undefined;
       if (!period) continue;
       for (const extracted of extractMetricsFromText(evidence.excerpt)) {
         const metric: MetricShape = {
@@ -97,7 +162,7 @@ export async function syncCompanyIntelligence() {
     for (const company of companyRows) orderedByCompany.set(company.id, periods.filter((period) => period.companyId === company.id).sort((a, b) => a.periodEnd.localeCompare(b.periodEnd)));
     for (const [companyId, companyPeriods] of orderedByCompany) {
       for (const [index, currentPeriod] of companyPeriods.entries()) {
-        const previousPeriod = companyPeriods[index - 1];
+        const previousPeriod = companyPeriods.slice(0, index).reverse().find((period) => period.periodKind === currentPeriod.periodKind);
         const currentMetrics = metrics.filter((metric) => metric.periodId === currentPeriod.id);
         const previousMetrics = previousPeriod ? metrics.filter((metric) => metric.periodId === previousPeriod.id) : [];
         for (const metricKey of new Set(currentMetrics.map((metric) => metric.metricKey))) {
@@ -128,11 +193,14 @@ export async function syncCompanyIntelligence() {
     for (const { change, filing } of changes) {
       if (["not_repeated", "removed"].includes(change.changeType)) continue;
       if (change.significance === "low" && (change.relevanceScore ?? 0) < 55) continue;
-      const period = periodByCompanyKey.get(`${filing.companyId}:${periodForDate(filing.filedAt).periodKey}`);
+      const resolution = resolutionByDocument.get(`sec:${filing.id}`);
+      const period = resolution ? periodByCompanyKey.get(`${filing.companyId}:${resolution.periodKey}`) : undefined;
       if (!period) continue;
       const companyPeriods = orderedByCompany.get(filing.companyId) ?? [];
       const periodIndex = companyPeriods.findIndex((item) => item.id === period.id);
-      const previousPeriod = periodIndex > 0 ? companyPeriods[periodIndex - 1] : null;
+      const previousPeriod = periodIndex > 0
+        ? companyPeriods.slice(0, periodIndex).reverse().find((item) => item.periodKind === period.periodKind) ?? null
+        : null;
       const linkedEvidence = evidenceRows.filter((item) => item.sourceKind === "sec" && item.sourceDocumentId === filing.id).slice(0, 3).map((item) => item.id);
       const direction = change.changeType === "explicitly_removed" ? "removed" : change.changeType === "modified" ? "changed" : "new";
       await db.insert(periodComparisons).values({
@@ -144,7 +212,7 @@ export async function syncCompanyIntelligence() {
       });
       disclosureComparisons += 1;
     }
-    return { periods: periods.length, metrics: metrics.length, metricComparisons, disclosureComparisons };
+    return { periods: periods.length, packages: periods.length, documents: resolvedDocuments.length, metrics: metrics.length, metricComparisons, disclosureComparisons };
   });
   if (!result) throw new Error("Company intelligence requires a configured database.");
   return result;
@@ -163,7 +231,13 @@ function toEvidenceItem(evidence: typeof researchEvidence.$inferSelect, company:
 }
 
 function toPeriod(row: typeof reportingPeriods.$inferSelect): IntelligencePeriod {
-  return { id: row.id, periodKey: row.periodKey, label: row.label, periodStart: row.periodStart, periodEnd: row.periodEnd, latestDocumentDate: row.latestDocumentDate, evidenceCount: row.evidenceCount };
+  return {
+    id: row.id, periodKey: row.periodKey, label: row.label, periodStart: row.periodStart, periodEnd: row.periodEnd,
+    latestDocumentDate: row.latestDocumentDate, evidenceCount: row.evidenceCount,
+    periodKind: row.periodKind as IntelligencePeriod["periodKind"], periodBasis: row.periodBasis as IntelligencePeriod["periodBasis"],
+    fiscalYear: row.fiscalYear, fiscalQuarter: row.fiscalQuarter, resolutionMethod: row.resolutionMethod,
+    resolutionConfidence: row.resolutionConfidence,
+  };
 }
 
 export async function getCompanyIntelligence(companyId?: string, currentPeriodId?: string, previousPeriodId?: string): Promise<CompanyIntelligenceResponse> {
@@ -173,10 +247,14 @@ export async function getCompanyIntelligence(companyId?: string, currentPeriodId
     const selectedCompany = companyRows.find((company) => company.id === companyId) ?? companyRows.find((company) => allPeriods.some((period) => period.companyId === company.id));
     if (!selectedCompany) throw new Error("No company intelligence is available yet. Run the intelligence sync first.");
     const periods = allPeriods.filter((period) => period.companyId === selectedCompany.id);
-    const current = periods.find((period) => period.id === currentPeriodId) ?? periods[0];
+    const current = periods.find((period) => period.id === currentPeriodId)
+      ?? periods.find((period) => period.periodKind === "quarter" && period.periodBasis !== "calendar-fallback")
+      ?? periods[0];
     if (!current) throw new Error("This company has no reporting periods yet.");
     const currentIndex = periods.findIndex((period) => period.id === current.id);
-    const previous = periods.find((period) => period.id === previousPeriodId) ?? periods[currentIndex + 1] ?? null;
+    const previous = periods.find((period) => period.id === previousPeriodId && period.periodKind === current.periodKind)
+      ?? periods.slice(currentIndex + 1).find((period) => period.periodKind === current.periodKind)
+      ?? null;
     const comparisons = await db.select().from(periodComparisons).where(eq(periodComparisons.currentPeriodId, current.id)).orderBy(desc(periodComparisons.significance), asc(periodComparisons.category));
     const disclosures = comparisons.filter((item) => item.comparisonKind === "disclosure");
     const currentMetricRows = await db.select().from(companyMetrics).where(eq(companyMetrics.periodId, current.id));
@@ -210,13 +288,29 @@ export async function getCompanyIntelligence(companyId?: string, currentPeriodId
     const evidenceRows = evidenceIds.length ? await db.select().from(researchEvidence).where(inArray(researchEvidence.id, evidenceIds)) : [];
     const claims = await db.select().from(researchClaims).where(eq(researchClaims.companyId, selectedCompany.id)).orderBy(desc(researchClaims.supportScore));
     const evidence = evidenceRows.map((item) => toEvidenceItem(item, selectedCompany));
+    const packageRows = await db.select().from(earningsPackages).where(eq(earningsPackages.periodId, current.id)).limit(1);
+    const packageRow = packageRows[0];
+    const packageDocuments = packageRow
+      ? await db.select().from(earningsPackageDocuments).where(eq(earningsPackageDocuments.packageId, packageRow.id)).orderBy(desc(earningsPackageDocuments.publicationDate))
+      : [];
     return {
       companies: companyRows.map((company) => {
         const companyPeriods = allPeriods.filter((period) => period.companyId === company.id);
-        return { id: company.id, name: company.name, ticker: company.ticker, periodCount: companyPeriods.length, latestPeriod: companyPeriods[0]?.label ?? null };
+        const latest = companyPeriods.find((period) => period.periodKind === "quarter" && period.periodBasis !== "calendar-fallback") ?? companyPeriods[0];
+        return { id: company.id, name: company.name, ticker: company.ticker, periodCount: companyPeriods.length, latestPeriod: latest?.label ?? null };
       }).filter((company) => company.periodCount > 0),
       company: { id: selectedCompany.id, name: selectedCompany.name, ticker: selectedCompany.ticker }, periods: periods.map(toPeriod),
       currentPeriod: toPeriod(current), previousPeriod: previous ? toPeriod(previous) : null, comparisons: mapped, evidence,
+      earningsPackage: packageRow ? {
+        id: packageRow.id, label: packageRow.label, documentCount: packageRow.documentCount, evidenceCount: packageRow.evidenceCount,
+        documents: packageDocuments.map((document) => ({
+          id: document.id, sourceKind: document.sourceKind, sourceDocumentId: document.sourceDocumentId,
+          sourceType: document.sourceType, documentTitle: document.documentTitle, sourceUrl: document.sourceUrl, publicationDate: document.publicationDate,
+          periodOfReport: document.periodOfReport, resolutionMethod: document.resolutionMethod,
+          resolutionConfidence: document.resolutionConfidence, extractionStatus: document.extractionStatus,
+          evidenceCount: document.evidenceCount,
+        })),
+      } : null,
       claims: claims.map((claim) => ({ id: claim.id, title: claim.title, statement: claim.statement, supportScore: claim.supportScore, kind: claim.kind })),
       summary: {
         metrics: mapped.filter((item) => item.comparisonKind === "metric").length,

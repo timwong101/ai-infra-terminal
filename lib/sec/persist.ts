@@ -2,6 +2,7 @@ import type { EvidenceCache, SecFilingDetail } from "@/lib/evidence/types";
 import { baseFilingForm, compareFilings, getFilingComparisonMode } from "@/lib/evidence/compare";
 import {
   getPersistedFilingDetail,
+  persistFilingPeriodOfReport,
   persistFilingComparison,
   persistFilingDetail,
 } from "@/lib/db/evidence-repository";
@@ -53,6 +54,7 @@ export async function syncSecFilingEvidence(
           ticker: filing.ticker,
           formType: filing.formType,
           filedAt: filing.filedAt,
+          periodOfReport: filing.periodOfReport,
           accessionNumber: filing.accessionNumber,
           sourceUrl: filing.sourceUrl,
         });
@@ -60,6 +62,11 @@ export async function syncSecFilingEvidence(
         persisted += 1;
         status = "persisted";
       }
+
+      if (detail.periodOfReport !== filing.periodOfReport) {
+        detail = { ...detail, periodOfReport: filing.periodOfReport };
+      }
+      await persistFilingPeriodOfReport(filing.id, filing.periodOfReport);
 
       const mode = getFilingComparisonMode(filing.formType);
       const comparisonKey = `${filing.companyId}:${baseFilingForm(filing.formType)}`;

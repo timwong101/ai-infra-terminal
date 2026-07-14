@@ -42,6 +42,7 @@ export async function getPersistedFilingDetail(filingId: string): Promise<SecFil
       ticker: company.ticker,
       formType: filing.formType,
       filedAt: filing.filedAt,
+      periodOfReport: filing.periodOfReport,
       accessionNumber: filing.accessionNumber,
       documentTitle: filing.documentTitle,
       sourceUrl: filing.sourceUrl,
@@ -76,6 +77,7 @@ export async function persistFilingDetail(detail: SecFilingDetail) {
       accessionNumber: detail.accessionNumber,
       formType: detail.formType,
       filedAt: detail.filedAt,
+      periodOfReport: detail.periodOfReport ?? null,
       sourceUrl: detail.sourceUrl,
       documentTitle: detail.documentTitle,
       wordCount: detail.wordCount,
@@ -86,6 +88,7 @@ export async function persistFilingDetail(detail: SecFilingDetail) {
       target: filings.id,
       set: {
         documentTitle: detail.documentTitle,
+        periodOfReport: detail.periodOfReport ?? null,
         wordCount: detail.wordCount,
         extractionQuality: detail.extraction.quality,
         extractionMessage: detail.extraction.message,
@@ -118,6 +121,14 @@ export async function persistFilingDetail(detail: SecFilingDetail) {
       }
     }
     });
+    return true;
+  });
+  return result ?? false;
+}
+
+export async function persistFilingPeriodOfReport(filingId: string, periodOfReport: string | null) {
+  const result = await withDatabase(async (db) => {
+    await db.update(filings).set({ periodOfReport, updatedAt: new Date() }).where(eq(filings.id, filingId));
     return true;
   });
   return result ?? false;

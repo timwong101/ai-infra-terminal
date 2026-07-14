@@ -15,6 +15,7 @@ export const filings = pgTable("filings", {
   accessionNumber: text("accession_number").notNull(),
   formType: text("form_type").notNull(),
   filedAt: date("filed_at").notNull(),
+  periodOfReport: date("period_of_report"),
   sourceUrl: text("source_url").notNull(),
   documentTitle: text("document_title").notNull(),
   wordCount: integer("word_count").notNull(),
@@ -255,6 +256,12 @@ export const reportingPeriods = pgTable("reporting_periods", {
   label: text("label").notNull(),
   calendarYear: integer("calendar_year").notNull(),
   calendarQuarter: integer("calendar_quarter").notNull(),
+  periodKind: text("period_kind").default("calendar-fallback").notNull(),
+  periodBasis: text("period_basis").default("calendar-fallback").notNull(),
+  fiscalYear: integer("fiscal_year"),
+  fiscalQuarter: integer("fiscal_quarter"),
+  resolutionMethod: text("resolution_method").default("publication-date").notNull(),
+  resolutionConfidence: integer("resolution_confidence").default(45).notNull(),
   periodStart: date("period_start").notNull(),
   periodEnd: date("period_end").notNull(),
   latestDocumentDate: date("latest_document_date").notNull(),
@@ -264,6 +271,43 @@ export const reportingPeriods = pgTable("reporting_periods", {
 }, (table) => [
   uniqueIndex("reporting_periods_company_key_unique").on(table.companyId, table.periodKey),
   index("reporting_periods_company_date_idx").on(table.companyId, table.periodEnd),
+]);
+
+export const earningsPackages = pgTable("earnings_packages", {
+  id: text("id").primaryKey(),
+  companyId: text("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  periodId: text("period_id").notNull().references(() => reportingPeriods.id, { onDelete: "cascade" }),
+  packageKey: text("package_key").notNull(),
+  label: text("label").notNull(),
+  documentCount: integer("document_count").default(0).notNull(),
+  evidenceCount: integer("evidence_count").default(0).notNull(),
+  latestDocumentDate: date("latest_document_date").notNull(),
+  resolutionConfidence: integer("resolution_confidence").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("earnings_packages_company_key_unique").on(table.companyId, table.packageKey),
+  uniqueIndex("earnings_packages_period_unique").on(table.periodId),
+]);
+
+export const earningsPackageDocuments = pgTable("earnings_package_documents", {
+  id: text("id").primaryKey(),
+  packageId: text("package_id").notNull().references(() => earningsPackages.id, { onDelete: "cascade" }),
+  sourceKind: text("source_kind").notNull(),
+  sourceDocumentId: text("source_document_id").notNull(),
+  sourceType: text("source_type").notNull(),
+  documentTitle: text("document_title").notNull(),
+  sourceUrl: text("source_url").notNull(),
+  publicationDate: date("publication_date").notNull(),
+  periodOfReport: date("period_of_report"),
+  resolutionMethod: text("resolution_method").notNull(),
+  resolutionConfidence: integer("resolution_confidence").notNull(),
+  extractionStatus: text("extraction_status"),
+  evidenceCount: integer("evidence_count").default(0).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("earnings_package_documents_source_unique").on(table.sourceKind, table.sourceDocumentId),
+  index("earnings_package_documents_package_idx").on(table.packageId),
 ]);
 
 export const companyMetrics = pgTable("company_metrics", {

@@ -19,6 +19,27 @@ export type IntelligencePeriod = {
   periodEnd: string;
   latestDocumentDate: string;
   evidenceCount: number;
+  periodKind: "quarter" | "annual" | "calendar-fallback";
+  periodBasis: "reported" | "inferred" | "calendar-fallback";
+  fiscalYear: number | null;
+  fiscalQuarter: number | null;
+  resolutionMethod: string;
+  resolutionConfidence: number;
+};
+
+export type EarningsPackageDocument = {
+  id: string;
+  sourceKind: string;
+  sourceDocumentId: string;
+  sourceType: string;
+  documentTitle: string;
+  sourceUrl: string;
+  publicationDate: string;
+  periodOfReport: string | null;
+  resolutionMethod: string;
+  resolutionConfidence: number;
+  extractionStatus: string | null;
+  evidenceCount: number;
 };
 
 export type IntelligenceComparison = {
@@ -46,6 +67,7 @@ export type CompanyIntelligenceResponse = {
   previousPeriod: IntelligencePeriod | null;
   comparisons: IntelligenceComparison[];
   evidence: ResearchEvidenceItem[];
+  earningsPackage: { id: string; label: string; documentCount: number; evidenceCount: number; documents: EarningsPackageDocument[] } | null;
   claims: Array<{ id: string; title: string; statement: string; supportScore: number; kind: string }>;
   summary: { metrics: number; disclosures: number; highSignificance: number; evidenceSources: number };
 };

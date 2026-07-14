@@ -74,6 +74,7 @@ async function loadFilingDetail(filing: FilingRequest) {
         ticker: company.ticker,
         formType: filing.formType,
         filedAt: filing.filedAt,
+        periodOfReport: null,
         accessionNumber: filing.accessionNumber,
         sourceUrl,
       }))

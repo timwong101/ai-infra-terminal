@@ -13,6 +13,7 @@ type FilingMetadata = Pick<
   | "ticker"
   | "formType"
   | "filedAt"
+  | "periodOfReport"
   | "accessionNumber"
   | "sourceUrl"
 >;
