@@ -1,11 +1,17 @@
+import { createHash } from "node:crypto";
 import { asc, desc, eq, inArray } from "drizzle-orm";
+import { buildEarningsChangeBrief } from "@/lib/company-intelligence/brief-builder";
+import type { BriefComparisonInput } from "@/lib/company-intelligence/brief-builder";
 import { compareDisclosureTone, compareMetricValues, extractMetricsFromText } from "@/lib/company-intelligence/extract";
 import { calendarPeriodForDate, resolveDocumentPeriods } from "@/lib/company-intelligence/period-resolver";
-import type { CompanyIntelligenceResponse, IntelligenceComparison, IntelligencePeriod } from "@/lib/company-intelligence/types";
+import type { CompanyIntelligenceResponse, EarningsChangeBrief, IntelligenceComparison, IntelligencePeriod } from "@/lib/company-intelligence/types";
 import { withDatabase } from "@/lib/db/client";
 import {
   companies,
   companyMetrics,
+  earningsChangeBriefClaims,
+  earningsChangeBriefs,
+  earningsChangeBriefVersions,
   earningsPackageDocuments,
   earningsPackages,
   filingChanges,
@@ -212,7 +218,64 @@ export async function syncCompanyIntelligence() {
       });
       disclosureComparisons += 1;
     }
-    return { periods: periods.length, packages: periods.length, documents: resolvedDocuments.length, metrics: metrics.length, metricComparisons, disclosureComparisons };
+    const comparisonRows = await db.select().from(periodComparisons);
+    const companyById = new Map(companyRows.map((company) => [company.id, company]));
+    let briefs = 0;
+    for (const currentPeriod of periods) {
+      const companyPeriods = orderedByCompany.get(currentPeriod.companyId) ?? [];
+      const currentIndex = companyPeriods.findIndex((period) => period.id === currentPeriod.id);
+      const previousPeriod = currentIndex > 0
+        ? companyPeriods.slice(0, currentIndex).reverse().find((period) => period.periodKind === currentPeriod.periodKind) ?? null
+        : null;
+      if (!previousPeriod) continue;
+      const currentComparisons = comparisonRows.filter((comparison) => comparison.currentPeriodId === currentPeriod.id);
+      const brief = buildEarningsChangeBrief({
+        companyName: companyById.get(currentPeriod.companyId)?.name ?? currentPeriod.companyId,
+        currentLabel: currentPeriod.label,
+        previousLabel: previousPeriod.label,
+        periodResolutionConfidence: currentPeriod.resolutionConfidence,
+        comparisons: currentComparisons.map((comparison) => ({
+          id: comparison.id,
+          comparisonKind: comparison.comparisonKind as BriefComparisonInput["comparisonKind"],
+          category: comparison.category,
+          label: comparison.label,
+          direction: comparison.direction as BriefComparisonInput["direction"],
+          significance: comparison.significance as BriefComparisonInput["significance"],
+          summary: comparison.summary,
+          evidenceIds: comparison.evidenceIds as string[],
+          tone: comparison.comparisonKind === "disclosure"
+            ? compareDisclosureTone(comparison.currentText ?? "", comparison.previousText ?? "")
+            : "neutral",
+        })),
+        evidence: evidenceRows.map((evidence) => ({
+          id: evidence.id, sourceQuality: evidence.sourceQuality,
+          sourceDocumentId: evidence.sourceDocumentId, sourceType: evidence.sourceType,
+        })),
+      });
+      const briefId = `change-brief:${currentPeriod.id}:${previousPeriod.id}`;
+      await db.insert(earningsChangeBriefs).values({
+        id: briefId, companyId: currentPeriod.companyId, currentPeriodId: currentPeriod.id,
+        previousPeriodId: previousPeriod.id, headline: brief.headline, summary: brief.summary,
+        thesisImpact: brief.thesisImpact, confidenceScore: brief.confidenceScore,
+        evidenceQualityScore: brief.evidenceQualityScore, sourceDiversityScore: brief.sourceDiversityScore,
+        changeCount: brief.changeCount,
+      });
+      if (brief.claims.length) await db.insert(earningsChangeBriefClaims).values(brief.claims.map((claim, ordinal) => ({
+        id: `${briefId}:claim:${ordinal + 1}`, briefId, ordinal, section: claim.section, title: claim.title,
+        text: claim.text, sentiment: claim.sentiment, significance: claim.significance,
+        comparisonId: claim.comparisonId, evidenceIds: claim.evidenceIds,
+      })));
+      const contentHash = createHash("sha256").update(JSON.stringify(brief)).digest("hex").slice(0, 20);
+      await db.insert(earningsChangeBriefVersions).values({
+        id: `change-brief-version:${currentPeriod.companyId}:${currentPeriod.periodKey}:${previousPeriod.periodKey}:${contentHash}`,
+        companyId: currentPeriod.companyId, currentPeriodKey: currentPeriod.periodKey,
+        currentPeriodLabel: currentPeriod.label, previousPeriodKey: previousPeriod.periodKey,
+        previousPeriodLabel: previousPeriod.label, thesisImpact: brief.thesisImpact,
+        confidenceScore: brief.confidenceScore, contentHash, snapshot: brief,
+      }).onConflictDoNothing();
+      briefs += 1;
+    }
+    return { periods: periods.length, packages: periods.length, documents: resolvedDocuments.length, metrics: metrics.length, metricComparisons, disclosureComparisons, briefs };
   });
   if (!result) throw new Error("Company intelligence requires a configured database.");
   return result;
@@ -288,6 +351,15 @@ export async function getCompanyIntelligence(companyId?: string, currentPeriodId
     const evidenceRows = evidenceIds.length ? await db.select().from(researchEvidence).where(inArray(researchEvidence.id, evidenceIds)) : [];
     const claims = await db.select().from(researchClaims).where(eq(researchClaims.companyId, selectedCompany.id)).orderBy(desc(researchClaims.supportScore));
     const evidence = evidenceRows.map((item) => toEvidenceItem(item, selectedCompany));
+    const briefRows = await db.select().from(earningsChangeBriefs).where(eq(earningsChangeBriefs.currentPeriodId, current.id));
+    const briefRow = briefRows.find((item) => item.previousPeriodId === (previous?.id ?? null));
+    const briefClaims = briefRow
+      ? await db.select().from(earningsChangeBriefClaims).where(eq(earningsChangeBriefClaims.briefId, briefRow.id)).orderBy(asc(earningsChangeBriefClaims.ordinal))
+      : [];
+    const briefVersionRows = briefRow && previous
+      ? (await db.select().from(earningsChangeBriefVersions).where(eq(earningsChangeBriefVersions.companyId, selectedCompany.id)).orderBy(desc(earningsChangeBriefVersions.generatedAt)))
+        .filter((item) => item.currentPeriodKey === current.periodKey && item.previousPeriodKey === previous.periodKey)
+      : [];
     const packageRows = await db.select().from(earningsPackages).where(eq(earningsPackages.periodId, current.id)).limit(1);
     const packageRow = packageRows[0];
     const packageDocuments = packageRow
@@ -301,6 +373,27 @@ export async function getCompanyIntelligence(companyId?: string, currentPeriodId
       }).filter((company) => company.periodCount > 0),
       company: { id: selectedCompany.id, name: selectedCompany.name, ticker: selectedCompany.ticker }, periods: periods.map(toPeriod),
       currentPeriod: toPeriod(current), previousPeriod: previous ? toPeriod(previous) : null, comparisons: mapped, evidence,
+      changeBrief: briefRow ? {
+        id: briefRow.id, headline: briefRow.headline, summary: briefRow.summary,
+        thesisImpact: briefRow.thesisImpact as EarningsChangeBrief["thesisImpact"],
+        confidenceScore: briefRow.confidenceScore, evidenceQualityScore: briefRow.evidenceQualityScore,
+        sourceDiversityScore: briefRow.sourceDiversityScore, changeCount: briefRow.changeCount,
+        engine: briefRow.engine, generatedAt: briefRow.generatedAt.toISOString(),
+        versionHistory: briefVersionRows.map((version) => ({
+          id: version.id, thesisImpact: version.thesisImpact as EarningsChangeBrief["thesisImpact"],
+          confidenceScore: version.confidenceScore, generatedAt: version.generatedAt.toISOString(),
+        })),
+        sections: ([
+          ["change", "What changed"], ["bull", "Bull implications"], ["bear", "Bear implications"], ["question", "Open questions"],
+        ] as const).map(([key, title]) => ({
+          key, title, claims: briefClaims.filter((claim) => claim.section === key).map((claim) => ({
+            id: claim.id, section: key, title: claim.title, text: claim.text,
+            sentiment: claim.sentiment as "positive" | "negative" | "neutral" | "open",
+            significance: claim.significance as "high" | "medium" | "low",
+            comparisonId: claim.comparisonId, evidenceIds: claim.evidenceIds as string[],
+          })),
+        })),
+      } : null,
       earningsPackage: packageRow ? {
         id: packageRow.id, label: packageRow.label, documentCount: packageRow.documentCount, evidenceCount: packageRow.evidenceCount,
         documents: packageDocuments.map((document) => ({

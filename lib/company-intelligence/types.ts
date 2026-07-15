@@ -59,6 +59,41 @@ export type IntelligenceComparison = {
   tone: "stronger" | "weaker" | "more uncertain" | "neutral";
 };
 
+export type EarningsChangeBriefClaim = {
+  id: string;
+  section: "change" | "bull" | "bear" | "question";
+  title: string;
+  text: string;
+  sentiment: "positive" | "negative" | "neutral" | "open";
+  significance: "high" | "medium" | "low";
+  comparisonId: string | null;
+  evidenceIds: string[];
+};
+
+export type EarningsChangeBrief = {
+  id: string;
+  headline: string;
+  summary: string;
+  thesisImpact: "strengthened" | "weakened" | "mixed" | "unchanged";
+  confidenceScore: number;
+  evidenceQualityScore: number;
+  sourceDiversityScore: number;
+  changeCount: number;
+  engine: string;
+  generatedAt: string;
+  versionHistory: Array<{
+    id: string;
+    thesisImpact: "strengthened" | "weakened" | "mixed" | "unchanged";
+    confidenceScore: number;
+    generatedAt: string;
+  }>;
+  sections: Array<{
+    key: "change" | "bull" | "bear" | "question";
+    title: string;
+    claims: EarningsChangeBriefClaim[];
+  }>;
+};
+
 export type CompanyIntelligenceResponse = {
   companies: Array<{ id: string; name: string; ticker: string; periodCount: number; latestPeriod: string | null }>;
   company: { id: string; name: string; ticker: string };
@@ -67,6 +102,7 @@ export type CompanyIntelligenceResponse = {
   previousPeriod: IntelligencePeriod | null;
   comparisons: IntelligenceComparison[];
   evidence: ResearchEvidenceItem[];
+  changeBrief: EarningsChangeBrief | null;
   earningsPackage: { id: string; label: string; documentCount: number; evidenceCount: number; documents: EarningsPackageDocument[] } | null;
   claims: Array<{ id: string; title: string; statement: string; supportScore: number; kind: string }>;
   summary: { metrics: number; disclosures: number; highSignificance: number; evidenceSources: number };

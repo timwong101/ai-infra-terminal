@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { buildEarningsChangeBrief } from "@/lib/company-intelligence/brief-builder";
 import { compareDisclosureTone, compareMetricValues, extractMetricsFromText } from "@/lib/company-intelligence/extract";
 import { resolveDocumentPeriods, type PeriodDocument } from "@/lib/company-intelligence/period-resolver";
 import { periodForDate } from "@/lib/company-intelligence/service";
@@ -83,4 +84,39 @@ test("keeps annual periods separate and marks undated news as calendar fallback"
 test("identifies stronger and more uncertain disclosure language", () => {
   assert.equal(compareDisclosureTone("We achieved record growth and secured capacity.", "Capacity remained stable."), "stronger");
   assert.equal(compareDisclosureTone("Demand may decline and remains uncertain.", "Demand remained stable."), "more uncertain");
+});
+
+test("builds a mixed change brief with claim-level citations", () => {
+  const brief = buildEarningsChangeBrief({
+    companyName: "IREN", currentLabel: "Q3 FY2026", previousLabel: "Q2 FY2026", periodResolutionConfidence: 100,
+    comparisons: [
+      { id: "revenue", comparisonKind: "metric", category: "Revenue & demand", label: "Revenue", direction: "increased", significance: "high", summary: "Revenue increased from $23M to $25.8M (+12%).", evidenceIds: ["evidence:revenue"], tone: "neutral" },
+      { id: "liquidity", comparisonKind: "metric", category: "Funding & liquidity", label: "Cash and liquidity", direction: "decreased", significance: "high", summary: "Cash and liquidity decreased from $3.3B to $2.2B (-32%).", evidenceIds: ["evidence:liquidity"], tone: "neutral" },
+      { id: "unsupported", comparisonKind: "disclosure", category: "Operations", label: "Unsupported change", direction: "changed", significance: "high", summary: "This claim has no available source.", evidenceIds: ["missing"], tone: "neutral" },
+    ],
+    evidence: [
+      { id: "evidence:revenue", sourceQuality: 92, sourceDocumentId: "10-q", sourceType: "SEC 10-Q" },
+      { id: "evidence:liquidity", sourceQuality: 88, sourceDocumentId: "results", sourceType: "Earnings Release" },
+    ],
+  });
+  assert.equal(brief.thesisImpact, "mixed");
+  assert.equal(brief.changeCount, 2);
+  assert.ok(brief.confidenceScore >= 70);
+  assert.ok(brief.claims.some((claim) => claim.section === "bull"));
+  assert.ok(brief.claims.some((claim) => claim.section === "bear"));
+  assert.deepEqual(brief.claims.filter((claim) => claim.section === "change").map((claim) => claim.title), ["Revenue", "Cash and liquidity"]);
+  assert.ok(brief.claims.filter((claim) => claim.section !== "question").every((claim) => claim.evidenceIds.length > 0));
+  assert.ok(brief.claims.filter((claim) => claim.section === "question").every((claim) => claim.evidenceIds.length === 0));
+  assert.ok(brief.claims.every((claim) => !claim.evidenceIds.includes("missing")));
+});
+
+test("withholds unsupported factual claims from change briefs", () => {
+  const brief = buildEarningsChangeBrief({
+    companyName: "Nebius", currentLabel: "Q1 FY2026", previousLabel: "Q4 FY2025", periodResolutionConfidence: 95,
+    comparisons: [{ id: "claim", comparisonKind: "disclosure", category: "Capacity", label: "Capacity", direction: "new", significance: "high", summary: "Capacity expanded.", evidenceIds: ["unknown"], tone: "stronger" }],
+    evidence: [],
+  });
+  assert.equal(brief.changeCount, 0);
+  assert.equal(brief.thesisImpact, "unchanged");
+  assert.equal(brief.claims.filter((claim) => claim.section !== "question").length, 0);
 });

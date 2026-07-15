@@ -8,7 +8,7 @@ async function main() {
   const cache = JSON.parse(await readFile(resolve("data/generated/sec-evidence.json"), "utf8")) as EvidenceCache;
   for (const filing of cache.filings) await persistFilingPeriodOfReport(filing.id, filing.periodOfReport);
   const result = await syncCompanyIntelligence();
-  console.log(`Company intelligence: ${result.periods} periods, ${result.packages} packages, ${result.documents} documents, ${result.metrics} metrics, ${result.metricComparisons} metric comparisons, ${result.disclosureComparisons} disclosure comparisons.`);
+  console.log(`Company intelligence: ${result.periods} periods, ${result.packages} packages, ${result.briefs} change briefs, ${result.documents} documents, ${result.metrics} metrics, ${result.metricComparisons} metric comparisons, ${result.disclosureComparisons} disclosure comparisons.`);
 }
 
 main().catch((error) => { console.error(error instanceof Error ? error.message : error); process.exitCode = 1; });

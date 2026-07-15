@@ -357,6 +357,61 @@ export const periodComparisons = pgTable("period_comparisons", {
   index("period_comparisons_company_period_idx").on(table.companyId, table.currentPeriodId),
 ]);
 
+export const earningsChangeBriefs = pgTable("earnings_change_briefs", {
+  id: text("id").primaryKey(),
+  companyId: text("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  currentPeriodId: text("current_period_id").notNull().references(() => reportingPeriods.id, { onDelete: "cascade" }),
+  previousPeriodId: text("previous_period_id").references(() => reportingPeriods.id, { onDelete: "cascade" }),
+  headline: text("headline").notNull(),
+  summary: text("summary").notNull(),
+  thesisImpact: text("thesis_impact").notNull(),
+  confidenceScore: integer("confidence_score").notNull(),
+  evidenceQualityScore: integer("evidence_quality_score").notNull(),
+  sourceDiversityScore: integer("source_diversity_score").notNull(),
+  changeCount: integer("change_count").notNull(),
+  engine: text("engine").default("deterministic-v1").notNull(),
+  generatedAt: timestamp("generated_at", { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("earnings_change_briefs_period_pair_unique").on(table.currentPeriodId, table.previousPeriodId),
+  index("earnings_change_briefs_company_period_idx").on(table.companyId, table.currentPeriodId),
+]);
+
+export const earningsChangeBriefClaims = pgTable("earnings_change_brief_claims", {
+  id: text("id").primaryKey(),
+  briefId: text("brief_id").notNull().references(() => earningsChangeBriefs.id, { onDelete: "cascade" }),
+  ordinal: integer("ordinal").notNull(),
+  section: text("section").notNull(),
+  title: text("title").notNull(),
+  text: text("text").notNull(),
+  sentiment: text("sentiment").notNull(),
+  significance: text("significance").notNull(),
+  comparisonId: text("comparison_id").references(() => periodComparisons.id, { onDelete: "set null" }),
+  evidenceIds: jsonb("evidence_ids").default([]).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("earnings_change_brief_claims_ordinal_unique").on(table.briefId, table.ordinal),
+  index("earnings_change_brief_claims_brief_section_idx").on(table.briefId, table.section),
+]);
+
+export const earningsChangeBriefVersions = pgTable("earnings_change_brief_versions", {
+  id: text("id").primaryKey(),
+  companyId: text("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  currentPeriodKey: text("current_period_key").notNull(),
+  currentPeriodLabel: text("current_period_label").notNull(),
+  previousPeriodKey: text("previous_period_key").notNull(),
+  previousPeriodLabel: text("previous_period_label").notNull(),
+  thesisImpact: text("thesis_impact").notNull(),
+  confidenceScore: integer("confidence_score").notNull(),
+  contentHash: text("content_hash").notNull(),
+  snapshot: jsonb("snapshot").notNull(),
+  generatedAt: timestamp("generated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("earnings_change_brief_versions_content_unique").on(table.companyId, table.currentPeriodKey, table.previousPeriodKey, table.contentHash),
+  index("earnings_change_brief_versions_period_idx").on(table.companyId, table.currentPeriodKey, table.generatedAt),
+]);
+
 export const comparisonMemos = pgTable("comparison_memos", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
