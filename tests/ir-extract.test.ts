@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyIrPassage, extractIrHtmlDetail } from "@/lib/ir/extract";
+import { buildCatalogOnlyIrDetail, classifyIrPassage, extractIrHtmlDetail } from "@/lib/ir/extract";
 import type { IrDocument } from "@/lib/ir/types";
 
 const document: IrDocument = {
@@ -38,4 +38,20 @@ test("extracts citation-ready topic sections from official IR HTML", () => {
   assert.equal(detail.extraction.method, "deterministic-html");
   assert.deepEqual(detail.sections.map((section) => section.category), ["Capacity", "Revenue", "Capital spending"]);
   assert.equal(detail.sections.reduce((total, section) => total + section.passages.length, 0), 3);
+});
+
+test("retains official catalog metadata when a document host blocks extraction", () => {
+  const detail = buildCatalogOnlyIrDetail({
+    ...document,
+    companyId: "iren",
+    companyName: "IREN",
+    ticker: "IREN",
+    sourceUrl: "https://iren.gcs-web.com/static-files/example",
+    sourcePageUrl: "https://iren.com/investors/reports",
+  }, "2026-07-15T00:00:00.000Z");
+  assert.equal(detail.extraction.quality, "limited");
+  assert.equal(detail.sourceUrl, "https://iren.gcs-web.com/static-files/example");
+  assert.equal(detail.sourcePageUrl, "https://iren.com/investors/reports");
+  assert.equal(detail.sections.length, 0);
+  assert.match(detail.extraction.message, /catalog metadata retained/i);
 });

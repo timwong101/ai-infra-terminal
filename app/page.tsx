@@ -938,7 +938,7 @@ export default function Home() {
 
             <footer className="drawer-footer">
               <span>{selectedEvidence.documentId ?? selectedEvidence.accessionNumber}</span>
-              <a href={selectedEvidence.sourceUrl} target="_blank" rel="noreferrer">Open original document <ExternalLink size={14} /></a>
+              <a href={irDocumentDetail?.extraction.quality === "limited" && irDocumentDetail.sections.length === 0 ? irDocumentDetail.sourcePageUrl : irDocumentDetail?.sourceUrl ?? selectedEvidence.sourceUrl} target="_blank" rel="noreferrer">Open official source <ExternalLink size={14} /></a>
             </footer>
           </aside>
         </div>

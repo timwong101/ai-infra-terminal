@@ -5,6 +5,7 @@ export type IrSourceConfig = {
   pages: string[];
   allowedHosts: string[];
   includePathFragments: string[];
+  catalogOnlyHosts?: string[];
 };
 
 export const irSources: IrSourceConfig[] = [
@@ -42,5 +43,6 @@ export const irSources: IrSourceConfig[] = [
     pages: ["https://iren.com/investors/news", "https://iren.com/investors/reports"],
     allowedHosts: ["iren.com", "www.iren.com", "iren.gcs-web.com"],
     includePathFragments: ["/static-files/", "/investors/news/", "/investors/reports/"],
+    catalogOnlyHosts: ["iren.gcs-web.com"],
   },
 ];

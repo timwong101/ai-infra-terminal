@@ -6,6 +6,8 @@ import type { SecSubmissionsResponse } from "@/lib/sec/types";
 
 const LOOKBACK_DAYS = 365;
 const MAX_FILINGS_PER_COMPANY = 15;
+const PERIODIC_RESERVE = 6;
+const PERIODIC_FORMS = new Set(["10-K", "10-Q", "20-F", "20-F/A"]);
 
 type FetchSubmissions = (
   company: SecCompany,
@@ -30,6 +32,19 @@ function wait(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+export function selectSecFilingsForCoverage(filings: EvidenceEvent[], limit = MAX_FILINGS_PER_COMPANY) {
+  const ordered = [...filings].sort((left, right) => right.filedAt.localeCompare(left.filedAt));
+  const periodic = ordered.filter((filing) => PERIODIC_FORMS.has(filing.formType));
+  const events = ordered.filter((filing) => !PERIODIC_FORMS.has(filing.formType));
+  const selectedPeriodic = periodic.slice(0, Math.min(PERIODIC_RESERVE, limit));
+  const selected = [...selectedPeriodic, ...events.slice(0, Math.max(0, limit - selectedPeriodic.length))];
+  if (selected.length < limit) {
+    const selectedIds = new Set(selected.map((filing) => filing.id));
+    selected.push(...periodic.filter((filing) => !selectedIds.has(filing.id)).slice(0, limit - selected.length));
+  }
+  return selected.sort((left, right) => right.filedAt.localeCompare(left.filedAt));
+}
+
 export async function refreshSecEvidence({
   userAgent,
   previousCache,
@@ -48,12 +63,7 @@ export async function refreshSecEvidence({
     try {
       const submissions = await fetchSubmissions(company, userAgent);
       warnings.push(...findUnexpectedIssuerForms(company, submissions, cutoff));
-      filings.push(
-        ...normalizeSecSubmissions(company, submissions, fetchedAt, cutoff).slice(
-          0,
-          MAX_FILINGS_PER_COMPANY,
-        ),
-      );
+      filings.push(...selectSecFilingsForCoverage(normalizeSecSubmissions(company, submissions, fetchedAt, cutoff)));
       successfulCompanies += 1;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown SEC ingestion error";

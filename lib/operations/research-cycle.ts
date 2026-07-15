@@ -15,6 +15,7 @@ import { syncCompanyIntelligence } from "@/lib/company-intelligence/service";
 import { validateSecUserAgent } from "@/lib/sec/client";
 import { refreshSecEvidence } from "@/lib/sec/ingest";
 import { syncSecFilingEvidence } from "@/lib/sec/persist";
+import { getCompanyFlowCoverage } from "@/lib/operations/company-coverage";
 
 export async function runResearchCycle(trigger = "manual") {
   const id = `cycle:${crypto.randomUUID()}`;
@@ -56,6 +57,7 @@ export async function getResearchOperations() {
     return {
       runs: runs.map((run) => ({ ...run, startedAt: run.startedAt.toISOString(), completedAt: run.completedAt?.toISOString() ?? null, createdAt: run.createdAt.toISOString() })),
       queue: await getIrIngestionSummary(),
+      coverage: await getCompanyFlowCoverage(),
       schedule: "Every 6 hours via GitHub Actions or an authenticated cron request",
       aiEnabled: Boolean(process.env.OPENAI_API_KEY?.trim()),
     };

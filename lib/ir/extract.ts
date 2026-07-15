@@ -153,6 +153,29 @@ export function extractIrHtmlDetail(html: string, document: IrDocument, retrieve
   return buildDetail(document, rawPassages, "deterministic-html", null, retrievedAt);
 }
 
+export function buildCatalogOnlyIrDetail(document: IrDocument, retrievedAt = new Date().toISOString()): IrDocumentDetail {
+  return {
+    documentId: document.id,
+    companyId: document.companyId,
+    companyName: document.companyName,
+    ticker: document.ticker,
+    documentType: document.documentType,
+    publishedAt: document.publishedAt,
+    title: document.title,
+    sourceUrl: document.sourceUrl,
+    sourcePageUrl: document.sourcePageUrl,
+    retrievedAt,
+    wordCount: 0,
+    pageCount: null,
+    sections: [],
+    extraction: {
+      method: "deterministic-html",
+      quality: "limited",
+      message: "Official catalog metadata retained; the document host does not permit reliable automated extraction.",
+    },
+  };
+}
+
 export async function extractIrPdfDetail(bytes: Uint8Array, document: IrDocument, retrievedAt = new Date().toISOString()) {
   const { extractText } = await import("unpdf");
   const result = await extractText(bytes, { mergePages: false });

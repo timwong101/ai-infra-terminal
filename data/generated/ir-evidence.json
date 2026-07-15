@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-13T22:30:11.840Z",
+  "generatedAt": "2026-07-15T18:33:55.973Z",
   "source": "Official company investor-relations pages",
   "companies": [
     "coreweave",
@@ -10,6 +10,22 @@
   ],
   "errors": [],
   "documents": [
+    {
+      "id": "ir:iren:2026-07-15:appoints-chief-information-security-officer",
+      "companyId": "iren",
+      "companyName": "IREN",
+      "ticker": "IREN",
+      "documentType": "Press Release",
+      "publishedAt": "2026-07-15",
+      "title": "IREN Appoints Chief Information Security Officer",
+      "summary": "Official company operating or strategic update",
+      "sourceUrl": "https://iren.gcs-web.com/static-files/f5532972-79f2-4474-95bc-2acadbcf6047",
+      "sourcePageUrl": "https://iren.com/investors/news",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
+      "sourceQuality": 82,
+      "relevanceScore": 55,
+      "signal": "neutral"
+    },
     {
       "id": "ir:coreweave:2026-07-09:named-a-visionary-in-the-2026-gartner-magic-quadrant-for-cloud-ai-infrastructure",
       "companyId": "coreweave",
@@ -21,7 +37,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://investors.coreweave.com/news/news-details/2026/CoreWeave-Named-a-Visionary-in-the-2026-Gartner-Magic-Quadrant-for-Cloud-AI-Infrastructure/default.aspx",
       "sourcePageUrl": "https://investors.coreweave.com/rss/pressrelease.aspx",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 70,
       "signal": "neutral"
@@ -37,7 +53,7 @@
       "summary": "Official company shareholder letter",
       "sourceUrl": "https://iren.gcs-web.com/static-files/4b270ecd-ef4d-4f41-b21f-c12ca0b4f3ce",
       "sourcePageUrl": "https://iren.com/investors/news",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 90,
       "relevanceScore": 80,
       "signal": "neutral"
@@ -53,7 +69,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://iren.gcs-web.com/static-files/bc5828bd-5e92-4789-a8ff-46f804b01dcd",
       "sourcePageUrl": "https://iren.com/investors/news",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 55,
       "signal": "neutral"
@@ -69,7 +85,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://ir.applieddigital.com/news-events/press-releases/detail/157/applied-digital-delivers-second-building-at-polaris-forge-1",
       "sourcePageUrl": "https://ir.applieddigital.com/news-events",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 55,
       "signal": "neutral"
@@ -85,7 +101,7 @@
       "summary": "Official company presentation",
       "sourceUrl": "https://ir.applieddigital.com/_assets/_76dbf52b348cc16e6938f83413e3a881/appliedblockchaininc/db/2905/27269/pdf/APLD_INV_June2026_Updated-compressed.pdf",
       "sourcePageUrl": "https://ir.applieddigital.com/news-events",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 86,
       "relevanceScore": 78,
       "signal": "neutral"
@@ -101,7 +117,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://investors.coreweave.com/news/news-details/2026/CoreWeave-ARIA-Launches-as-an-AI-Research-and-Iteration-Agent-with-autonomous-research-and-collaborative-intelligence/default.aspx",
       "sourcePageUrl": "https://investors.coreweave.com/rss/pressrelease.aspx",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 60,
       "signal": "neutral"
@@ -117,7 +133,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://iren.gcs-web.com/static-files/85fe0782-bd2d-4a5f-ac5b-5460d79d87c4",
       "sourcePageUrl": "https://iren.com/investors/news",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 55,
       "signal": "neutral"
@@ -133,7 +149,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://investors.coreweave.com/news/news-details/2026/CoreWeave-Partners-With-Conapto-to-Expand-AI-Cloud-Capacity-in-Sweden-Powered-by-Renewable-Energy/default.aspx",
       "sourcePageUrl": "https://investors.coreweave.com/rss/pressrelease.aspx",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 70,
       "signal": "neutral"
@@ -149,7 +165,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://investors.coreweave.com/news/news-details/2026/CoreWeave-Named-Official-AI-Cloud-Partner-of-BattleBots/default.aspx",
       "sourcePageUrl": "https://investors.coreweave.com/rss/pressrelease.aspx",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 65,
       "signal": "neutral"
@@ -165,7 +181,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://investors.coreweave.com/news/news-details/2026/CoreWeave-Sets-New-AI-Training-Records-in-MLPerf-Training-v6-0-Training-DeepSeek-V3-in-Approximately-Two-Minutes/default.aspx",
       "sourcePageUrl": "https://investors.coreweave.com/rss/pressrelease.aspx",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 60,
       "signal": "neutral"
@@ -181,7 +197,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://iren.gcs-web.com/static-files/9987c366-dca9-444a-9361-e7bbd29a4e35",
       "sourcePageUrl": "https://iren.com/investors/news",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 65,
       "signal": "neutral"
@@ -197,7 +213,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://investors.coreweave.com/news/news-details/2026/CoreWeave-to-Join-Nasdaq-100-Index/default.aspx",
       "sourcePageUrl": "https://investors.coreweave.com/rss/pressrelease.aspx",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 55,
       "signal": "neutral"
@@ -213,7 +229,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://investors.coreweave.com/news/news-details/2026/CoreWeave-Announces-Pricing-of-1-25-Billion-of-Senior-Notes-and-2-Billion-of-Senior-Notes/default.aspx",
       "sourcePageUrl": "https://investors.coreweave.com/rss/pressrelease.aspx",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 55,
       "signal": "neutral"
@@ -229,7 +245,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://investors.coreweave.com/news/news-details/2026/CoreWeave-Announces-Intention-to-Offer-3-5-Billion-of-Senior-Notes/default.aspx",
       "sourcePageUrl": "https://investors.coreweave.com/rss/pressrelease.aspx",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 55,
       "signal": "neutral"
@@ -245,7 +261,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://ir.applieddigital.com/news-events/press-releases/detail/156/applied-digital-announces-pricing-of-1-59-billion-of",
       "sourcePageUrl": "https://ir.applieddigital.com/news-events",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 55,
       "signal": "neutral"
@@ -261,7 +277,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://iren.gcs-web.com/static-files/89f56bc3-0473-4a1b-a863-c6a3dba11018",
       "sourcePageUrl": "https://iren.com/investors/news",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 60,
       "signal": "neutral"
@@ -277,7 +293,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://investors.coreweave.com/news/news-details/2026/CoreWeave-Completes-Industry-First-Bring-Up-and-Validation-of-NVIDIA-Vera-Rubin-NVL72/default.aspx",
       "sourcePageUrl": "https://investors.coreweave.com/rss/pressrelease.aspx",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 55,
       "signal": "neutral"
@@ -293,7 +309,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://iren.gcs-web.com/static-files/56eec258-62fb-4929-9e93-02c816693da2",
       "sourcePageUrl": "https://iren.com/investors/news",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 65,
       "signal": "neutral"
@@ -309,7 +325,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://iren.gcs-web.com/static-files/607ae23a-c2eb-499b-9f48-7bc4e190a822",
       "sourcePageUrl": "https://iren.com/investors/news",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 55,
       "signal": "neutral"
@@ -325,7 +341,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://nebius.com/newsroom/nebius-and-bloom-energy-partner-to-power-ai-infrastructure-build-out",
       "sourcePageUrl": "https://nebius.com/newsroom",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 70,
       "signal": "neutral"
@@ -341,23 +357,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://iren.gcs-web.com/static-files/d508d15d-0086-4ce8-9eed-f1291c1f07aa",
       "sourcePageUrl": "https://iren.com/investors/news",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
-      "sourceQuality": 82,
-      "relevanceScore": 55,
-      "signal": "neutral"
-    },
-    {
-      "id": "ir:iren:2026-05-14:closes-3-0-billion-convertible-notes-offering",
-      "companyId": "iren",
-      "companyName": "IREN",
-      "ticker": "IREN",
-      "documentType": "Press Release",
-      "publishedAt": "2026-05-14",
-      "title": "IREN Closes $3.0 Billion Convertible Notes Offering",
-      "summary": "Official company operating or strategic update",
-      "sourceUrl": "https://iren.gcs-web.com/static-files/635bfd97-f57d-4021-88aa-b75999f6fa66",
-      "sourcePageUrl": "https://iren.com/investors/news",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 55,
       "signal": "neutral"
@@ -373,7 +373,7 @@
       "summary": "Official company earnings release",
       "sourceUrl": "https://assets.nebius.com/assets/0de223a2-f519-408d-8c7e-04f2fef342a9/Financial%20results_Q1%202026.pdf?cache-buster=2026-05-13T10:36:29.509Z",
       "sourcePageUrl": "https://nebius.com/financials",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 90,
       "relevanceScore": 90,
       "signal": "neutral"
@@ -389,7 +389,7 @@
       "summary": "Official company shareholder letter",
       "sourceUrl": "https://assets.nebius.com/assets/aa1bc2e6-df83-40cd-a6a2-95e7cda3d16c/Nebius%20SHL_Q1%202026.pdf?cache-buster=2026-05-13T14:00:35.352Z",
       "sourcePageUrl": "https://nebius.com/financials",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 90,
       "relevanceScore": 80,
       "signal": "neutral"
@@ -405,7 +405,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://iren.gcs-web.com/static-files/ff85f5bb-7330-4de5-8698-3c9fc86b4d8b",
       "sourcePageUrl": "https://iren.com/investors/reports",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 55,
       "signal": "neutral"
@@ -421,7 +421,7 @@
       "summary": "Official company presentation",
       "sourceUrl": "https://iren.gcs-web.com/static-files/2289f56f-f0f8-4673-a7d4-2359afe93eb6",
       "sourcePageUrl": "https://iren.com/investors/reports",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 86,
       "relevanceScore": 83,
       "signal": "neutral"
@@ -437,25 +437,9 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://iren.gcs-web.com/static-files/924cf03a-afc5-439b-926e-6c22feb57935",
       "sourcePageUrl": "https://iren.com/investors/reports",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 60,
-      "signal": "neutral"
-    },
-    {
-      "id": "ir:nebius:2026-03-16:signs-new-ai-infrastructure-agreement-with-meta-deal-to-accelerate-growth-of-s-c",
-      "companyId": "nebius",
-      "companyName": "Nebius",
-      "ticker": "NBIS",
-      "documentType": "Press Release",
-      "publishedAt": "2026-03-16",
-      "title": "Nebius signs new AI infrastructure agreement with Meta; deal to accelerate growth of Nebius’s core business in AI cloud",
-      "summary": "Official company operating or strategic update",
-      "sourceUrl": "https://nebius.com/newsroom/nebius-signs-new-ai-infrastructure-agreement-with-meta",
-      "sourcePageUrl": "https://nebius.com/newsroom",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
-      "sourceQuality": 82,
-      "relevanceScore": 70,
       "signal": "neutral"
     },
     {
@@ -469,7 +453,7 @@
       "summary": "Official company earnings release",
       "sourceUrl": "https://assets.nebius.com/assets/04f48f4e-48e9-468e-a428-ef16565c3fb5/Financial%20results_Q4%202025_11022026.pdf?cache-buster=2026-02-12T11:56:40.932Z",
       "sourcePageUrl": "https://nebius.com/financials",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 90,
       "relevanceScore": 90,
       "signal": "neutral"
@@ -485,7 +469,7 @@
       "summary": "Official company shareholder letter",
       "sourceUrl": "https://assets.nebius.com/assets/85571bd2-050b-468c-954c-42e9d24e4cd2/Letter%20to%20Shareholders%20Q4%202025.pdf?cache-buster=2026-02-12T11:57:13.886Z",
       "sourcePageUrl": "https://nebius.com/financials",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 90,
       "relevanceScore": 80,
       "signal": "neutral"
@@ -501,7 +485,7 @@
       "summary": "Official company presentation",
       "sourceUrl": "https://iren.gcs-web.com/static-files/07e0b197-cf31-4158-a124-8ff0b70203c3",
       "sourcePageUrl": "https://iren.com/investors/reports",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 86,
       "relevanceScore": 83,
       "signal": "neutral"
@@ -517,7 +501,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://iren.gcs-web.com/static-files/cb66edc1-790b-4460-8529-4f02c52217e0",
       "sourcePageUrl": "https://iren.com/investors/reports",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 60,
       "signal": "neutral"
@@ -533,7 +517,7 @@
       "summary": "Official company earnings release",
       "sourceUrl": "https://assets.nebius.com/assets/fc878470-ce91-4c8a-a716-45fe2923d603/20251111%20Nebius%20reports%20third%20quarter%202025%20financial%20results.pdf?cache-buster=2025-11-11T11:56:42.300Z",
       "sourcePageUrl": "https://nebius.com/financials",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 90,
       "relevanceScore": 90,
       "signal": "neutral"
@@ -549,7 +533,7 @@
       "summary": "Official company shareholder letter",
       "sourceUrl": "https://assets.nebius.com/assets/7f8a9169-0d2b-469d-87e7-44342ea7fcd2/SHLQ3%20%284%29.pdf?cache-buster=2025-11-11T15:49:05.293Z",
       "sourcePageUrl": "https://nebius.com/financials",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 90,
       "relevanceScore": 80,
       "signal": "neutral"
@@ -565,7 +549,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://iren.gcs-web.com/static-files/ec8ec2a6-a1d1-4bb6-9cb9-bc2d436b9db9",
       "sourcePageUrl": "https://iren.com/investors/reports",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 55,
       "signal": "neutral"
@@ -581,7 +565,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://iren.gcs-web.com/static-files/7d0e5311-680b-44de-913b-dba3bb4bd750",
       "sourcePageUrl": "https://iren.com/investors/reports",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 55,
       "signal": "neutral"
@@ -597,7 +581,7 @@
       "summary": "Official company earnings release",
       "sourceUrl": "https://iren.gcs-web.com/static-files/1992dde8-e264-4226-8421-8882a46411ae",
       "sourcePageUrl": "https://iren.com/investors/reports",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 90,
       "relevanceScore": 90,
       "signal": "neutral"
@@ -613,7 +597,7 @@
       "summary": "Official company presentation",
       "sourceUrl": "https://iren.gcs-web.com/static-files/d958d6f0-e143-4508-af15-da6c7e540598",
       "sourcePageUrl": "https://iren.com/investors/reports",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 86,
       "relevanceScore": 83,
       "signal": "neutral"
@@ -629,7 +613,7 @@
       "summary": "Official company earnings release",
       "sourceUrl": "https://assets.nebius.com/assets/a1ea2731-32b4-4b8d-82b4-0557fddadd1a/Nebius%20-%20Financial%20results%20-%20Q2%202025.pdf?cache-buster=2025-08-26T16:52:29.128Z",
       "sourcePageUrl": "https://nebius.com/financials",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 90,
       "relevanceScore": 90,
       "signal": "neutral"
@@ -645,7 +629,7 @@
       "summary": "Official company shareholder letter",
       "sourceUrl": "https://assets.nebius.com/assets/98fceb3b-2951-4647-9864-4b0654af057c/Nebius%20-%20Letter%20to%20shareholders%20-%20Q2%202025.pdf?cache-buster=2025-08-26T16:52:55.017Z",
       "sourcePageUrl": "https://nebius.com/financials",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 90,
       "relevanceScore": 80,
       "signal": "neutral"
@@ -661,7 +645,7 @@
       "summary": "Official company operating or strategic update",
       "sourceUrl": "https://iren.gcs-web.com/static-files/de0361c5-62fa-4aa4-a6a2-12755ff7edba",
       "sourcePageUrl": "https://iren.com/investors/reports",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 82,
       "relevanceScore": 55,
       "signal": "neutral"
@@ -677,7 +661,7 @@
       "summary": "Official company earnings release",
       "sourceUrl": "https://assets.nebius.com/assets/0369f7c5-dde6-4e32-873e-f1dd2a511212/20250520%20Nebius%20Group%20announces%20first%20quarter%202025%20financial%20results.pdf?cache-buster=2025-07-23T09:09:40.936Z",
       "sourcePageUrl": "https://nebius.com/financials",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 90,
       "relevanceScore": 90,
       "signal": "neutral"
@@ -693,7 +677,7 @@
       "summary": "Official company presentation",
       "sourceUrl": "https://assets.nebius.com/assets/0b894e92-1687-45a1-98fb-57d4c569d7bc/Q1%20Webcast_slides_20.05.25_Final.pdf?cache-buster=2025-07-23T09:09:41.253Z",
       "sourcePageUrl": "https://nebius.com/financials",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 86,
       "relevanceScore": 78,
       "signal": "neutral"
@@ -709,7 +693,7 @@
       "summary": "Official company shareholder letter",
       "sourceUrl": "https://assets.nebius.com/assets/c0669639-37f2-4317-80d5-0c633e8e3186/Nebius%20Group_Letter%20to%20shareholders_Q12025.pdf?cache-buster=2025-07-23T09:09:43.209Z",
       "sourcePageUrl": "https://nebius.com/financials",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 90,
       "relevanceScore": 80,
       "signal": "neutral"
@@ -725,7 +709,7 @@
       "summary": "Official company earnings release",
       "sourceUrl": "https://assets.nebius.com/assets/ffacb067-9b61-42df-baa2-d513d9397845/20250220%20Nebius%20Group%20announces%204Q%20and%20FY%202024%20financial%20results.pdf?cache-buster=2025-08-26T16:51:07.337Z",
       "sourcePageUrl": "https://nebius.com/financials",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 90,
       "relevanceScore": 90,
       "signal": "neutral"
@@ -741,7 +725,7 @@
       "summary": "Official company earnings release",
       "sourceUrl": "https://assets.nebius.com/assets/eabb4ebd-e198-4e17-b633-6acd9b67de00/Nebius_Group_N_V_announces_third_quarter_2024_financial_results.pdf?cache-buster=2025-07-23T09:09:41.677Z",
       "sourcePageUrl": "https://nebius.com/financials",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 90,
       "relevanceScore": 90,
       "signal": "neutral"
@@ -757,7 +741,7 @@
       "summary": "Official company earnings release",
       "sourceUrl": "https://assets.nebius.com/assets/2478ca42-29e1-445c-a4fa-60fa0e5451cb/Nebius%20Group_press%20release_01-08-2024.pdf?cache-buster=2025-07-23T09:09:43.775Z",
       "sourcePageUrl": "https://nebius.com/financials",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 90,
       "relevanceScore": 90,
       "signal": "neutral"
@@ -773,7 +757,7 @@
       "summary": "Official company earnings release",
       "sourceUrl": "https://assets.nebius.com/assets/4631b645-cad2-4e39-a85b-a19deb8de7f8/YNV_Press_Release_ENG_56r85.pdf?cache-buster=2025-08-26T16:48:16.338Z",
       "sourcePageUrl": "https://nebius.com/financials",
-      "fetchedAt": "2026-07-13T22:30:11.840Z",
+      "fetchedAt": "2026-07-15T18:33:55.973Z",
       "sourceQuality": 90,
       "relevanceScore": 90,
       "signal": "neutral"

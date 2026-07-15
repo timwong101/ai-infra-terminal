@@ -56,7 +56,7 @@ To update the checked-in fallback cache manually, run:
 pnpm ingest:sec
 ```
 
-Both refresh paths fetch the previous year of relevant filings for CoreWeave, Nebius, Applied Digital, and IREN. The manual command atomically updates `data/generated/sec-evidence.json`; failed company requests retain their previously cached records.
+Both refresh paths fetch the previous year of relevant filings for CoreWeave, Nebius, Applied Digital, and IREN. Per-company selection reserves capacity for recurring quarterly and annual reports before filling the remaining cache with event filings, so a busy 8-K or 6-K stream cannot remove the prior periods needed for temporal analysis. The manual command atomically updates `data/generated/sec-evidence.json`; failed company requests retain their previously cached records.
 
 Form validation is date-aware. IREN is treated as a foreign private issuer through June 30, 2025 and a domestic issuer beginning July 1, 2025. Unexpected cross-regime forms are excluded and recorded as ingestion warnings.
 
@@ -72,21 +72,21 @@ pnpm ingest:ir
 
 The crawler only follows configured official company and issuer-CDN domains. It requires publication dates, rejects SEC mirrors and navigation links, classifies documents by type, scores research relevance, and deduplicates repeated cards across news, reports, and presentation pages.
 
-Every refresh also upserts document metadata into Postgres. Unseen documents enter a durable extraction queue, and the browser starts one bounded extraction job after the metadata response so the dashboard is not blocked. Jobs use `pending`, `processing`, `completed`, and `failed` states, recover interrupted work after 30 minutes, and retry transient failures up to three times with a one-hour delay. The ingestion bar reports extracted and queued totals.
+Every refresh also upserts document metadata into Postgres. Unseen documents enter a durable extraction queue, and the browser starts one bounded extraction job after the metadata response so the dashboard is not blocked. Queue claims rotate across all configured companies before using spare capacity, preventing one publisher from starving the others. Jobs use `pending`, `processing`, `completed`, and `failed` states, recover interrupted work after 30 minutes, and retry transient failures up to three times with a one-hour delay. Stale unextracted catalog rows are removed while completed historical documents remain durable. The ingestion bar reports extracted and queued totals.
 
 ## IR Document Evidence
 
-Select an official IR row in the Evidence Feed to open its document detail. PDF documents are extracted page by page and HTML releases are parsed deterministically. Passages are grouped into capacity, revenue, capital spending, power, customers, financing, guidance, and risk topics. PDF citations retain their source page and open the official document at that page.
+Select an official IR row in the Evidence Feed to open its document detail. PDF documents are extracted page by page and HTML releases are parsed deterministically. Passages are grouped into capacity, revenue, capital spending, power, customers, financing, guidance, and risk topics. PDF citations retain their source page and open the official document at that page. IREN's issuer CDN does not reliably permit automated document retrieval, so those records retain their unique original provenance but open as explicitly limited catalog-only details linked to the accessible official IREN page; the system never invents passages from catalog metadata.
 
-The initial durable backfill is intentionally scoped to Nebius:
+Backfill every configured company's checked-in IR catalog with:
 
 ```bash
 pnpm db:backfill:ir
 ```
 
-Use `pnpm db:backfill:ir -- --all` to process every configured company, or add `--force` after changing IR extraction rules.
+Add `--company=nebius` (or another configured company ID) to narrow the backfill, or add `--force` after changing IR extraction rules.
 
-Process one queued document manually with `pnpm db:process:ir`, or use `pnpm db:process:ir -- --all` to process a bounded batch. Newly discovered document details are resolved from the Postgres catalog, so they do not need to exist in the checked-in JSON file before their citations can be opened.
+Process one queued document manually with `pnpm db:process:ir`, or use `pnpm db:process:ir -- --all` to drain the current queue in fair company rotation. Newly discovered document details are resolved from the Postgres catalog, so they do not need to exist in the checked-in JSON file before their citations can be opened.
 
 ## Filing Evidence Extraction
 
@@ -98,7 +98,7 @@ Extraction is deterministic and does not generate or paraphrase claims. The orig
 
 The **Evidence Feed** workspace materializes extracted SEC and IR passages into one deduplicated Postgres catalog. Each record retains the company, topic, source type, document date, section, exact excerpt, original URL, optional PDF page, quality score, and analyst review state. Filing signatures, cover-page fields, exhibit listings, and other administrative boilerplate are excluded before passages reach the review queue.
 
-Only evidence explicitly marked `accepted` is eligible for comparison memos. Filters support company, topic, source family, review state, and full-text matching; visible results can be reviewed individually or in a batch. Rejected passages remain auditable but are excluded from generation.
+Only evidence explicitly marked `accepted` is eligible for comparison memos. Filters support company, topic, source family, review state, and full-text matching; visible results can be reviewed individually or in a batch. Rejected passages remain auditable but are excluded from generation. To keep every configured company usable on first run, evidence synchronization system-accepts a baseline of three high-quality official passages per company when fewer than three accepted records exist. The records carry a visible system-baseline review note, prefer different documents and topics, and never override an analyst rejection.
 
 The **Memos** workspace compares two companies using Postgres full-text retrieval plus optional pgvector similarity. With `OPENAI_API_KEY`, the AI SDK creates a structured draft; without one, the deterministic grounded engine remains fully usable. Both paths reject unsupported or cross-company citations before saving. Confidence combines evidence quality, source diversity, company coverage, balance, and recency. Each memo stores the prompt, model, engine, token usage, verification result, and exact evidence snapshot, so later changes do not silently rewrite research history.
 
@@ -114,7 +114,7 @@ pnpm research:intelligence
 
 The scheduled research cycle performs this step automatically after SEC and IR evidence synchronization, so opening the site reads persisted intelligence instead of refetching and recomputing every document.
 
-The **Operations** workspace shows ingestion queue health and durable pipeline runs. Run the complete SEC, IR, evidence, embedding, and thesis pipeline locally with `pnpm research:cycle`. The included GitHub Actions workflow can run it every six hours after `DATABASE_URL`, `SEC_USER_AGENT`, and optionally `OPENAI_API_KEY` are added as repository secrets. The database URL must point to a hosted Postgres instance reachable from GitHub Actions.
+The **Operations** workspace shows ingestion queue health, durable pipeline runs, and a company-flow coverage matrix. Each configured company is checked independently for ingestion, research evidence, alerts, five thesis claims, comparable-period intelligence, and memo eligibility. Run the complete SEC, IR, evidence, embedding, and thesis pipeline locally with `pnpm research:cycle`. The included GitHub Actions workflow can run it every six hours after `DATABASE_URL`, `SEC_USER_AGENT`, and optionally `OPENAI_API_KEY` are added as repository secrets. The database URL must point to a hosted Postgres instance reachable from GitHub Actions.
 
 AI settings are optional:
 

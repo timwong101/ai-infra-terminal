@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SecCompany } from "@/data/companies";
-import { refreshSecEvidence } from "@/lib/sec/ingest";
+import { refreshSecEvidence, selectSecFilingsForCoverage } from "@/lib/sec/ingest";
+import type { EvidenceEvent } from "@/lib/evidence/types";
 import type { SecSubmissionsResponse } from "@/lib/sec/types";
 
 function createSubmissions(company: SecCompany): SecSubmissionsResponse {
@@ -55,4 +56,19 @@ test("fails without replacing the cache when every SEC request fails", async () 
     }),
     /Every SEC request failed/,
   );
+});
+
+test("reserves SEC coverage for recurring filings when event filings are newer", () => {
+  const filing = (id: string, formType: string, filedAt: string): EvidenceEvent => ({
+    id, companyId: "coreweave", companyName: "CoreWeave", ticker: "CRWV", cik: "0001769628",
+    theme: "Neoclouds", sourceType: "SEC", formType, filedAt, acceptedAt: `${filedAt.replaceAll("-", "")}120000`,
+    periodOfReport: formType === "10-Q" ? filedAt : null, headline: id, summary: id, accessionNumber: id,
+    primaryDocument: `${id}.htm`, sourceUrl: `https://www.sec.gov/${id}`, fetchedAt: "2026-07-15T00:00:00.000Z",
+    sourceQuality: 90, signal: "neutral", issuerClassification: "domestic",
+  });
+  const events = Array.from({ length: 20 }, (_, index) => filing(`event-${index}`, "8-K", `2026-07-${String(20 - index).padStart(2, "0")}`));
+  const quarters = ["2026-05-10", "2026-02-10", "2025-11-10", "2025-08-10"].map((date, index) => filing(`quarter-${index}`, "10-Q", date));
+  const selected = selectSecFilingsForCoverage([...events, ...quarters]);
+  assert.equal(selected.length, 15);
+  assert.deepEqual(selected.filter((item) => item.formType === "10-Q").map((item) => item.id), quarters.map((item) => item.id));
 });

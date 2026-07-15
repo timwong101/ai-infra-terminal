@@ -22,6 +22,40 @@ const TOPIC_RULES: Array<[string, RegExp]> = [
   ["Competition & strategy", /competition|competitor|strategy|market|hyperscal|differentiat/i],
   ["Risk factors", /risk|uncertain|adverse|depend|concentrat|could harm|may not/i],
 ];
+const BASELINE_ACCEPTED_PER_COMPANY = 3;
+
+type BaselineEvidenceCandidate = {
+  id: string;
+  sourceDocumentId: string;
+  topic: string;
+  sourceQuality: number;
+  documentDate: string;
+  reviewStatus: string;
+};
+
+export function selectBaselineEvidenceCandidates(items: BaselineEvidenceCandidate[], minimum = BASELINE_ACCEPTED_PER_COMPANY) {
+  const accepted = items.filter((item) => item.reviewStatus === "accepted").length;
+  const needed = Math.max(0, minimum - accepted);
+  if (!needed) return [];
+  const candidates = items.filter((item) => item.reviewStatus === "unreviewed" && item.sourceQuality >= 90)
+    .sort((left, right) => right.sourceQuality - left.sourceQuality || right.documentDate.localeCompare(left.documentDate));
+  const selected: BaselineEvidenceCandidate[] = [];
+  const documents = new Set<string>();
+  const topics = new Set<string>();
+  for (const candidate of candidates) {
+    if (selected.length >= needed) break;
+    if (documents.has(candidate.sourceDocumentId) || topics.has(candidate.topic)) continue;
+    selected.push(candidate);
+    documents.add(candidate.sourceDocumentId);
+    topics.add(candidate.topic);
+  }
+  for (const candidate of candidates) {
+    if (selected.length >= needed) break;
+    if (selected.some((item) => item.id === candidate.id)) continue;
+    selected.push(candidate);
+  }
+  return selected;
+}
 
 function topicFor(...parts: string[]) {
   const value = parts.join(" ");
@@ -42,6 +76,17 @@ export function isResearchGradeExcerpt(value: string) {
     /furnished as exhibit\s+\d/i,
     /incorporated (?:herein )?by reference/i,
     /^\s*\d{1,3}\.\d\s+(?:press release|financial statements|exhibit)/i,
+    /^\s*\d{1,3}(?:\.\d+)?\**\s+(?:agreement|credit agreement|certificates?|form of|incremental|press release|financial statements?|exhibit)/i,
+    /^\s*\d{1,3}(?:\.\d+)?\W+indenture, dated as of/i,
+    /^form of certificates? representing/i,
+    /\bcopy of .* (?:is|are|will be) (?:filed as|attached as) an? exhibit\b/i,
+    /\bcopy of .* (?:is|are|will be) attached as exhibit\b/i,
+    /shall not constitute an offer to sell or the solicitation of (?:(?:an|any) )?offer to buy/i,
+    /the offer and sale of .* (?:is|are) and will be made in reliance upon .* exemption from registration/i,
+    /contains customary representations, warranties, covenants, indemnities and termination rights/i,
+    /^(?:indenture|agreement), dated as of .* between .* and .* as (?:trustee|agent)/i,
+    /contains ["“”]?forward-looking statements["“”]? within the meaning of/i,
+    /^the following table summarizes our results of operation/i,
     /the information (?:contained|included) in this (?:report|item) .* shall not be deemed/i,
   ].some((pattern) => pattern.test(value));
 }
@@ -158,7 +203,22 @@ export async function syncResearchEvidence() {
       ? and(eq(researchEvidence.sourceKind, "ir"), notInArray(researchEvidence.sourcePassageId, irPassageIds))
       : eq(researchEvidence.sourceKind, "ir"));
 
-    return { sec: researchGradeSecRows.length, ir: researchGradeIrRows.length };
+    const evidenceRows = await db.select().from(researchEvidence);
+    let baselineAccepted = 0;
+    for (const companyId of new Set(evidenceRows.map((item) => item.companyId))) {
+      const selected = selectBaselineEvidenceCandidates(evidenceRows.filter((item) => item.companyId === companyId));
+      if (!selected.length) continue;
+      const now = new Date();
+      const updated = await db.update(researchEvidence).set({
+        reviewStatus: "accepted",
+        reviewNote: "System baseline: high-quality official evidence accepted to enable grounded company comparisons.",
+        reviewedAt: now,
+        updatedAt: now,
+      }).where(inArray(researchEvidence.id, selected.map((item) => item.id))).returning({ id: researchEvidence.id });
+      baselineAccepted += updated.length;
+    }
+
+    return { sec: researchGradeSecRows.length, ir: researchGradeIrRows.length, baselineAccepted };
   });
   if (!result) throw new Error("Postgres is required for the research evidence workspace.");
   return result;

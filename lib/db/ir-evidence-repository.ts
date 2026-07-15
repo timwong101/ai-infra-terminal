@@ -1,5 +1,6 @@
-import { and, asc, desc, eq, lt } from "drizzle-orm";
+import { and, asc, desc, eq, lt, ne, notInArray } from "drizzle-orm";
 import { secCompanies } from "@/data/companies";
+import { irSources } from "@/data/ir-sources";
 import { withDatabase } from "@/lib/db/client";
 import { companies, irDocuments, irDocumentSections, irEvidencePassages, irSourceDocuments } from "@/lib/db/schema";
 import type { IrDocument, IrDocumentDetail, IrEvidenceCache, IrIngestionSummary } from "@/lib/ir/types";
@@ -50,8 +51,12 @@ export async function syncIrSourceCatalog(cache: IrEvidenceCache): Promise<IrIng
 
       for (const document of cache.documents) {
         const prior = existing.get(document.id);
+        const sourceConfig = irSources.find((source) => source.companyId === document.companyId);
+        const isCatalogOnly = sourceConfig?.catalogOnlyHosts?.includes(new URL(document.sourceUrl).hostname) ?? false;
         const status = extracted.has(document.id)
           ? "completed"
+          : isCatalogOnly && prior?.extractionStatus !== "processing"
+            ? "pending"
           : prior && prior.sourceUrl === document.sourceUrl
             ? prior.extractionStatus
             : "pending";
@@ -90,6 +95,14 @@ export async function syncIrSourceCatalog(cache: IrEvidenceCache): Promise<IrIng
         });
       }
 
+      const currentDocumentIds = cache.documents.map((document) => document.id);
+      if (currentDocumentIds.length) {
+        await tx.delete(irSourceDocuments).where(and(
+          notInArray(irSourceDocuments.id, currentDocumentIds),
+          ne(irSourceDocuments.extractionStatus, "completed"),
+        ));
+      }
+
       await tx.update(irSourceDocuments).set({ extractionStatus: "pending", lastError: "Recovered an interrupted extraction job." })
         .where(and(eq(irSourceDocuments.extractionStatus, "processing"), lt(irSourceDocuments.lastAttemptedAt, staleBefore)));
       await tx.update(irSourceDocuments).set({ extractionStatus: "pending" })
@@ -123,10 +136,12 @@ export async function getIrSourceDocument(documentId: string) {
   });
 }
 
-export async function claimNextIrSourceDocument() {
+export async function claimNextIrSourceDocument(companyId?: string) {
   return withDatabase(async (db) => db.transaction(async (tx) => {
     const rows = await tx.select().from(irSourceDocuments)
-      .where(eq(irSourceDocuments.extractionStatus, "pending"))
+      .where(companyId
+        ? and(eq(irSourceDocuments.extractionStatus, "pending"), eq(irSourceDocuments.companyId, companyId))
+        : eq(irSourceDocuments.extractionStatus, "pending"))
       .orderBy(desc(irSourceDocuments.publishedAt))
       .limit(1)
       .for("update", { skipLocked: true });

@@ -539,6 +539,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .operations-row { position: relative; min-width: 720px; min-height: 55px; padding: 9px 14px; border-top: 1px solid var(--border-soft); display: grid; grid-template-columns: 125px 130px minmax(150px, 1fr) 190px 80px; align-items: center; gap: 10px; font-size: 9px; }
 .operations-row.heading { min-height: 34px; color: #718691; font-size: 7px; text-transform: uppercase; }
 .operations-row > small { grid-column: 1 / -1; color: #f08a7e; }
+.company-flow-coverage { margin-bottom: 8px; }
+.coverage-grid { overflow-x: auto; }
+.coverage-row { min-width: 650px; min-height: 48px; padding: 0 13px; border-top: 1px solid var(--border-soft); display: grid; grid-template-columns: minmax(150px, 1.5fr) repeat(6, minmax(66px, .7fr)); align-items: center; gap: 8px; }
+.coverage-row.heading { min-height: 34px; color: #718691; font-size: 7px; text-transform: uppercase; }
+.coverage-row > span:not(:first-child) { display: flex; justify-content: center; }
+.coverage-row > span:first-child strong, .coverage-row > span:first-child small { display: block; }
+.coverage-row > span:first-child strong { color: #69c5f8; font-size: 9px; }
+.coverage-row > span:first-child small { margin-top: 3px; color: #718691; font-size: 7px; }
+.coverage-row .ready { color: var(--green); }
+.coverage-row .gap { color: var(--coral); }
 .run-status { display: inline-flex; align-items: center; gap: 5px; text-transform: capitalize; }
 .run-status.completed { color: var(--green); }
 .run-status.failed { color: var(--coral); }

@@ -2,7 +2,7 @@ import irEvidenceCacheJson from "@/data/generated/ir-evidence.json";
 import { irSources } from "@/data/ir-sources";
 import { getIrSourceDocument, getPersistedIrDocumentDetail, persistIrDocumentDetail } from "@/lib/db/ir-evidence-repository";
 import { fetchIrDocumentContent } from "@/lib/ir/client";
-import { extractIrHtmlDetail, extractIrPdfDetail } from "@/lib/ir/extract";
+import { buildCatalogOnlyIrDetail, extractIrHtmlDetail, extractIrPdfDetail } from "@/lib/ir/extract";
 import type { IrDocumentDetail, IrDocumentDetailResponse, IrEvidenceCache } from "@/lib/ir/types";
 
 const cache = irEvidenceCacheJson as unknown as IrEvidenceCache;
@@ -29,10 +29,12 @@ async function loadDocumentDetail(documentId: string) {
 
   let inFlight = requestsInFlight.get(documentId);
   if (!inFlight) {
-    inFlight = fetchIrDocumentContent(config, document)
-      .then((content) => content.kind === "pdf"
+    const isCatalogOnly = config.catalogOnlyHosts?.includes(new URL(document.sourceUrl).hostname) ?? false;
+    inFlight = (isCatalogOnly
+      ? Promise.resolve(buildCatalogOnlyIrDetail(document))
+      : fetchIrDocumentContent(config, document).then((content) => content.kind === "pdf"
         ? extractIrPdfDetail(content.bytes, document)
-        : extractIrHtmlDetail(content.html, document))
+        : extractIrHtmlDetail(content.html, document)))
       .then((detail) => {
         detailCache.set(documentId, { detail, expiresAt: Date.now() + DETAIL_CACHE_TTL_MS });
         return detail;
