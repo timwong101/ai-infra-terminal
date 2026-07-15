@@ -115,6 +115,7 @@ export async function generateResearchAlerts() {
     const statusByGroup = new Map(existing.map(({ alert, change }) => [groupKey(alert.filingId ?? "", change.eventCode ?? change.sectionTitle, change.changeType, alert.category), alert.status]));
     await db.delete(claimEvidence).where(isNotNull(claimEvidence.filingChangeId));
     await db.delete(researchAlerts).where(eq(researchAlerts.alertType, "filing_change"));
+    await db.delete(researchAlerts).where(eq(researchAlerts.alertType, "claim_impact"));
 
     type ChangeRow = (typeof changes)[number];
     const groups = new Map<string, { category: string; rows: Array<ChangeRow & { impact: "strengthens" | "weakens" | "watch" }> }>();
@@ -157,31 +158,30 @@ export async function generateResearchAlerts() {
       });
     }
 
-    await db.execute(sql`DELETE FROM claim_evidence ce USING research_evidence re WHERE ce.research_evidence_id = re.id AND re.review_status <> 'accepted'`);
+    await db.execute(sql`DELETE FROM claim_evidence ce USING research_evidence re WHERE ce.research_evidence_id = re.id AND (re.review_status <> 'accepted' OR re.suggestion_status <> 'accepted' OR re.suggested_claim_id IS NULL OR ce.claim_id <> re.suggested_claim_id)`);
     const accepted = await db.select().from(researchEvidence).where(eq(researchEvidence.reviewStatus, "accepted"));
+    const suggestionClaims = await db.select().from(researchClaims);
+    const suggestionClaimsById = new Map(suggestionClaims.map((claim) => [claim.id, claim]));
     for (const evidence of accepted) {
+      if (evidence.suggestionStatus !== "accepted" || !evidence.suggestedClaimId || !evidence.suggestedImpact) continue;
+      const claim = suggestionClaimsById.get(evidence.suggestedClaimId);
+      if (!claim || claim.companyId !== evidence.companyId) continue;
       const category = classifyAlertCategory(`${evidence.topic} ${evidence.sectionTitle} ${evidence.excerpt}`);
-      if (category === "Other") continue;
-      const alertImpact = classifyAlertImpact(evidence.excerpt, "evidence");
-      for (const template of CLAIM_TEMPLATES.filter((item) => item.categories.includes(category))) {
-        const claim = claimByCompanyAndKind.get(`${evidence.companyId}:${template.kind}`);
-        if (!claim) continue;
-        const impact = classifyClaimImpact(alertImpact, template.riskClaim);
-        const base = evidenceScore(evidence.sourceQuality, evidence.documentDate);
-        const signed = impact === "supports" ? base : impact === "weakens" ? -base : 0;
-        await db.insert(claimEvidence).values({
-          id: `${claim.id}:${evidence.id}`, claimId: claim.id, researchEvidenceId: evidence.id, impact, impactScore: signed,
-          rationale: `${evidence.sourceType} evidence classified as ${category.toLowerCase()} ${impact} this claim.`,
-        }).onConflictDoUpdate({ target: [claimEvidence.claimId, claimEvidence.researchEvidenceId], set: { impact, impactScore: signed, rationale: `${evidence.sourceType} evidence classified as ${category.toLowerCase()} ${impact} this claim.` } });
-        linkedEvidence += 1;
-        if (Math.abs(signed) >= 6) await db.insert(researchAlerts).values({
-          id: `claim-alert:${claim.id}:${evidence.id}`, companyId: evidence.companyId, claimId: claim.id, researchEvidenceId: evidence.id,
-          alertType: "claim_impact", category, significance: Math.abs(signed) >= 9 ? "high" : "medium",
-          impact: impact === "supports" ? "strengthens" : impact === "weakens" ? "weakens" : "watch",
-          title: `${template.title(companyRows.find((item) => item.id === evidence.companyId)?.name ?? "Company")} ${impact}`,
-          summary: `${evidence.documentTitle}: ${evidence.excerpt.slice(0, 240)}`,
-        }).onConflictDoNothing();
-      }
+      const impact = evidence.suggestedImpact as "supports" | "weakens" | "watch";
+      const base = Math.max(2, Math.round(evidenceScore(evidence.evidenceQualityScore || evidence.sourceQuality, evidence.documentDate) * Math.max(50, evidence.suggestionConfidence) / 100));
+      const signed = impact === "supports" ? base : impact === "weakens" ? -base : 0;
+      const rationale = evidence.suggestionRationale ?? `Analyst-approved ${impact} link to ${claim.title}.`;
+      await db.insert(claimEvidence).values({
+        id: `${claim.id}:${evidence.id}`, claimId: claim.id, researchEvidenceId: evidence.id, impact, impactScore: signed, rationale,
+      }).onConflictDoUpdate({ target: [claimEvidence.claimId, claimEvidence.researchEvidenceId], set: { impact, impactScore: signed, rationale } });
+      linkedEvidence += 1;
+      if (Math.abs(signed) >= 6) await db.insert(researchAlerts).values({
+        id: `claim-alert:${claim.id}:${evidence.id}`, companyId: evidence.companyId, claimId: claim.id, researchEvidenceId: evidence.id,
+        alertType: "claim_impact", category, significance: Math.abs(signed) >= 9 ? "high" : "medium",
+        impact: impact === "supports" ? "strengthens" : impact === "weakens" ? "weakens" : "watch",
+        title: `${claim.title} ${impact}`,
+        summary: `${evidence.documentTitle}: ${evidence.excerpt.slice(0, 240)}`,
+      }).onConflictDoNothing();
     }
 
     await db.delete(thesisSnapshots);
@@ -210,7 +210,7 @@ export async function generateResearchAlerts() {
         }
         await db.insert(thesisSnapshots).values({ id: `${claim.id}:${date}`, claimId: claim.id, snapshotDate: date, supportScore: score, evidenceCount, supportingCount: supporting, weakeningCount: weakening });
       }
-      await db.update(researchClaims).set({ supportScore: score, updatedAt: new Date() }).where(eq(researchClaims.id, claim.id));
+      await db.update(researchClaims).set({ supportScore: score, isStale: false, staleReason: null, staleAt: null, updatedAt: new Date() }).where(eq(researchClaims.id, claim.id));
     }
     return { claims: claims.length, alerts: groups.size, evidence: linkedEvidence };
   });

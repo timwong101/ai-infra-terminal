@@ -10,6 +10,7 @@ export type ThesisEvidenceLink = {
 export type ThesisDetail = {
   id: string; companyId: string; companyName: string; ticker: string; theme: string; kind: string; title: string;
   statement: string; supportScore: number; status: string; evidence: ThesisEvidenceLink[];
+  isStale: boolean; staleReason: string | null; staleAt: string | null;
   snapshots: Array<{ date: string; supportScore: number; evidenceCount: number }>;
 };
 
@@ -26,6 +27,7 @@ export async function listTheses() {
     return claims.map(({ claim, company }): ThesisDetail => ({
       id: claim.id, companyId: company.id, companyName: company.name, ticker: company.ticker, theme: claim.theme, kind: claim.kind,
       title: claim.title, statement: claim.statement, supportScore: claim.supportScore, status: claim.status,
+      isStale: claim.isStale, staleReason: claim.staleReason, staleAt: claim.staleAt?.toISOString() ?? null,
       evidence: links.filter(({ link }) => link.claimId === claim.id).map(({ link, change, filing, evidence }) => ({
         id: link.id, impact: link.impact, impactScore: link.impactScore, rationale: link.rationale,
         sourceType: evidence?.sourceType ?? (filing ? `SEC ${filing.formType}` : "Source evidence"),

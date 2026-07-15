@@ -40,3 +40,13 @@ test("selects a diverse official baseline without overriding review decisions", 
   assert.deepEqual(selectBaselineEvidenceCandidates(candidates).map((item) => item.id), ["capacity", "funding", "demand"]);
   assert.equal(selectBaselineEvidenceCandidates([{ ...candidates[0], reviewStatus: "accepted" }, { ...candidates[1], reviewStatus: "accepted" }, { ...candidates[2], reviewStatus: "accepted" }]).length, 0);
 });
+
+test("does not count accepted evidence below the memo quality floor toward baseline coverage", () => {
+  const candidates = [
+    { id: "low-quality", sourceDocumentId: "old", topic: "Company developments", sourceQuality: 95, evidenceQualityScore: 30, boilerplateRisk: 5, documentDate: "2026-06-01", reviewStatus: "accepted" as const },
+    { id: "accepted-a", sourceDocumentId: "quarterly", topic: "Power & capacity", sourceQuality: 95, evidenceQualityScore: 80, boilerplateRisk: 5, documentDate: "2026-05-01", reviewStatus: "accepted" as const },
+    { id: "accepted-b", sourceDocumentId: "results", topic: "Customers & demand", sourceQuality: 92, evidenceQualityScore: 75, boilerplateRisk: 5, documentDate: "2026-04-01", reviewStatus: "accepted" as const },
+    { id: "replacement", sourceDocumentId: "financing", topic: "Financing & liquidity", sourceQuality: 90, evidenceQualityScore: 72, boilerplateRisk: 5, documentDate: "2026-03-01", reviewStatus: "unreviewed" as const },
+  ];
+  assert.deepEqual(selectBaselineEvidenceCandidates(candidates).map((item) => item.id), ["replacement"]);
+});

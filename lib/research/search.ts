@@ -10,7 +10,7 @@ function lexicalFallback(items: ResearchEvidenceItem[], query: string) {
   return [...items].sort((left, right) => {
     const score = (item: ResearchEvidenceItem) => {
       const value = `${item.topic} ${item.sectionTitle} ${item.excerpt}`.toLowerCase();
-      return terms.reduce((total, term) => total + (value.includes(term) ? 1 : 0), 0) + item.sourceQuality / 100;
+      return terms.reduce((total, term) => total + (value.includes(term) ? 1 : 0), 0) + item.evidenceQualityScore / 100;
     };
     return score(right) - score(left);
   });
@@ -30,8 +30,8 @@ export async function backfillResearchEmbeddings(limit = 40) {
   if (!process.env.OPENAI_API_KEY?.trim()) return { embedded: 0, skipped: true };
   const rows = await withDatabase((db) => db.execute(sql`
     SELECT id, excerpt FROM research_evidence
-    WHERE review_status = 'accepted' AND embedding IS NULL
-    ORDER BY source_quality DESC, document_date DESC
+    WHERE review_status = 'accepted' AND evidence_quality_score >= 45 AND boilerplate_risk < 60 AND embedding IS NULL
+    ORDER BY evidence_quality_score DESC, document_date DESC
     LIMIT ${Math.max(1, Math.min(limit, 100))}
   `));
   if (!rows?.rows.length) return { embedded: 0, skipped: false };
@@ -82,9 +82,9 @@ export async function searchAcceptedEvidence(input: {
       SELECT id,
         (0.58 * ts_rank_cd(to_tsvector('english', excerpt), websearch_to_tsquery('english', ${query})))
         + (0.42 * ${vectorScore})
-        + (source_quality / 10000.0) AS score
+        + (evidence_quality_score / 10000.0) AS score
       FROM research_evidence
-      WHERE review_status = 'accepted' AND company_id IN (${ids}) ${topicFilter}
+      WHERE review_status = 'accepted' AND evidence_quality_score >= 45 AND boilerplate_risk < 60 AND company_id IN (${ids}) ${topicFilter}
       ORDER BY score DESC, document_date DESC
       LIMIT ${Math.max(1, Math.min(input.limit ?? 20, 50))}
     `));

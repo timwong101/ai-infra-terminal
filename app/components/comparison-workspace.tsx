@@ -45,14 +45,15 @@ export function ComparisonWorkspace({ onReviewEvidence }: Props) {
 
   const acceptedCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const item of evidence?.items ?? []) if (item.reviewStatus === "accepted" && (topic === "All topics" || item.topic === topic)) counts.set(item.companyId, (counts.get(item.companyId) ?? 0) + 1);
+    for (const item of evidence?.items ?? []) if (item.reviewStatus === "accepted" && item.evidenceQualityScore >= 45 && item.boilerplateRisk < 60 && (topic === "All topics" || item.topic === topic)) counts.set(item.companyId, (counts.get(item.companyId) ?? 0) + 1);
     return counts;
   }, [evidence, topic]);
 
-  const generate = async () => {
+  const generate = async (memo?: ComparisonMemo) => {
     setStatus("generating"); setError("");
     try {
-      const response = await fetch("/api/comparison-memos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ companyAId: companyA, companyBId: companyB, topic, question }) });
+      const payload = memo ? { companyAId: memo.companyA.id, companyBId: memo.companyB.id, topic: memo.topic, question: memo.question } : { companyAId: companyA, companyBId: companyB, topic, question };
+      const response = await fetch("/api/comparison-memos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const result = await response.json() as { memo?: ComparisonMemo; error?: string };
       if (!response.ok || !result.memo) throw new Error(result.error || "Unable to generate memo.");
       setMemos((current) => [result.memo!, ...current]);
@@ -81,11 +82,11 @@ export function ComparisonWorkspace({ onReviewEvidence }: Props) {
             {error && <div className="builder-error"><AlertTriangle size={14} /> {error}</div>}
             <button className="primary-button generate-button" disabled={status === "generating" || !companyA || !companyB || companyA === companyB} onClick={() => void generate()}>{status === "generating" ? <LoaderCircle className="drawer-spinner" size={16} /> : <Sparkles size={16} />} Generate grounded memo</button>
           </div>
-          <div className="saved-memos"><div className="saved-heading"><h3>Research history</h3><span>{memos.length}</span></div>{memos.map((memo) => <button className={selectedMemo?.id === memo.id ? "active" : ""} onClick={() => setSelectedMemo(memo)} key={memo.id}><FileText size={15} /><span><strong>{memo.title}</strong><small>{memo.topic} · {memo.citations.length} citations</small></span><ChevronRight size={14} /></button>)}{!memos.length && <p>No saved comparison memos yet.</p>}</div>
+          <div className="saved-memos"><div className="saved-heading"><h3>Research history</h3><span>{memos.length}</span></div>{memos.map((memo) => <button className={`${selectedMemo?.id === memo.id ? "active" : ""} ${memo.isStale ? "stale" : ""}`} onClick={() => setSelectedMemo(memo)} key={memo.id}>{memo.isStale ? <AlertTriangle size={15} /> : <FileText size={15} />}<span><strong>{memo.title}</strong><small>{memo.isStale ? "Evidence changed · regeneration needed" : `${memo.topic} · ${memo.citations.length} citations`}</small></span><ChevronRight size={14} /></button>)}{!memos.length && <p>No saved comparison memos yet.</p>}</div>
         </aside>
 
         <section className="memo-document panel">
-          {selectedMemo ? <>
+          {selectedMemo ? <>{selectedMemo.isStale && <div className="stale-research-banner memo-stale-banner"><AlertTriangle size={15} /><div><strong>Saved evidence is stale</strong><span>{selectedMemo.staleReason}</span></div><button className="command-button small" disabled={status === "generating"} onClick={() => void generate(selectedMemo)}>{status === "generating" ? <LoaderCircle className="drawer-spinner" size={14} /> : <Sparkles size={14} />} Regenerate</button></div>}
             <header className="memo-document-header"><div><span className="section-kicker">Saved evidence snapshot</span><h2>{selectedMemo.title}</h2><p>{selectedMemo.question}</p></div><div className="memo-run-badges"><span className="draft-badge">Draft</span>{selectedMemo.generation && <><span className="draft-badge">{selectedMemo.generation.engine.replaceAll("-", " ")}</span><span className="draft-badge">{selectedMemo.generation.retrievalMode}</span></>}</div></header>
             <section className="memo-score-strip"><div><span>Confidence</span><strong className={scoreTone(selectedMemo.confidenceScore)}>{selectedMemo.confidenceScore}</strong></div><div><span>Evidence quality</span><strong>{selectedMemo.evidenceQualityScore}</strong></div><div><span>Source diversity</span><strong>{selectedMemo.sourceDiversityScore}</strong></div><div><span>Citations</span><strong>{selectedMemo.citations.length}</strong></div></section>
             <div className="memo-document-body">

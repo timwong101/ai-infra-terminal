@@ -1,13 +1,28 @@
 import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withDatabase } from "@/lib/db/client";
-import { companies, comparisonMemos, memoGenerations } from "@/lib/db/schema";
+import { companies, comparisonMemos, memoGenerations, researchEvidence } from "@/lib/db/schema";
 import { searchAcceptedEvidence } from "@/lib/research/search";
 import type { ComparisonMemo, ComparisonMemoSection, MemoClaim, ResearchEvidenceItem } from "@/lib/research/types";
 
 const RISK_PATTERN = /risk|depend|concentrat|debt|liquidity|cost|competition|delay|uncertain|adverse/i;
 const CATALYST_PATTERN = /growth|expand|capacity|contract|demand|launch|deploy|delivery|availability|pipeline/i;
 const SECTION_KEYS = ["summary", "exposure", "advantages", "risks", "catalysts", "questions"] as const;
+
+export function memoEvidenceStaleReason(
+  snapshot: Array<{ id?: string; contentHash?: string }>,
+  currentById: Map<string, { reviewStatus: string; contentHash: string; evidenceQualityScore: number; boilerplateRisk: number }>,
+) {
+  for (const item of snapshot) {
+    if (!item.id) return "A saved citation no longer has a valid evidence identifier.";
+    const current = currentById.get(item.id);
+    if (!current) return "A saved citation is no longer present in the evidence catalog.";
+    if (current.reviewStatus !== "accepted") return "A saved citation is no longer analyst-approved.";
+    if (current.evidenceQualityScore < 45 || current.boilerplateRisk >= 60) return "A saved citation no longer meets the evidence-quality policy.";
+    if (item.contentHash && item.contentHash !== current.contentHash) return "A saved citation changed after this memo was generated.";
+  }
+  return null;
+}
 
 const memoOutputSchema = z.object({
   sections: z.array(z.object({
@@ -28,7 +43,7 @@ function claims(items: ResearchEvidenceItem[], pattern?: RegExp, limit = 3): Mem
 }
 
 function scoreMemo(items: ResearchEvidenceItem[], companyIds: string[]) {
-  const quality = items.length ? Math.round(items.reduce((sum, item) => sum + item.sourceQuality, 0) / items.length) : 0;
+  const quality = items.length ? Math.round(items.reduce((sum, item) => sum + (item.evidenceQualityScore || item.sourceQuality), 0) / items.length) : 0;
   const diversity = Math.min(100, new Set(items.map((item) => item.sourceType)).size * 18 + new Set(items.map((item) => item.sourceDocumentId)).size * 7);
   const counts = companyIds.map((id) => items.filter((item) => item.companyId === id).length);
   const balance = Math.min(...counts) / Math.max(1, Math.max(...counts));
@@ -126,11 +141,20 @@ export async function generateComparisonMemo(input: { companyAId: string; compan
 }
 
 function rowToMemo(row: typeof comparisonMemos.$inferSelect, companyA: typeof companies.$inferSelect, companyB: typeof companies.$inferSelect, metadata?: ComparisonMemo["generation"]) : ComparisonMemo {
-  return { id: row.id, title: row.title, question: row.question, companyA: { id: companyA.id, name: companyA.name, ticker: companyA.ticker }, companyB: { id: companyB.id, name: companyB.name, ticker: companyB.ticker }, topic: row.topic, confidenceScore: row.confidenceScore, evidenceQualityScore: row.evidenceQualityScore, sourceDiversityScore: row.sourceDiversityScore, status: row.status as ComparisonMemo["status"], sections: row.sections as ComparisonMemoSection[], citations: row.evidenceSnapshot as ResearchEvidenceItem[], generation: metadata, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+  return { id: row.id, title: row.title, question: row.question, companyA: { id: companyA.id, name: companyA.name, ticker: companyA.ticker }, companyB: { id: companyB.id, name: companyB.name, ticker: companyB.ticker }, topic: row.topic, confidenceScore: row.confidenceScore, evidenceQualityScore: row.evidenceQualityScore, sourceDiversityScore: row.sourceDiversityScore, status: row.status as ComparisonMemo["status"], isStale: row.isStale, staleReason: row.staleReason, staleAt: row.staleAt?.toISOString() ?? null, sections: row.sections as ComparisonMemoSection[], citations: row.evidenceSnapshot as ResearchEvidenceItem[], generation: metadata, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 
 export async function listComparisonMemos() {
   const result = await withDatabase(async (db) => {
+    const currentEvidence = await db.select({ id: researchEvidence.id, reviewStatus: researchEvidence.reviewStatus, contentHash: researchEvidence.contentHash, evidenceQualityScore: researchEvidence.evidenceQualityScore, boilerplateRisk: researchEvidence.boilerplateRisk }).from(researchEvidence);
+    const currentById = new Map(currentEvidence.map((item) => [item.id, item]));
+    const memoRows = await db.select().from(comparisonMemos).orderBy(desc(comparisonMemos.updatedAt)).limit(20);
+    for (const row of memoRows) {
+      if (row.isStale) continue;
+      const snapshot = row.evidenceSnapshot as Array<{ id?: string; contentHash?: string }>;
+      const staleReason = memoEvidenceStaleReason(snapshot, currentById);
+      if (staleReason) await db.update(comparisonMemos).set({ isStale: true, staleReason, staleAt: new Date(), updatedAt: new Date() }).where(eq(comparisonMemos.id, row.id));
+    }
     const rows = await db.select().from(comparisonMemos).orderBy(desc(comparisonMemos.updatedAt)).limit(20);
     const allCompanies = await db.select().from(companies);
     const generations = await db.select().from(memoGenerations).orderBy(desc(memoGenerations.createdAt));

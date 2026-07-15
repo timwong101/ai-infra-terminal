@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { verifyMemoSections } from "@/lib/research/memos";
+import { memoEvidenceStaleReason, verifyMemoSections } from "@/lib/research/memos";
 import type { ComparisonMemoSection, ResearchEvidenceItem } from "@/lib/research/types";
 
 const evidence = [
@@ -34,4 +34,11 @@ test("allows uncited open questions while enforcing known companies", () => {
   const result = verifyMemoSections(sections, evidence, ["a", "b"]);
   assert.equal(result.sections.find((section) => section.key === "questions")?.claims.length, 1);
   assert.equal(result.verification.rejectedClaims, 1);
+});
+
+test("marks saved memos stale when citations are rejected or fall below quality policy", () => {
+  const snapshot = [{ id: "evidence-1", contentHash: "old" }];
+  assert.match(memoEvidenceStaleReason(snapshot, new Map([["evidence-1", { reviewStatus: "rejected", contentHash: "old", evidenceQualityScore: 90, boilerplateRisk: 5 }]])) ?? "", /no longer analyst-approved/i);
+  assert.match(memoEvidenceStaleReason(snapshot, new Map([["evidence-1", { reviewStatus: "accepted", contentHash: "old", evidenceQualityScore: 30, boilerplateRisk: 80 }]])) ?? "", /quality policy/i);
+  assert.equal(memoEvidenceStaleReason(snapshot, new Map([["evidence-1", { reviewStatus: "accepted", contentHash: "old", evidenceQualityScore: 80, boilerplateRisk: 5 }]])), null);
 });

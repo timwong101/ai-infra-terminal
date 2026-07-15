@@ -1,7 +1,9 @@
-import { and, desc, eq, inArray, notInArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, notInArray, sql } from "drizzle-orm";
 import { withDatabase } from "@/lib/db/client";
 import {
   companies,
+  comparisonMemos,
+  claimEvidence,
   evidencePassages,
   filings,
   filingSections,
@@ -9,8 +11,10 @@ import {
   irDocumentSections,
   irEvidencePassages,
   researchEvidence,
+  researchClaims,
 } from "@/lib/db/schema";
-import type { EvidenceFilters, EvidenceReviewStatus, ResearchEvidenceItem } from "@/lib/research/types";
+import { assessEvidenceQuality } from "@/lib/research/quality";
+import type { EvidenceFilters, EvidenceReviewStatus, EvidenceSuggestionStatus, ResearchEvidenceItem } from "@/lib/research/types";
 
 const TOPIC_RULES: Array<[string, RegExp]> = [
   ["Power & capacity", /power|energy|electric|megawatt|gigawatt|capacity|campus|data cent(?:er|re)/i],
@@ -29,16 +33,22 @@ type BaselineEvidenceCandidate = {
   sourceDocumentId: string;
   topic: string;
   sourceQuality: number;
+  evidenceQualityScore?: number;
+  boilerplateRisk?: number;
   documentDate: string;
   reviewStatus: string;
 };
 
 export function selectBaselineEvidenceCandidates(items: BaselineEvidenceCandidate[], minimum = BASELINE_ACCEPTED_PER_COMPANY) {
-  const accepted = items.filter((item) => item.reviewStatus === "accepted").length;
+  const accepted = items.filter((item) =>
+    item.reviewStatus === "accepted" &&
+    (item.evidenceQualityScore ?? item.sourceQuality) >= 45 &&
+    (item.boilerplateRisk ?? 0) < 60
+  ).length;
   const needed = Math.max(0, minimum - accepted);
   if (!needed) return [];
-  const candidates = items.filter((item) => item.reviewStatus === "unreviewed" && item.sourceQuality >= 90)
-    .sort((left, right) => right.sourceQuality - left.sourceQuality || right.documentDate.localeCompare(left.documentDate));
+  const candidates = items.filter((item) => item.reviewStatus === "unreviewed" && (item.evidenceQualityScore ?? item.sourceQuality) >= 65 && (item.boilerplateRisk ?? 0) < 50)
+    .sort((left, right) => (right.evidenceQualityScore ?? right.sourceQuality) - (left.evidenceQualityScore ?? left.sourceQuality) || right.documentDate.localeCompare(left.documentDate));
   const selected: BaselineEvidenceCandidate[] = [];
   const documents = new Set<string>();
   const topics = new Set<string>();
@@ -65,6 +75,24 @@ function topicFor(...parts: string[]) {
 function qualityScore(quality: string, sourceKind: "sec" | "ir") {
   const base = quality === "high" ? 92 : quality === "medium" ? 78 : 60;
   return sourceKind === "sec" ? Math.min(100, base + 3) : base;
+}
+
+function qualityFields(input: { companyId: string; excerpt: string; topic: string; sectionTitle: string; sourceType: string; sourceQuality: number }) {
+  const assessment = assessEvidenceQuality(input);
+  return {
+    evidenceQualityScore: assessment.evidenceQualityScore,
+    materialityScore: assessment.materialityScore,
+    specificityScore: assessment.specificityScore,
+    relevanceScore: assessment.relevanceScore,
+    boilerplateRisk: assessment.boilerplateRisk,
+    qualityReasons: assessment.qualityReasons,
+    duplicateGroupId: assessment.duplicateGroupId,
+    suggestedClaimId: assessment.suggestion ? `${input.companyId}:${assessment.suggestion.claimKind}` : null,
+    suggestedImpact: assessment.suggestion?.impact ?? null,
+    suggestionConfidence: assessment.suggestion?.confidence ?? 0,
+    suggestionRationale: assessment.suggestion?.rationale ?? null,
+    qualityScoredAt: new Date(),
+  };
 }
 
 export function isResearchGradeExcerpt(value: string) {
@@ -128,6 +156,9 @@ export async function syncResearchEvidence() {
     const researchGradeIrRows = irRows.filter(({ passage }) => isResearchGradeExcerpt(passage.text));
 
     for (const { passage, section, document } of researchGradeSecRows) {
+      const topic = topicFor(section.category, section.title, passage.text);
+      const sourceQuality = qualityScore(document.extractionQuality, "sec");
+      const assessment = qualityFields({ companyId: document.companyId, excerpt: passage.text, topic, sectionTitle: section.title, sourceType: `SEC ${document.formType}`, sourceQuality });
       await db.insert(researchEvidence).values({
         id: `research:sec:${passage.id}`,
         companyId: document.companyId,
@@ -138,29 +169,38 @@ export async function syncResearchEvidence() {
         documentTitle: document.documentTitle,
         documentDate: document.filedAt,
         sectionTitle: section.title,
-        topic: topicFor(section.category, section.title, passage.text),
+        topic,
         excerpt: passage.text,
         sourceUrl: document.sourceUrl,
         pageNumber: null,
-        sourceQuality: qualityScore(document.extractionQuality, "sec"),
+        sourceQuality,
         contentHash: hash(passage.text),
+        ...assessment,
       }).onConflictDoUpdate({
         target: [researchEvidence.sourceKind, researchEvidence.sourcePassageId],
         set: {
           documentTitle: document.documentTitle,
           documentDate: document.filedAt,
           sectionTitle: section.title,
-          topic: topicFor(section.category, section.title, passage.text),
+          topic,
           excerpt: passage.text,
           sourceUrl: document.sourceUrl,
-          sourceQuality: qualityScore(document.extractionQuality, "sec"),
+          sourceQuality,
           contentHash: hash(passage.text),
+          ...assessment,
+          suggestedClaimId: sql`CASE WHEN ${researchEvidence.suggestionStatus} = 'pending' THEN excluded.suggested_claim_id ELSE ${researchEvidence.suggestedClaimId} END`,
+          suggestedImpact: sql`CASE WHEN ${researchEvidence.suggestionStatus} = 'pending' THEN excluded.suggested_impact ELSE ${researchEvidence.suggestedImpact} END`,
+          suggestionConfidence: sql`CASE WHEN ${researchEvidence.suggestionStatus} = 'pending' THEN excluded.suggestion_confidence ELSE ${researchEvidence.suggestionConfidence} END`,
+          suggestionRationale: sql`CASE WHEN ${researchEvidence.suggestionStatus} = 'pending' THEN excluded.suggestion_rationale ELSE ${researchEvidence.suggestionRationale} END`,
           updatedAt: new Date(),
         },
       });
     }
 
     for (const { passage, section, document } of researchGradeIrRows) {
+      const topic = topicFor(section.category, section.title, passage.text);
+      const sourceQuality = qualityScore(document.extractionQuality, "ir");
+      const assessment = qualityFields({ companyId: document.companyId, excerpt: passage.text, topic, sectionTitle: section.title, sourceType: document.documentType, sourceQuality });
       await db.insert(researchEvidence).values({
         id: `research:ir:${passage.id}`,
         companyId: document.companyId,
@@ -171,24 +211,30 @@ export async function syncResearchEvidence() {
         documentTitle: document.title,
         documentDate: document.publishedAt,
         sectionTitle: section.title,
-        topic: topicFor(section.category, section.title, passage.text),
+        topic,
         excerpt: passage.text,
         sourceUrl: document.sourceUrl,
         pageNumber: passage.pageNumber,
-        sourceQuality: qualityScore(document.extractionQuality, "ir"),
+        sourceQuality,
         contentHash: hash(passage.text),
+        ...assessment,
       }).onConflictDoUpdate({
         target: [researchEvidence.sourceKind, researchEvidence.sourcePassageId],
         set: {
           documentTitle: document.title,
           documentDate: document.publishedAt,
           sectionTitle: section.title,
-          topic: topicFor(section.category, section.title, passage.text),
+          topic,
           excerpt: passage.text,
           sourceUrl: document.sourceUrl,
           pageNumber: passage.pageNumber,
-          sourceQuality: qualityScore(document.extractionQuality, "ir"),
+          sourceQuality,
           contentHash: hash(passage.text),
+          ...assessment,
+          suggestedClaimId: sql`CASE WHEN ${researchEvidence.suggestionStatus} = 'pending' THEN excluded.suggested_claim_id ELSE ${researchEvidence.suggestedClaimId} END`,
+          suggestedImpact: sql`CASE WHEN ${researchEvidence.suggestionStatus} = 'pending' THEN excluded.suggested_impact ELSE ${researchEvidence.suggestedImpact} END`,
+          suggestionConfidence: sql`CASE WHEN ${researchEvidence.suggestionStatus} = 'pending' THEN excluded.suggestion_confidence ELSE ${researchEvidence.suggestionConfidence} END`,
+          suggestionRationale: sql`CASE WHEN ${researchEvidence.suggestionStatus} = 'pending' THEN excluded.suggestion_rationale ELSE ${researchEvidence.suggestionRationale} END`,
           updatedAt: new Date(),
         },
       });
@@ -204,9 +250,20 @@ export async function syncResearchEvidence() {
       : eq(researchEvidence.sourceKind, "ir"));
 
     const evidenceRows = await db.select().from(researchEvidence);
+    const duplicateCounts = new Map<string, number>();
+    for (const item of evidenceRows) if (item.duplicateGroupId) duplicateCounts.set(item.duplicateGroupId, (duplicateCounts.get(item.duplicateGroupId) ?? 0) + 1);
+    for (const [groupId, duplicateCount] of duplicateCounts) {
+      await db.update(researchEvidence).set({ duplicateCount }).where(eq(researchEvidence.duplicateGroupId, groupId));
+    }
+    await db.update(researchEvidence).set({ reviewStatus: "unreviewed", reviewNote: null, reviewedAt: null, updatedAt: new Date() }).where(and(
+      eq(researchEvidence.reviewStatus, "accepted"),
+      sql`${researchEvidence.reviewNote} LIKE 'System baseline:%'`,
+      sql`(${researchEvidence.evidenceQualityScore} < 65 OR ${researchEvidence.boilerplateRisk} >= 60)`,
+    ));
+    const reviewRows = await db.select().from(researchEvidence);
     let baselineAccepted = 0;
-    for (const companyId of new Set(evidenceRows.map((item) => item.companyId))) {
-      const selected = selectBaselineEvidenceCandidates(evidenceRows.filter((item) => item.companyId === companyId));
+    for (const companyId of new Set(reviewRows.map((item) => item.companyId))) {
+      const selected = selectBaselineEvidenceCandidates(reviewRows.filter((item) => item.companyId === companyId));
       if (!selected.length) continue;
       const now = new Date();
       const updated = await db.update(researchEvidence).set({
@@ -224,7 +281,7 @@ export async function syncResearchEvidence() {
   return result;
 }
 
-function toItem(row: { evidence: typeof researchEvidence.$inferSelect; company: typeof companies.$inferSelect }): ResearchEvidenceItem {
+function toItem(row: { evidence: typeof researchEvidence.$inferSelect; company: typeof companies.$inferSelect }, claimTitle?: string | null): ResearchEvidenceItem {
   return {
     id: row.evidence.id,
     companyId: row.company.id,
@@ -242,6 +299,22 @@ function toItem(row: { evidence: typeof researchEvidence.$inferSelect; company: 
     sourceUrl: row.evidence.sourceUrl,
     pageNumber: row.evidence.pageNumber,
     sourceQuality: row.evidence.sourceQuality,
+    contentHash: row.evidence.contentHash,
+    evidenceQualityScore: row.evidence.evidenceQualityScore,
+    materialityScore: row.evidence.materialityScore,
+    specificityScore: row.evidence.specificityScore,
+    relevanceScore: row.evidence.relevanceScore,
+    boilerplateRisk: row.evidence.boilerplateRisk,
+    qualityReasons: row.evidence.qualityReasons as string[],
+    duplicateGroupId: row.evidence.duplicateGroupId,
+    duplicateCount: row.evidence.duplicateCount,
+    suggestedClaimId: row.evidence.suggestedClaimId,
+    suggestedClaimTitle: claimTitle ?? null,
+    suggestedImpact: row.evidence.suggestedImpact as ResearchEvidenceItem["suggestedImpact"],
+    suggestionConfidence: row.evidence.suggestionConfidence,
+    suggestionRationale: row.evidence.suggestionRationale,
+    suggestionStatus: row.evidence.suggestionStatus as EvidenceSuggestionStatus,
+    qualityScoredAt: row.evidence.qualityScoredAt?.toISOString() ?? null,
     reviewStatus: row.evidence.reviewStatus as EvidenceReviewStatus,
     reviewNote: row.evidence.reviewNote,
     reviewedAt: row.evidence.reviewedAt?.toISOString() ?? null,
@@ -254,8 +327,10 @@ export async function listResearchEvidence(filters: EvidenceFilters = {}) {
       .from(researchEvidence)
       .innerJoin(companies, eq(researchEvidence.companyId, companies.id))
       .orderBy(desc(researchEvidence.documentDate), desc(researchEvidence.sourceQuality));
+    const claimRows = await db.select().from(researchClaims);
+    const claimsById = new Map(claimRows.map((claim) => [claim.id, claim.title]));
     const query = filters.query?.trim().toLowerCase();
-    const allItems = rows.map(toItem);
+    const allItems = rows.map((row) => toItem(row, row.evidence.suggestedClaimId ? claimsById.get(row.evidence.suggestedClaimId) : null));
     const items = allItems.filter((item) =>
       (!query || [item.companyName, item.ticker, item.documentTitle, item.sectionTitle, item.topic, item.excerpt].join(" ").toLowerCase().includes(query)) &&
       (!filters.companyId || item.companyId === filters.companyId) &&
@@ -280,22 +355,50 @@ export async function listResearchEvidence(filters: EvidenceFilters = {}) {
       summary,
       companies: [...companyCounts.values()].sort((a, b) => b.evidenceCount - a.evidenceCount),
       topics: [...topicCounts].map(([name, evidenceCount]) => ({ name, evidenceCount })).sort((a, b) => b.evidenceCount - a.evidenceCount),
+      claims: claimRows.map((claim) => ({ id: claim.id, companyId: claim.companyId, title: claim.title, kind: claim.kind })),
+      qualitySummary: {
+        highValue: allItems.filter((item) => item.evidenceQualityScore >= 70 && item.boilerplateRisk < 40).length,
+        boilerplateRisk: allItems.filter((item) => item.boilerplateRisk >= 60).length,
+        pendingSuggestions: allItems.filter((item) => item.suggestedClaimId && item.suggestionStatus === "pending").length,
+        duplicatePassages: allItems.filter((item) => item.duplicateCount > 1).length,
+      },
     };
   });
   if (!result) throw new Error("Postgres is required for the research evidence workspace.");
   return result;
 }
 
-export async function updateEvidenceReview(ids: string[], status: EvidenceReviewStatus, note?: string) {
+export async function updateEvidenceReview(ids: string[], status: EvidenceReviewStatus, note?: string, suggestion?: { status: EvidenceSuggestionStatus; claimId?: string; impact?: ResearchEvidenceItem["suggestedImpact"] }) {
   if (!ids.length) return 0;
   const result = await withDatabase(async (db) => {
+    const existing = await db.select().from(researchEvidence).where(inArray(researchEvidence.id, ids));
     const rows = await db.update(researchEvidence).set({
       reviewStatus: status,
       reviewNote: note?.trim() || null,
+      ...(suggestion ? {
+        suggestionStatus: suggestion.status,
+        ...(suggestion.claimId ? { suggestedClaimId: suggestion.claimId } : {}),
+        ...(suggestion.impact ? { suggestedImpact: suggestion.impact } : {}),
+      } : status === "rejected" ? { suggestionStatus: "rejected" } : {}),
       reviewedAt: new Date(),
       updatedAt: new Date(),
     }).where(inArray(researchEvidence.id, ids)).returning({ id: researchEvidence.id });
-    return rows.length;
+    const affectedClaimIds = new Set(existing.flatMap((item) => item.suggestedClaimId ? [item.suggestedClaimId] : []));
+    if (suggestion?.claimId) affectedClaimIds.add(suggestion.claimId);
+    const linked = await db.select().from(claimEvidence).where(inArray(claimEvidence.researchEvidenceId, ids));
+    for (const item of linked) affectedClaimIds.add(item.claimId);
+    if (affectedClaimIds.size) await db.update(researchClaims).set({ isStale: true, staleReason: "Evidence review changed; rerun thesis scoring.", staleAt: new Date() }).where(inArray(researchClaims.id, [...affectedClaimIds]));
+
+    let staleMemos = 0;
+    const memos = await db.select().from(comparisonMemos);
+    const idSet = new Set(ids);
+    for (const memo of memos) {
+      const snapshot = memo.evidenceSnapshot as Array<{ id?: string }>;
+      if (!snapshot.some((item) => item.id && idSet.has(item.id))) continue;
+      await db.update(comparisonMemos).set({ isStale: true, staleReason: "A cited evidence passage was re-reviewed. Regenerate to use the current approved packet.", staleAt: new Date(), updatedAt: new Date() }).where(eq(comparisonMemos.id, memo.id));
+      staleMemos += 1;
+    }
+    return { updated: rows.length, staleMemos, staleClaims: affectedClaimIds.size };
   });
   if (result === null) throw new Error("Postgres is required for evidence review.");
   return result;
@@ -303,14 +406,14 @@ export async function updateEvidenceReview(ids: string[], status: EvidenceReview
 
 export async function getAcceptedEvidence(companyIds: string[], topic?: string) {
   const result = await withDatabase(async (db) => {
-    const conditions = [eq(researchEvidence.reviewStatus, "accepted"), inArray(researchEvidence.companyId, companyIds)];
+    const conditions = [eq(researchEvidence.reviewStatus, "accepted"), gte(researchEvidence.evidenceQualityScore, 45), lt(researchEvidence.boilerplateRisk, 60), inArray(researchEvidence.companyId, companyIds)];
     if (topic && topic !== "All topics") conditions.push(eq(researchEvidence.topic, topic));
     const rows = await db.select({ evidence: researchEvidence, company: companies })
       .from(researchEvidence)
       .innerJoin(companies, eq(researchEvidence.companyId, companies.id))
       .where(and(...conditions))
       .orderBy(desc(researchEvidence.sourceQuality), desc(researchEvidence.documentDate));
-    return rows.map(toItem);
+    return rows.map((row) => toItem(row));
   });
   if (!result) throw new Error("Postgres is required for comparison memos.");
   return result;

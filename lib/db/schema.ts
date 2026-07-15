@@ -1,4 +1,4 @@
-import { date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, vector } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, vector } from "drizzle-orm/pg-core";
 
 export const companies = pgTable("companies", {
   id: text("id").primaryKey(),
@@ -160,6 +160,9 @@ export const researchClaims = pgTable("research_claims", {
   statement: text("statement").notNull(),
   supportScore: integer("support_score").default(50).notNull(),
   status: text("status").default("active").notNull(),
+  isStale: boolean("is_stale").default(false).notNull(),
+  staleReason: text("stale_reason"),
+  staleAt: timestamp("stale_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
@@ -235,6 +238,20 @@ export const researchEvidence = pgTable("research_evidence", {
   sourceUrl: text("source_url").notNull(),
   pageNumber: integer("page_number"),
   sourceQuality: integer("source_quality").notNull(),
+  evidenceQualityScore: integer("evidence_quality_score").default(0).notNull(),
+  materialityScore: integer("materiality_score").default(0).notNull(),
+  specificityScore: integer("specificity_score").default(0).notNull(),
+  relevanceScore: integer("relevance_score").default(0).notNull(),
+  boilerplateRisk: integer("boilerplate_risk").default(0).notNull(),
+  qualityReasons: jsonb("quality_reasons").default([]).notNull(),
+  duplicateGroupId: text("duplicate_group_id"),
+  duplicateCount: integer("duplicate_count").default(1).notNull(),
+  suggestedClaimId: text("suggested_claim_id"),
+  suggestedImpact: text("suggested_impact"),
+  suggestionConfidence: integer("suggestion_confidence").default(0).notNull(),
+  suggestionRationale: text("suggestion_rationale"),
+  suggestionStatus: text("suggestion_status").default("pending").notNull(),
+  qualityScoredAt: timestamp("quality_scored_at", { withTimezone: true }),
   contentHash: text("content_hash").notNull(),
   embedding: vector("embedding", { dimensions: 1536 }),
   embeddedAt: timestamp("embedded_at", { withTimezone: true }),
@@ -247,6 +264,8 @@ export const researchEvidence = pgTable("research_evidence", {
   uniqueIndex("research_evidence_source_passage_unique").on(table.sourceKind, table.sourcePassageId),
   index("research_evidence_company_date_idx").on(table.companyId, table.documentDate),
   index("research_evidence_review_topic_idx").on(table.reviewStatus, table.topic),
+  index("research_evidence_quality_review_idx").on(table.reviewStatus, table.evidenceQualityScore),
+  index("research_evidence_suggestion_idx").on(table.suggestionStatus, table.suggestedClaimId),
 ]);
 
 export const reportingPeriods = pgTable("reporting_periods", {
@@ -423,6 +442,9 @@ export const comparisonMemos = pgTable("comparison_memos", {
   evidenceQualityScore: integer("evidence_quality_score").notNull(),
   sourceDiversityScore: integer("source_diversity_score").notNull(),
   status: text("status").default("draft").notNull(),
+  isStale: boolean("is_stale").default(false).notNull(),
+  staleReason: text("stale_reason"),
+  staleAt: timestamp("stale_at", { withTimezone: true }),
   sections: jsonb("sections").notNull(),
   evidenceSnapshot: jsonb("evidence_snapshot").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

@@ -1,5 +1,5 @@
 import { listResearchEvidence, syncResearchEvidence, updateEvidenceReview } from "@/lib/research/evidence";
-import type { EvidenceReviewStatus, ResearchSourceKind } from "@/lib/research/types";
+import type { EvidenceReviewStatus, EvidenceSuggestionStatus, ResearchEvidenceItem, ResearchSourceKind } from "@/lib/research/types";
 import { generateResearchAlerts } from "@/lib/alerts/generate";
 
 export async function GET(request: Request) {
@@ -22,13 +22,28 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const body = await request.json() as { ids?: string[]; status?: EvidenceReviewStatus; note?: string };
+    const body = await request.json() as {
+      ids?: string[];
+      status?: EvidenceReviewStatus;
+      note?: string;
+      suggestion?: { status?: EvidenceSuggestionStatus; claimId?: string; impact?: ResearchEvidenceItem["suggestedImpact"] };
+    };
     if (!body.ids?.length || !body.status || !["unreviewed", "accepted", "rejected"].includes(body.status)) {
       return Response.json({ error: "Evidence ids and a valid review status are required." }, { status: 400 });
     }
-    const updated = await updateEvidenceReview(body.ids.slice(0, 1_000), body.status, body.note);
+    if (body.suggestion && (!body.suggestion.status || !["pending", "accepted", "rejected"].includes(body.suggestion.status))) {
+      return Response.json({ error: "A valid suggestion decision is required." }, { status: 400 });
+    }
+    if (body.suggestion?.status === "accepted" && (!body.suggestion.claimId || !body.suggestion.impact)) {
+      return Response.json({ error: "Accepted suggestions require a claim and impact." }, { status: 400 });
+    }
+    const reviewResult = await updateEvidenceReview(body.ids.slice(0, 1_000), body.status, body.note, body.suggestion?.status ? {
+      status: body.suggestion.status,
+      claimId: body.suggestion.claimId,
+      impact: body.suggestion.impact,
+    } : undefined);
     const thesisSync = await generateResearchAlerts();
-    return Response.json({ updated, thesisSync });
+    return Response.json({ ...reviewResult, thesisSync });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Unable to update evidence." }, { status: 500 });
   }

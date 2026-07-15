@@ -44,7 +44,7 @@ export async function getCompanyFlowCoverage(): Promise<CompanyFlowCoverage[]> {
       db.select().from(reportingPeriods), db.select().from(periodComparisons), db.select().from(earningsChangeBriefs),
     ]);
     return secCompanies.map((company) => {
-      const accepted = evidenceRows.filter((item) => item.companyId === company.id && item.reviewStatus === "accepted").length;
+      const accepted = evidenceRows.filter((item) => item.companyId === company.id && item.reviewStatus === "accepted" && item.evidenceQualityScore >= 45 && item.boilerplateRisk < 60).length;
       const comparableQuarters = periodRows.filter((item) => item.companyId === company.id && item.periodKind === "quarter" && item.periodBasis !== "calendar-fallback").length;
       const counts = {
         sec: filingRows.filter((item) => item.companyId === company.id).length,
