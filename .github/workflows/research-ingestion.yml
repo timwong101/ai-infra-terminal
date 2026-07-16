@@ -23,7 +23,12 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Run evidence and thesis pipeline
+      - name: Apply database migrations
+        if: ${{ env.DATABASE_URL != '' }}
+        run: pnpm db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - name: Run evidence, thesis, and briefing pipeline
         if: ${{ env.DATABASE_URL != '' }}
         run: pnpm research:cycle
         env:

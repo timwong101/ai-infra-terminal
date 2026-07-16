@@ -30,6 +30,8 @@ test("does not map bitcoin-only operating metrics to AI demand", () => {
   });
   assert.notEqual(assessment.suggestion?.claimKind, "demand-growth");
   assert.notEqual(assessment.suggestion?.claimKind, "customer-risk");
+  assert.ok(assessment.evidenceQualityScore < 45);
+  assert.ok(assessment.relevanceScore < 35);
 });
 
 test("groups formatting variants as duplicate evidence", () => {

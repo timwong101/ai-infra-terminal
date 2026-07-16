@@ -92,6 +92,7 @@ function suggestionFor(value: string, quality: number, relevance: number, boiler
 export function assessEvidenceQuality(input: { excerpt: string; topic: string; sectionTitle: string; sourceType: string; sourceQuality: number }): EvidenceQualityAssessment {
   const value = `${input.topic} ${input.sectionTitle} ${input.excerpt}`;
   const wordCount = input.excerpt.trim().split(/\s+/).filter(Boolean).length;
+  const miningOnly = /\b(bitcoin|mining|hashrate|eh\/s)\b/i.test(input.excerpt) && !/\b(ai cloud|artificial intelligence|data cent(?:er|re)|gpu|hpc|inference|training workload)\b/i.test(input.excerpt);
   const materialSignals = matchCount(value, MATERIAL_PATTERN);
   const infraSignals = matchCount(value, INFRA_PATTERN);
   const specificSignals = matchCount(value, SPECIFIC_PATTERN);
@@ -99,12 +100,13 @@ export function assessEvidenceQuality(input: { excerpt: string; topic: string; s
   const boilerplateRisk = boilerplate?.[1] ?? (/\bmay|could|might\b/gi.test(input.excerpt) && specificSignals === 0 ? 22 : 5);
   const materialityScore = clamp(20 + materialSignals * 11 + specificSignals * 7 + (/contract|guidance|liquidity|capacity|revenue/i.test(input.topic) ? 8 : 0));
   const specificityScore = clamp(16 + specificSignals * 16 + (wordCount >= 35 ? 12 : 0) + (wordCount >= 80 ? 8 : 0));
-  const relevanceScore = clamp(12 + infraSignals * 14 + (/Power & capacity|Compute & accelerators|Customers & demand/i.test(input.topic) ? 12 : 0));
-  const evidenceQualityScore = clamp(input.sourceQuality * .2 + materialityScore * .3 + specificityScore * .18 + relevanceScore * .32 - boilerplateRisk * .38);
+  const relevanceScore = miningOnly ? 15 : clamp(12 + infraSignals * 14 + (/Power & capacity|Compute & accelerators|Customers & demand/i.test(input.topic) ? 12 : 0));
+  const calculatedQuality = clamp(input.sourceQuality * .2 + materialityScore * .3 + specificityScore * .18 + relevanceScore * .32 - boilerplateRisk * .38);
+  const evidenceQualityScore = miningOnly ? Math.min(42, calculatedQuality) : calculatedQuality;
   const qualityReasons = [
     materialSignals >= 3 ? "Material operating or financial signals" : materialSignals ? "Some material context" : "Few material signals",
     specificSignals >= 2 ? "Contains specific quantities or terms" : "Limited quantitative specificity",
-    infraSignals >= 2 ? "Direct AI infrastructure relevance" : infraSignals ? "Adjacent infrastructure relevance" : "Weak AI infrastructure relevance",
+    miningOnly ? "Bitcoin mining without an explicit AI infrastructure linkage" : infraSignals >= 2 ? "Direct AI infrastructure relevance" : infraSignals ? "Adjacent infrastructure relevance" : "Weak AI infrastructure relevance",
     boilerplate ? `High ${boilerplate[2]} risk` : "No major boilerplate pattern detected",
   ];
   return {

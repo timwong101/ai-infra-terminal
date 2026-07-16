@@ -492,3 +492,32 @@ export const researchCycleRuns = pgTable("research_cycle_runs", {
   completedAt: timestamp("completed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [index("research_cycle_runs_status_idx").on(table.status, table.startedAt)]);
+
+export const researchCycleEvents = pgTable("research_cycle_events", {
+  id: text("id").primaryKey(),
+  runId: text("run_id").notNull().references(() => researchCycleRuns.id, { onDelete: "cascade" }),
+  stage: text("stage").notNull(),
+  status: text("status").default("running").notNull(),
+  attempt: integer("attempt").default(1).notNull(),
+  message: text("message"),
+  metrics: jsonb("metrics").default({}).notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("research_cycle_events_run_stage_idx").on(table.runId, table.stage, table.startedAt)]);
+
+export const researchBriefings = pgTable("research_briefings", {
+  id: text("id").primaryKey(),
+  runId: text("run_id").references(() => researchCycleRuns.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  summary: text("summary").notNull(),
+  status: text("status").default("ready").notNull(),
+  windowStartedAt: timestamp("window_started_at", { withTimezone: true }).notNull(),
+  windowEndedAt: timestamp("window_ended_at", { withTimezone: true }).notNull(),
+  stats: jsonb("stats").default({}).notNull(),
+  sections: jsonb("sections").default([]).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("research_briefings_created_idx").on(table.createdAt),
+  index("research_briefings_run_idx").on(table.runId),
+]);

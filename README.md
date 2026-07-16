@@ -114,7 +114,9 @@ pnpm research:intelligence
 
 The scheduled research cycle performs this step automatically after SEC and IR evidence synchronization, so opening the site reads persisted intelligence instead of refetching and recomputing every document.
 
-The **Operations** workspace shows ingestion queue health, durable pipeline runs, and a company-flow coverage matrix. Each configured company is checked independently for ingestion, research evidence, alerts, five thesis claims, comparable-period intelligence, and memo eligibility. Run the complete SEC, IR, evidence, embedding, and thesis pipeline locally with `pnpm research:cycle`. The included GitHub Actions workflow can run it every six hours after `DATABASE_URL`, `SEC_USER_AGENT`, and optionally `OPENAI_API_KEY` are added as repository secrets. The database URL must point to a hosted Postgres instance reachable from GitHub Actions.
+The **Activity & Briefings** workspace turns scheduled ingestion into an analyst inbox. Every research cycle records stage-level start, completion, duration, and failure events under a trace ID, then persists an immutable briefing covering evidence added since the previous successful run. Briefings summarize new SEC and IR documents, high-value passages, proposed thesis impacts, stale research, ingestion failures, and company-level source packets. The UI also retains briefing history, end-to-end company coverage, and the full pipeline timeline.
+
+Run the complete SEC, IR, evidence, intelligence, embedding, thesis, and briefing pipeline locally with `pnpm research:cycle`. Build a lightweight snapshot of the current 24-hour evidence window with `pnpm research:briefing`, or pass a custom window such as `pnpm research:briefing 48`. The included GitHub Actions workflow runs the complete cycle every six hours after `DATABASE_URL`, `SEC_USER_AGENT`, and optionally `OPENAI_API_KEY` are added as repository secrets. The database URL must point to a hosted Postgres instance reachable from GitHub Actions.
 
 AI settings are optional:
 

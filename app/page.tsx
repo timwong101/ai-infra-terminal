@@ -10,7 +10,6 @@ import {
   ChevronRight,
   CircleHelp,
   Copy,
-  Database,
   ExternalLink,
   FileText,
   Layers3,
@@ -114,7 +113,7 @@ const navItems = [
   { label: "Theses", icon: Target },
   { label: "Memos", icon: Sparkles },
   { label: "Alerts", icon: Bell },
-  { label: "Operations", icon: Database },
+  { label: "Activity", icon: Activity },
 ];
 
 const themeGroups = [
@@ -618,7 +617,7 @@ export default function Home() {
           </label>
           <div className="header-actions">
             <button className="command-button" onClick={() => setActiveNav("Memos")}><Plus size={16} /> <span>New Memo</span></button>
-            <button className="command-button" onClick={() => { setToast("Watchlist updated"); window.setTimeout(() => setToast(null), 1800); }}><Star size={16} /> <span>Watchlist</span></button>
+            <button className="command-button" onClick={() => setActiveNav("Activity")}><Star size={16} /> <span>Watchlist</span></button>
             <button className="avatar" aria-label="Open profile menu">TW</button>
             <ChevronDown size={15} className="profile-chevron" />
           </div>
@@ -634,7 +633,7 @@ export default function Home() {
           <CompanyIntelligenceWorkspace />
         ) : activeNav === "Theses" ? (
           <ThesisWorkspace />
-        ) : activeNav === "Operations" ? (
+        ) : activeNav === "Activity" ? (
           <OperationsWorkspace />
         ) : (
         <div className="dashboard">
