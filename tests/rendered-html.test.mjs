@@ -23,8 +23,16 @@ test("server-renders the AI infrastructure terminal", async () => {
   assert.match(html, /AI Infrastructure Map/);
   assert.match(html, /Infrastructure Themes/);
   assert.match(html, /Liquid Cooling/);
+  assert.match(html, /Neoclouds/);
+  assert.match(html, /CoreWeave \(CRWV\)/);
+  assert.match(html, /Nebius \(NBIS\)/);
+  assert.match(html, /Applied Digital \(APLD\)/);
+  assert.match(html, /IREN \(IREN\)/);
+  assert.match(html, /Live coverage/);
+  assert.match(html, /Research roadmap/);
   assert.match(html, /Real source documents/);
   assert.match(html, /SEC (?:8-K|6-K|10-Q|20-F)/);
   assert.match(html, /sec\.gov\/Archives\/edgar\/data/);
+  assert.doesNotMatch(html, /Liquid cooling backlog growth|Vertiv launches next-gen CDU/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });

@@ -17,7 +17,6 @@ import {
   Menu,
   Network,
   PanelLeftClose,
-  PieChart,
   Plus,
   Search,
   ShieldCheck,
@@ -25,7 +24,6 @@ import {
   Star,
   Target,
   X,
-  Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertsWorkspace } from "@/app/components/alerts-workspace";
@@ -72,6 +70,7 @@ type Evidence = {
 };
 
 type ResearchView = {
+  isCovered: boolean;
   recent: Array<{ title: string; source: string; age: string; sourceUrl?: string }>;
   companies: string[];
   bull: string;
@@ -80,6 +79,7 @@ type ResearchView = {
   quality: number;
   evidence: Evidence[];
   memoTitle: string;
+  coveredCompanyCount: number;
 };
 
 const secEvidenceCache = secEvidenceCacheJson as unknown as EvidenceCache;
@@ -116,6 +116,14 @@ const navItems = [
   { label: "Activity", icon: Activity },
 ];
 
+const LIVE_THEME = "Neoclouds";
+const TRACKED_COMPANIES = [
+  { name: "CoreWeave", ticker: "CRWV" },
+  { name: "Nebius", ticker: "NBIS" },
+  { name: "Applied Digital", ticker: "APLD" },
+  { name: "IREN", ticker: "IREN" },
+] as const;
+
 const themeGroups = [
   { title: "Compute & Silicon", items: ["GPUs / Accelerators", "AI Servers / Racks", "Memory / HBM", "Foundry / Packaging"] },
   { title: "Cloud & Capacity", items: ["Hyperscalers", "Neoclouds", "Colocation / DC REITs", "Sovereign AI"] },
@@ -123,17 +131,6 @@ const themeGroups = [
   { title: "Cooling & Facilities", items: ["Liquid Cooling", "Air Cooling", "Construction / EPC", "Land / Permitting"] },
   { title: "Networking", items: ["Ethernet / Switching", "InfiniBand / Fabrics", "Optical Networking", "Network Software"] },
   { title: "Physical AI", items: ["Edge Compute", "Sensors / Vision", "Robotics Platforms", "Actuators / Motion"] },
-];
-
-const liquidCoolingEvidence: Evidence[] = [
-  { source: "SEC 10-Q", company: "Vertiv (VRT)", claim: "Liquid cooling backlog growth", age: "2h ago", score: 85, signal: "positive" },
-  { source: "Earnings Call", company: "Super Micro (SMCI)", claim: "Liquid cooling demand outlook", age: "6h ago", score: 78, signal: "positive" },
-  { source: "Press Release", company: "Schneider Electric", claim: "CDU product launch", age: "9h ago", score: 74, signal: "positive" },
-  { source: "SEC 10-Q", company: "CoolIT Systems", claim: "Revenue growth drivers", age: "1d ago", score: 70, signal: "positive" },
-  { source: "EIA", company: "Market wide", claim: "Industrial electricity demand outlook", age: "1d ago", score: 68, signal: "neutral" },
-  { source: "Earnings Call", company: "Vertiv (VRT)", claim: "2026 capex commentary", age: "2d ago", score: 66, signal: "positive" },
-  { source: "Press Release", company: "Danfoss", claim: "Partnership with data center OEM", age: "2d ago", score: 64, signal: "watch" },
-  { source: "SEC 10-K", company: "NVIDIA (NVDA)", claim: "DGX platform thermal architecture", age: "3d ago", score: 62, signal: "watch" },
 ];
 
 function createNeocloudResearchView(cache: EvidenceCache, irCache: IrEvidenceCache): ResearchView {
@@ -171,50 +168,41 @@ function createNeocloudResearchView(cache: EvidenceCache, irCache: IrEvidenceCac
   }));
   const evidence = [...secEvidence, ...irEvidence].sort((left, right) => (right.filedAt ?? "").localeCompare(left.filedAt ?? ""));
   const recent = evidence.slice(0, 3).map((item) => ({ title: item.claim, source: item.source, age: item.age, sourceUrl: item.sourceUrl }));
+  const averageQuality = evidence.length
+    ? Math.round(evidence.reduce((total, item) => total + item.score, 0) / evidence.length)
+    : 0;
+  const coveredTickers = new Set([
+    ...cache.filings.map((filing) => filing.ticker),
+    ...irCache.documents.map((document) => document.ticker),
+  ]);
+  const coveredCompanyCount = TRACKED_COMPANIES.filter((company) => coveredTickers.has(company.ticker)).length;
 
   return {
+    isCovered: true,
     recent,
-    companies: ["CoreWeave", "Nebius", "Lambda", "Crusoe", "Fluidstack", "Nscale", "RunPod", "Applied Digital"],
+    companies: TRACKED_COMPANIES.map((company) => `${company.name} (${company.ticker})`),
     bull: "AI-native clouds can win with faster accelerator access, purpose-built clusters, and software tuned for large training and inference workloads.",
     bear: "Capital intensity, customer concentration, financing costs, utilization risk, and hyperscaler competition can pressure returns on new capacity.",
-    confidence: 74,
-    quality: 71,
+    confidence: Math.round((averageQuality * 0.7) + ((coveredCompanyCount / TRACKED_COMPANIES.length) * 30)),
+    quality: averageQuality,
     evidence,
     memoTitle: "Compare CoreWeave vs Nebius",
+    coveredCompanyCount,
   };
 }
 
-const researchViews: Record<string, ResearchView> = {
-  "Liquid Cooling": {
-    recent: [
-      { title: "Vertiv launches next-gen CDU supporting 1.4MW+ racks", source: "Press Release", age: "2h ago" },
-      { title: "Supermicro discusses liquid cooling demand on earnings call", source: "Earnings Call", age: "6h ago" },
-      { title: "Microsoft data center liquid cooling patent published", source: "USPTO", age: "1d ago" },
-    ],
-    companies: ["Vertiv", "Super Micro", "CoolIT", "Schneider Electric", "Danfoss", "NVIDIA", "STULZ", "Iceotope"],
-    bull: "Rising rack densities make liquid cooling necessary for performance, reliability, and efficiency at scale.",
-    bear: "Adoption could be slower than expected as air cooling improves and deployment costs remain high.",
-    confidence: 72,
-    quality: 68,
-    evidence: liquidCoolingEvidence,
-    memoTitle: "Compare Vertiv vs Super Micro",
-  },
-};
-
-function createDefaultResearchView(theme: string): ResearchView {
+function createRoadmapResearchView(theme: string): ResearchView {
   return {
-    recent: [
-      { title: `New filing adds evidence to the ${theme} outlook`, source: "SEC Filing", age: "2h ago" },
-      { title: `Management commentary updates demand expectations`, source: "Earnings Call", age: "8h ago" },
-      { title: `Supply-chain update changes near-term capacity view`, source: "Industry Update", age: "1d ago" },
-    ],
-    companies: ["NVIDIA", "Broadcom", "Vertiv", "Arista", "Eaton", "Dell", "Oracle", "Equinix"],
-    bull: `${theme} is positioned to benefit from sustained AI infrastructure spending and increasingly specialized deployment requirements.`,
-    bear: `Capacity cycles, customer concentration, execution risk, and rapid technology changes may limit durable returns in ${theme}.`,
-    confidence: 67,
-    quality: 64,
-    evidence: liquidCoolingEvidence,
-    memoTitle: `Compare leading ${theme} exposures`,
+    isCovered: false,
+    recent: [],
+    companies: [],
+    bull: "",
+    bear: "",
+    confidence: 0,
+    quality: 0,
+    evidence: [],
+    memoTitle: `${theme} research is not yet integrated`,
+    coveredCompanyCount: 0,
   };
 }
 
@@ -232,14 +220,6 @@ function findPreviousFiling(evidence: Evidence, cache: EvidenceCache) {
     )
     .sort((left, right) => right.filedAt.localeCompare(left.filedAt))[0] ?? null;
 }
-
-const memoSections = [
-  { icon: FileText, title: "Summary", description: "Key takeaways and current positioning.", count: 6, sources: ["SEC 10-Q", "Earnings Call", "Press Release"] },
-  { icon: Activity, title: "Evidence-backed claims", description: "Side-by-side claims with citations.", count: 18, sources: ["SEC 10-Q", "Earnings Call", "Press Release"] },
-  { icon: AlertTriangle, title: "Risks", description: "Key risks for each company.", count: 8, sources: ["Earnings Call", "SEC Filings"] },
-  { icon: Zap, title: "Catalysts", description: "Near- and mid-term catalysts.", count: 6, sources: ["Press Release", "EIA"] },
-  { icon: CircleHelp, title: "Unanswered questions", description: "Open questions to monitor.", count: 9, sources: ["Expert Interview", "Web Search"] },
-];
 
 function ScoreGauge({ score, label }: { score: number; label: string }) {
   return (
@@ -271,7 +251,6 @@ export default function Home() {
   const [sourceFilter, setSourceFilter] = useState("All sources");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [expandedMemo, setExpandedMemo] = useState<string | null>(null);
   const [liveSecCache, setLiveSecCache] = useState(secEvidenceCache);
   const [liveIrCache, setLiveIrCache] = useState(irEvidenceCache);
   const [secRefreshStatus, setSecRefreshStatus] = useState<SecUiStatus>("refreshing");
@@ -358,11 +337,13 @@ export default function Home() {
     return () => controller.abort();
   }, []);
 
+  const neocloudResearchView = useMemo(
+    () => createNeocloudResearchView(liveSecCache, liveIrCache),
+    [liveIrCache, liveSecCache],
+  );
   const researchView = useMemo(
-    () => selectedTheme === "Neoclouds"
-      ? createNeocloudResearchView(liveSecCache, liveIrCache)
-      : researchViews[selectedTheme] ?? createDefaultResearchView(selectedTheme),
-    [liveIrCache, liveSecCache, selectedTheme],
+    () => selectedTheme === LIVE_THEME ? neocloudResearchView : createRoadmapResearchView(selectedTheme),
+    [neocloudResearchView, selectedTheme],
   );
 
   const metrics = useMemo(() => [
@@ -375,10 +356,22 @@ export default function Home() {
       icon: FileText,
       tone: "positive",
     },
-    { label: "Open thesis questions", value: "47", change: "5 vs yesterday", icon: CircleHelp, tone: "negative" },
+    {
+      label: "Tracked companies",
+      value: `${neocloudResearchView.coveredCompanyCount} / ${TRACKED_COMPANIES.length}`,
+      change: "CoreWeave · Nebius · APLD · IREN",
+      icon: Building2,
+      tone: "positive",
+    },
     { label: "Thesis alerts", value: String(unreadAlertCount), change: "Evidence-backed", icon: Bell, tone: "positive" },
-    { label: "Source coverage", value: "82%", change: "4pp vs yesterday", icon: PieChart, tone: "positive" },
-  ], [liveIrCache, liveSecCache, secRefreshStatus, unreadAlertCount]);
+    {
+      label: "Live themes",
+      value: `1 / ${themeGroups.reduce((total, group) => total + group.items.length, 0)}`,
+      change: "Neoclouds integrated",
+      icon: Network,
+      tone: "positive",
+    },
+  ], [liveIrCache, liveSecCache, neocloudResearchView.coveredCompanyCount, secRefreshStatus, unreadAlertCount]);
 
   const ingestion = useMemo(() => [
     {
@@ -408,9 +401,9 @@ export default function Home() {
       status: irRefreshStatus === "refreshing" ? "Refreshing" : irRefreshStatus === "fresh" ? "Live" : irRefreshStatus === "cached" ? "Cached" : "Stale cache",
       connected: irRefreshStatus === "fresh" || irRefreshStatus === "cached",
     },
-    { name: "GDELT News", detail: "Not connected", time: "Planned", status: "Mock", connected: false },
-    { name: "EIA Power Data", detail: "Not connected", time: "Planned", status: "Mock", connected: false },
-    { name: "Manual Notes", detail: "12 mock notes", time: "Local", status: "Mock", connected: false },
+    { name: "GDELT News", detail: "Not connected", time: "Roadmap", status: "Planned", connected: false },
+    { name: "EIA Power Data", detail: "Not connected", time: "Roadmap", status: "Planned", connected: false },
+    { name: "Manual Notes", detail: "Not configured", time: "Roadmap", status: "Planned", connected: false },
   ], [irIngestionSummary, irRefreshStatus, liveIrCache, liveSecCache, secRefreshStatus]);
 
   const liveStatusLabel = secRefreshStatus === "refreshing"
@@ -434,6 +427,7 @@ export default function Home() {
     () => ["All sources", ...Array.from(new Set(researchView.evidence.map((row) => row.source)))],
     [researchView],
   );
+  const evidencePreview = filteredEvidence.slice(0, 8);
 
   const selectTheme = (theme: string) => {
     setSelectedTheme(theme);
@@ -670,26 +664,40 @@ export default function Home() {
                       <h3>{group.title}</h3>
                       <div className="theme-list">
                         {group.items.map((theme) => (
-                          <button key={theme} className={selectedTheme === theme ? "selected" : ""} onClick={() => selectTheme(theme)}>{theme}</button>
+                          <button
+                            key={theme}
+                            className={`${selectedTheme === theme ? "selected" : ""} ${theme === LIVE_THEME ? "covered" : "roadmap"}`}
+                            onClick={() => selectTheme(theme)}
+                          >
+                            <span>{theme}</span>
+                            <em>{theme === LIVE_THEME ? "Live" : "Roadmap"}</em>
+                          </button>
                         ))}
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
-              <div className="map-legend"><span><i className="line primary" /> Primary dependency</span><span><i className="line secondary" /> Adjacent exposure</span><span className="selected-label">Selected: {selectedTheme}</span></div>
+              <div className="map-legend"><span><i className="coverage-dot live" /> Live coverage</span><span><i className="coverage-dot roadmap" /> Research roadmap</span><span className="selected-label">Selected: {selectedTheme}</span></div>
             </article>
 
             <article className="panel research-panel">
               <div className="research-header">
                 <div><span className="section-kicker">Selected theme</span><h2>{selectedTheme}</h2></div>
-                <span className="theme-badge">Theme</span>
+                <span className={`theme-badge ${researchView.isCovered ? "live" : "roadmap"}`}>{researchView.isCovered ? "Live coverage" : "Roadmap"}</span>
               </div>
               <div className="tabs" role="tablist" aria-label={`${selectedTheme} research sections`}>
-                {["Overview", "Evidence", "Companies", "Memos", "Questions"].map((tab) => <button key={tab} role="tab" aria-selected={activeTab === tab} className={activeTab === tab ? "active" : ""} onClick={() => setActiveTab(tab)}>{tab}</button>)}
+                {["Overview", "Evidence", "Companies", "Memos", "Questions"].map((tab) => <button key={tab} role="tab" aria-selected={activeTab === tab} className={activeTab === tab ? "active" : ""} disabled={!researchView.isCovered && tab !== "Overview"} onClick={() => setActiveTab(tab)}>{tab}</button>)}
               </div>
               <div className="research-content">
-                {activeTab === "Overview" ? (
+                {!researchView.isCovered ? (
+                  <div className="tab-placeholder coverage-placeholder">
+                    <span className="tab-icon"><Layers3 size={22} /></span>
+                    <h3>{selectedTheme} is on the research roadmap</h3>
+                    <p>No companies, evidence, scores, or generated conclusions are shown until this theme has configured official sources and passes the same provenance policy as Neoclouds.</p>
+                    <button onClick={() => selectTheme(LIVE_THEME)}>Open live Neocloud coverage</button>
+                  </div>
+                ) : activeTab === "Overview" ? (
                   <>
                     <div className="recent-column">
                       <h3>Recent evidence</h3>
@@ -698,21 +706,21 @@ export default function Home() {
                       ) : (
                         <button className="evidence-item" key={item.title}><FileText size={16} /><span><strong>{item.title}</strong><em>{item.source}</em></span><time>{item.age}</time></button>
                       ))}
-                      <button className="text-link">View all evidence <ChevronRight size={15} /></button>
+                      <button className="text-link" onClick={() => setActiveNav("Evidence Feed")}>View all evidence <ChevronRight size={15} /></button>
                     </div>
                     <div className="thesis-column">
                       <h3>Key companies</h3>
-                      <div className="company-tags">{researchView.companies.map((company) => <button key={company}>{company}</button>)}</div>
+                      <div className="company-tags">{researchView.companies.map((company) => <button key={company} onClick={() => setActiveNav("Companies")}>{company}</button>)}</div>
                       <div className="thesis-copy"><h3>Bull thesis</h3><p>{researchView.bull}</p><h3>Bear thesis</h3><p>{researchView.bear}</p></div>
                     </div>
-                    <div className="scores-column"><ScoreGauge score={researchView.confidence} label="Confidence score" /><ScoreGauge score={researchView.quality} label="Evidence quality" /><button className="text-link">Methodology <ChevronRight size={14} /></button></div>
+                    <div className="scores-column"><ScoreGauge score={researchView.confidence} label="Coverage confidence" /><ScoreGauge score={researchView.quality} label="Source quality" /><button className="text-link" onClick={() => setActiveNav("Evidence Feed")}>Review inputs <ChevronRight size={14} /></button></div>
                   </>
                 ) : (
                   <div className="tab-placeholder">
                     <span className="tab-icon"><Layers3 size={22} /></span>
                     <h3>{activeTab} for {selectedTheme}</h3>
-                    <p>Additional research content is organized here. SEC filings and official investor-relations documents are connected to the evidence workspace.</p>
-                    <button onClick={() => setActiveTab("Overview")}>Return to overview</button>
+                    <p>Open the dedicated workspace to inspect the underlying records and complete this research workflow.</p>
+                    <button onClick={() => setActiveNav(activeTab === "Companies" ? "Companies" : activeTab === "Memos" ? "Memos" : activeTab === "Evidence" ? "Evidence Feed" : "Theses")}>Open {activeTab.toLowerCase()} workspace</button>
                   </div>
                 )}
               </div>
@@ -733,7 +741,7 @@ export default function Home() {
                   </colgroup>
                   <thead><tr><th>Source</th><th>Company</th><th>Claim impacted</th><th>Recency</th><th>Evidence score</th></tr></thead>
                   <tbody>
-                    {filteredEvidence.map((row, index) => (
+                    {evidencePreview.map((row, index) => (
                       <tr
                         key={row.accessionNumber ?? `${row.company}-${index}`}
                         className={row.canExtract ? "evidence-row actionable" : "evidence-row"}
@@ -766,27 +774,21 @@ export default function Home() {
                     ))}
                   </tbody>
                 </table>
-                {!filteredEvidence.length && <div className="empty-state"><Search size={19} /><span>No evidence matches this search.</span><button onClick={() => { setQuery(""); setSourceFilter("All sources"); }}>Clear filters</button></div>}
+                {!evidencePreview.length && <div className="empty-state"><Search size={19} /><span>{researchView.isCovered ? "No evidence matches this search." : `${selectedTheme} evidence is not yet integrated.`}</span>{researchView.isCovered ? <button onClick={() => { setQuery(""); setSourceFilter("All sources"); }}>Clear filters</button> : <button onClick={() => selectTheme(LIVE_THEME)}>View Neocloud evidence</button>}</div>}
               </div>
               <button className="footer-link" onClick={() => setActiveNav("Evidence Feed")}>View all evidence feed <ChevronRight size={15} /></button>
             </article>
 
             <article className="panel memo-panel">
-              <div className="panel-heading compact"><div className="heading-with-count"><h2>Memo Workspace</h2><span>3</span></div><button className="command-button small" onClick={() => setActiveNav("Memos")}>Open in editor <ChevronRight size={14} /></button></div>
-              <div className="memo-title"><div><h3>{researchView.memoTitle}</h3><p>Last updated: 1h ago</p></div><div><span>Sources: 23</span><span>Evidence items: 47</span><button className="icon-button" aria-label="Save memo"><Star size={15} /></button></div></div>
-              <div className="memo-sections">
-                {memoSections.map((section) => {
-                  const Icon = section.icon;
-                  const open = expandedMemo === section.title;
-                  return (
-                    <button key={section.title} className={`memo-row ${open ? "expanded" : ""}`} onClick={() => setExpandedMemo(open ? null : section.title)}>
-                      <Icon size={17} /><strong>{section.title}</strong><span className="memo-description">{section.description}</span><span className="source-tags">{section.sources.map((source) => <em key={source}>{source}</em>)}</span><b>{section.count}</b><ChevronRight size={15} />
-                      {open && <p className="memo-preview">Current mock conclusion: evidence is directionally supportive, but the durability of demand and execution risk should remain explicit in the final memo.</p>}
-                    </button>
-                  );
-                })}
-              </div>
-              <button className="add-section"><Plus size={15} /> Add section</button>
+              <div className="panel-heading compact"><div className="heading-with-count"><h2>Memo Workspace</h2><span>{researchView.isCovered ? "Grounded" : "Unavailable"}</span></div><button className="command-button small" disabled={!researchView.isCovered} onClick={() => setActiveNav("Memos")}>Open in editor <ChevronRight size={14} /></button></div>
+              {researchView.isCovered ? <>
+                <div className="memo-title"><div><h3>{researchView.memoTitle}</h3><p>Built from accepted evidence in the research catalog</p></div><div><span>{researchView.coveredCompanyCount} companies</span><span>{researchView.evidence.length} source documents</span></div></div>
+                <div className="memo-readiness">
+                  <div className="memo-readiness-score"><Sparkles size={19} /><span><strong>{researchView.confidence}</strong><small>coverage confidence</small></span></div>
+                  <div><strong>Claim-to-evidence comparisons</strong><p>The memo builder retrieves accepted SEC and IR passages, verifies every citation, and preserves the exact source packet.</p></div>
+                  <button className="primary-button" onClick={() => setActiveNav("Memos")}><Plus size={15} /> Build comparison</button>
+                </div>
+              </> : <div className="workspace-state memo-roadmap-state"><CircleHelp size={24} /><strong>No supported memo universe</strong><span>Memo creation is available only for themes with configured companies and reviewed evidence.</span><button className="command-button" onClick={() => selectTheme(LIVE_THEME)}>Return to Neoclouds</button></div>}
             </article>
           </section>
         </div>
@@ -795,7 +797,7 @@ export default function Home() {
         <footer className="ingestion-bar">
           <div className="ingestion-title"><strong>Ingestion Status</strong><CircleHelp size={14} /></div>
           {ingestion.map((item) => <div className="ingestion-item" key={item.name}><div><strong>{item.name}</strong><span>Last run: {item.time}</span><span>{item.detail}</span></div><span className={item.connected ? "success-dot" : "success-dot status-pending"}>{item.connected ? <ShieldCheck size={15} /> : <CircleHelp size={15} />}{item.status}</span></div>)}
-          <button>View Ingestion Dashboard <ChevronRight size={15} /></button>
+          <button onClick={() => setActiveNav("Activity")}>View Ingestion Dashboard <ChevronRight size={15} /></button>
         </footer>
       </section>
 

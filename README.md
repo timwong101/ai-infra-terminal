@@ -1,6 +1,6 @@
 # AI Infrastructure Terminal
 
-A responsive, evidence-first research dashboard for exploring the AI infrastructure ecosystem. It combines mock research workflows with real SEC filings and official investor-relations documents.
+A responsive, evidence-first research dashboard for exploring the AI infrastructure ecosystem. Its live Neocloud coverage combines real SEC filings, official investor-relations documents, durable analyst review, and grounded research workflows.
 
 ## Included
 
@@ -157,4 +157,4 @@ pnpm build
 pnpm test
 ```
 
-There is intentionally no authentication or live market-price integration in this version. SEC and investor-relations evidence is real, while AI generation is optional and always constrained by the saved evidence packet. Several broader research-source integrations and overview metrics remain mock while the research model is refined.
+There is intentionally no authentication or live market-price integration in this version. SEC and investor-relations evidence is real, while AI generation is optional and always constrained by the saved evidence packet. The infrastructure map labels Neoclouds as live coverage and treats every other theme as roadmap-only until official sources and company policies are integrated.
