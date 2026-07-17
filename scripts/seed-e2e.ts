@@ -2,9 +2,14 @@ import { createHash } from "node:crypto";
 import { Client } from "pg";
 import { secCompanies } from "@/data/companies";
 
-const connectionString = process.env.DATABASE_URL?.trim();
+const connectionString = process.env.E2E_DATABASE_URL?.trim() || process.env.DATABASE_URL?.trim();
 if (process.env.E2E_TEST !== "1") throw new Error("Refusing to seed unless E2E_TEST=1.");
-if (!connectionString) throw new Error("DATABASE_URL is required to seed end-to-end tests.");
+if (!connectionString) throw new Error("E2E_DATABASE_URL is required to seed end-to-end tests.");
+
+const databaseName = decodeURIComponent(new URL(connectionString).pathname.replace(/^\//, ""));
+if (!/(?:^|_)(?:e2e|test)$/.test(databaseName)) {
+  throw new Error(`Refusing to seed non-test database "${databaseName}". Use a database name ending in _e2e or _test.`);
+}
 
 const client = new Client({ connectionString });
 await client.connect();

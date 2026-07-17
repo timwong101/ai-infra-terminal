@@ -1,4 +1,20 @@
 import { expect, test } from "@playwright/test";
+import { execFileSync } from "node:child_process";
+
+const e2eDatabaseUrl = process.env.E2E_DATABASE_URL;
+if (!e2eDatabaseUrl) throw new Error("E2E_DATABASE_URL is required for analyst journey tests.");
+
+function prepareTestDatabase() {
+  const env = {
+    ...process.env,
+    DATABASE_URL: e2eDatabaseUrl,
+    E2E_DATABASE_URL: e2eDatabaseUrl,
+    E2E_TEST: "1",
+  };
+  for (const script of ["db:migrate", "db:seed:e2e", "research:intelligence"]) {
+    execFileSync("pnpm", [script], { env, stdio: "inherit" });
+  }
+}
 
 const companies = [
   { id: "coreweave", name: "CoreWeave" },
@@ -8,6 +24,8 @@ const companies = [
 ] as const;
 
 test.describe.serial("evidence-grounded analyst journey", () => {
+  test.beforeAll(() => prepareTestDatabase());
+
   test("theme and company deep links expose all four Neoclouds", async ({ page }) => {
     await page.goto("/themes/neoclouds");
     await expect(page.getByRole("heading", { name: "AI Infrastructure Map" })).toBeVisible();
@@ -19,6 +37,10 @@ test.describe.serial("evidence-grounded analyst journey", () => {
       await expect(page.getByRole("heading", { name: "Company Intelligence" })).toBeVisible();
       await expect(page.getByRole("heading", { name: company.name, exact: true })).toBeVisible();
     }
+
+    await page.goto("/activity");
+    await expect(page).toHaveURL(/\/activity$/);
+    await expect(page.getByRole("heading", { name: "Activity & Briefings" })).toBeVisible();
   });
 
   test("reviewed evidence updates research and generates a reloadable cited memo", async ({ page }) => {

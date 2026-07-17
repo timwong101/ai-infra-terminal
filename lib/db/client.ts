@@ -3,7 +3,7 @@ import { Pool } from "pg";
 import * as schema from "@/lib/db/schema";
 
 function connectionString() {
-  if (process.env.E2E_TEST === "1" && process.env.E2E_DATABASE_URL?.trim()) return process.env.E2E_DATABASE_URL.trim();
+  if (process.env.E2E_TEST === "1") return process.env.E2E_DATABASE_URL?.trim();
   return process.env.DATABASE_URL?.trim();
 }
 

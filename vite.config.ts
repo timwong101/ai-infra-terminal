@@ -17,7 +17,7 @@ const localBindingConfig = {
   vars: process.env.E2E_TEST === "1"
     ? {
         E2E_TEST: "1",
-        E2E_DATABASE_URL: process.env.E2E_DATABASE_URL || process.env.DATABASE_URL || "",
+        E2E_DATABASE_URL: process.env.E2E_DATABASE_URL || "",
       }
     : {},
   d1_databases: d1

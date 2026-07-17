@@ -32,6 +32,7 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://ai_infra:ai_infra@127.0.0.1:5432/ai_infra_test
+      E2E_DATABASE_URL: postgresql://ai_infra:ai_infra@127.0.0.1:5432/ai_infra_test
       E2E_TEST: "1"
       SEC_USER_AGENT: AI Infra Terminal CI ci@example.com
     steps:
@@ -45,11 +46,6 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
-      - name: Prepare test database
-        run: |
-          pnpm db:migrate
-          pnpm db:seed:e2e
-          pnpm research:intelligence
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm test:e2e

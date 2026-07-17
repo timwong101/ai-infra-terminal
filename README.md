@@ -153,8 +153,20 @@ The **Alerts** workspace converts those changes into a review queue. Alerts can 
 ## Verify
 
 ```bash
+pnpm lint
 pnpm build
 pnpm test
 ```
+
+GitHub Actions runs lint, the production build, all deterministic tests, and a Chromium analyst journey against an isolated pgvector/Postgres service. The browser journey verifies direct links for every covered Neocloud, evidence review and claim linking, thesis alerts, cited memo generation, saved-memo reloads, and the Activity workspace.
+
+To run that journey locally, create a dedicated database once and pass it explicitly. The fixture command refuses to truncate any database whose name does not end in `_e2e` or `_test`.
+
+```bash
+docker compose exec -T postgres createdb -U ai_infra ai_infra_e2e
+E2E_DATABASE_URL="postgresql://ai_infra:ai_infra@localhost:5432/ai_infra_e2e" pnpm test:e2e
+```
+
+Company, theme, evidence-company, and saved-memo selections have durable URLs, so an analyst can reload or share a research view without losing its primary context.
 
 There is intentionally no authentication or live market-price integration in this version. SEC and investor-relations evidence is real, while AI generation is optional and always constrained by the saved evidence packet. The infrastructure map labels Neoclouds as live coverage and treats every other theme as roadmap-only until official sources and company policies are integrated.

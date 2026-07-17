@@ -2,6 +2,11 @@ import { defineConfig, devices } from "@playwright/test";
 
 const port = 4173;
 const baseURL = `http://localhost:${port}`;
+const e2eDatabaseUrl = process.env.E2E_DATABASE_URL?.trim();
+
+if (!e2eDatabaseUrl) {
+  throw new Error("E2E_DATABASE_URL must point to a dedicated test database before running Playwright.");
+}
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -25,7 +30,7 @@ export default defineConfig({
     env: {
       ...process.env,
       E2E_TEST: "1",
-      E2E_DATABASE_URL: process.env.DATABASE_URL || "",
+      E2E_DATABASE_URL: e2eDatabaseUrl,
       SEC_USER_AGENT: process.env.SEC_USER_AGENT || "AI Infra Terminal CI ci@example.com",
     },
   },
