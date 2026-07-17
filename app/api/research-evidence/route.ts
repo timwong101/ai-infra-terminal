@@ -5,7 +5,9 @@ import { generateResearchAlerts } from "@/lib/alerts/generate";
 export async function GET(request: Request) {
   try {
     const params = new URL(request.url).searchParams;
-    const synced = params.get("sync") === "0" ? { sec: 0, ir: 0 } : await syncResearchEvidence();
+    const synced = process.env.E2E_TEST === "1" || params.get("sync") === "0"
+      ? { sec: 0, ir: 0 }
+      : await syncResearchEvidence();
     const result = await listResearchEvidence({
       query: params.get("q") ?? undefined,
       companyId: params.get("company") ?? undefined,

@@ -4,7 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpenText, Check, CircleGauge, Copy, ExternalLink, FileCheck2, Filter, Link2, LoaderCircle, Search, ShieldAlert, ShieldCheck, Sparkles, X } from "lucide-react";
 import type { EvidenceReviewStatus, EvidenceWorkspaceResponse, ResearchEvidenceItem } from "@/lib/research/types";
 
-type Props = { onBuildComparison: () => void };
+type Props = {
+  initialCompanyId?: string;
+  onBuildComparison: () => void;
+  onCompanyChange?: (companyId: string) => void;
+};
 
 const EMPTY_RESPONSE: EvidenceWorkspaceResponse = {
   items: [], total: 0, summary: { unreviewed: 0, accepted: 0, rejected: 0 }, companies: [], topics: [], claims: [],
@@ -15,12 +19,11 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
 }
 
-export function EvidenceWorkspace({ onBuildComparison }: Props) {
+export function EvidenceWorkspace({ initialCompanyId = "", onBuildComparison, onCompanyChange }: Props) {
   const [data, setData] = useState(EMPTY_RESPONSE);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
-  const [company, setCompany] = useState("");
   const [topic, setTopic] = useState("");
   const [source, setSource] = useState("");
   const [review, setReview] = useState("");
@@ -62,7 +65,7 @@ export function EvidenceWorkspace({ onBuildComparison }: Props) {
     const normalized = query.trim().toLowerCase();
     return data.items.filter((item) =>
       (!normalized || [item.companyName, item.ticker, item.documentTitle, item.sectionTitle, item.topic, item.excerpt].join(" ").toLowerCase().includes(normalized)) &&
-      (!company || item.companyId === company) &&
+      (!initialCompanyId || item.companyId === initialCompanyId) &&
       (!topic || item.topic === topic) &&
       (!source || item.sourceKind === source) &&
       (!review || item.reviewStatus === review) &&
@@ -72,7 +75,7 @@ export function EvidenceWorkspace({ onBuildComparison }: Props) {
         (triage === "boilerplate" && item.boilerplateRisk >= 60) ||
         (triage === "duplicates" && item.duplicateCount > 1))
     ).sort((left, right) => right.evidenceQualityScore - left.evidenceQualityScore || right.documentDate.localeCompare(left.documentDate));
-  }, [company, data.items, query, review, source, topic, triage]);
+  }, [data.items, initialCompanyId, query, review, source, topic, triage]);
   const visibleItems = filtered.slice(0, visibleLimit);
 
   const updateReview = async (ids: string[], nextStatus: EvidenceReviewStatus, suggestion?: { status: "accepted" | "rejected"; claimId?: string; impact?: "supports" | "weakens" | "watch" }) => {
@@ -95,7 +98,7 @@ export function EvidenceWorkspace({ onBuildComparison }: Props) {
     }
   };
 
-  const resetFilters = () => { setQuery(""); setCompany(""); setTopic(""); setSource(""); setReview(""); setTriage("review"); setVisibleLimit(100); };
+  const resetFilters = () => { setQuery(""); onCompanyChange?.(""); setTopic(""); setSource(""); setReview(""); setTriage("review"); setVisibleLimit(100); };
 
   return (
     <div className="research-workspace evidence-workspace-page">
@@ -114,7 +117,7 @@ export function EvidenceWorkspace({ onBuildComparison }: Props) {
       <section className="evidence-toolbar" aria-label="Evidence filters">
         <label className="workspace-search"><Search size={15} /><input value={query} onChange={(event) => { setQuery(event.target.value); setVisibleLimit(100); }} placeholder="Search passages, topics, companies..." />{query && <button onClick={() => { setQuery(""); setVisibleLimit(100); }} aria-label="Clear search"><X size={14} /></button>}</label>
         <select aria-label="Filter evidence triage" value={triage} onChange={(event) => { setTriage(event.target.value); setVisibleLimit(100); }}><option value="review">Analyst review queue</option><option value="high-value">High-value evidence</option><option value="boilerplate">Boilerplate risk</option><option value="duplicates">Duplicate groups</option><option value="all">All evidence</option></select>
-        <select aria-label="Filter by company" value={company} onChange={(event) => { setCompany(event.target.value); setVisibleLimit(100); }}><option value="">All companies</option>{data.companies.map((item) => <option value={item.id} key={item.id}>{item.name} ({item.ticker}) · {item.evidenceCount}</option>)}</select>
+        <select aria-label="Filter by company" value={initialCompanyId} onChange={(event) => { onCompanyChange?.(event.target.value); setVisibleLimit(100); }}><option value="">All companies</option>{data.companies.map((item) => <option value={item.id} key={item.id}>{item.name} ({item.ticker}) · {item.evidenceCount}</option>)}</select>
         <select aria-label="Filter by topic" value={topic} onChange={(event) => { setTopic(event.target.value); setVisibleLimit(100); }}><option value="">All topics</option>{data.topics.map((item) => <option value={item.name} key={item.name}>{item.name} · {item.evidenceCount}</option>)}</select>
         <select aria-label="Filter by source" value={source} onChange={(event) => { setSource(event.target.value); setVisibleLimit(100); }}><option value="">SEC + IR</option><option value="sec">SEC filings</option><option value="ir">Investor relations</option></select>
         <select aria-label="Filter by review status" value={review} onChange={(event) => { setReview(event.target.value); setVisibleLimit(100); }}><option value="">All review states</option><option value="unreviewed">Unreviewed</option><option value="accepted">Accepted</option><option value="rejected">Rejected</option></select>
@@ -127,7 +130,7 @@ export function EvidenceWorkspace({ onBuildComparison }: Props) {
           {status === "loading" && <div className="workspace-state"><LoaderCircle className="drawer-spinner" size={24} /><strong>Building unified evidence catalog</strong><span>Normalizing SEC and IR passages with source provenance.</span></div>}
           {status === "error" && <div className="workspace-state error"><strong>Evidence workspace unavailable</strong><span>{error}</span><button className="command-button" onClick={() => void load()}>Try again</button></div>}
           {status === "ready" && <div className="evidence-catalog-list">
-            {visibleItems.map((item) => <article className={`catalog-row ${selected?.id === item.id ? "selected" : ""}`} key={item.id} tabIndex={0} onClick={() => selectEvidence(item)} onKeyDown={(event) => { if (event.key === "Enter") selectEvidence(item); }}>
+            {visibleItems.map((item) => <article className={`catalog-row ${selected?.id === item.id ? "selected" : ""}`} data-evidence-id={item.id} key={item.id} tabIndex={0} onClick={() => selectEvidence(item)} onKeyDown={(event) => { if (event.key === "Enter") selectEvidence(item); }}>
               <div className="catalog-row-main"><div className="catalog-badges"><span className={`review-badge ${item.reviewStatus}`}>{item.reviewStatus}</span><span>{item.sourceType}</span><span>{item.topic}</span>{item.boilerplateRisk >= 60 && <span className="risk-badge">boilerplate {item.boilerplateRisk}</span>}{item.duplicateCount > 1 && <span className="duplicate-badge"><Copy size={10} /> {item.duplicateCount} copies</span>}</div><h3>{item.companyName} <em>{item.ticker}</em></h3><p>{item.excerpt}</p>{item.suggestedClaimTitle && <div className={`claim-suggestion-row ${item.suggestionStatus}`}><Link2 size={12} /><span>{item.suggestedImpact} · {item.suggestedClaimTitle}</span><b>{item.suggestionConfidence}%</b></div>}<div className="catalog-meta"><span>{formatDate(item.documentDate)}</span><span>{item.sectionTitle}</span>{item.pageNumber && <span>Page {item.pageNumber}</span>}<span>Evidence quality {item.evidenceQualityScore}</span></div></div>
               <div className="review-actions"><button className={item.reviewStatus === "accepted" ? "active accept" : ""} onClick={(event) => { event.stopPropagation(); void updateReview([item.id], "accepted"); }} aria-label="Accept evidence" title="Accept evidence"><Check size={15} /></button><button className={item.reviewStatus === "rejected" ? "active reject" : ""} onClick={(event) => { event.stopPropagation(); void updateReview([item.id], "rejected"); }} aria-label="Reject evidence" title="Reject evidence"><X size={15} /></button></div>
             </article>)}

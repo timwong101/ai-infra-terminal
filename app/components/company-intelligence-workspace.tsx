@@ -21,6 +21,11 @@ import {
 } from "lucide-react";
 import type { CompanyIntelligenceResponse, IntelligenceComparison } from "@/lib/company-intelligence/types";
 
+type Props = {
+  initialCompanyId?: string;
+  onCompanyChange?: (companyId: string) => void;
+};
+
 function DirectionIcon({ direction }: { direction: IntelligenceComparison["direction"] }) {
   if (direction === "increased") return <ArrowUpRight size={14} />;
   if (direction === "decreased" || direction === "removed") return <ArrowDownRight size={14} />;
@@ -28,7 +33,7 @@ function DirectionIcon({ direction }: { direction: IntelligenceComparison["direc
   return <ArrowRight size={14} />;
 }
 
-export function CompanyIntelligenceWorkspace() {
+export function CompanyIntelligenceWorkspace({ initialCompanyId = "", onCompanyChange }: Props) {
   const [data, setData] = useState<CompanyIntelligenceResponse | null>(null);
   const [selectedComparisonId, setSelectedComparisonId] = useState("");
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -51,7 +56,12 @@ export function CompanyIntelligenceWorkspace() {
     }
   };
 
-  useEffect(() => { queueMicrotask(() => void load()); }, []);
+  useEffect(() => { queueMicrotask(() => void load({ company: initialCompanyId || undefined })); }, [initialCompanyId]);
+
+  const selectCompany = (companyId: string) => {
+    onCompanyChange?.(companyId);
+    if (!onCompanyChange) void load({ company: companyId });
+  };
 
   const metrics = useMemo(() => data?.comparisons.filter((item) => item.comparisonKind === "metric") ?? [], [data]);
   const disclosures = useMemo(() => data?.comparisons.filter((item) => item.comparisonKind === "disclosure") ?? [], [data]);
@@ -69,7 +79,7 @@ export function CompanyIntelligenceWorkspace() {
     <header className="workspace-title-row"><div><p className="breadcrumb">Research workspace / Temporal analysis</p><h1>Company Intelligence</h1><p className="workspace-subtitle">Reporting-period changes across capacity, demand, capital, funding, and management disclosures.</p></div><button className="command-button" disabled={status === "loading"} onClick={() => void load({ company: data?.company.id, sync: true })}>{status === "loading" ? <LoaderCircle className="drawer-spinner" size={15} /> : <RefreshCw size={15} />} Refresh analysis</button></header>
     {error && <div className="builder-error"><ShieldAlert size={14} /> {error}</div>}
     {data && <section className="company-intelligence-layout">
-      <aside className="panel company-coverage-panel"><div className="catalog-heading"><div><h2>Neocloud coverage</h2><span>{data.companies.length} companies</span></div><Building2 size={17} /></div>{data.companies.map((company) => <button key={company.id} className={company.id === data.company.id ? "active" : ""} onClick={() => void load({ company: company.id })}><span>{company.ticker}</span><div><strong>{company.name}</strong><small>{company.periodCount} periods · {company.latestPeriod}</small></div><ChevronRight size={14} /></button>)}</aside>
+      <aside className="panel company-coverage-panel"><div className="catalog-heading"><div><h2>Neocloud coverage</h2><span>{data.companies.length} companies</span></div><Building2 size={17} /></div>{data.companies.map((company) => <button key={company.id} className={company.id === data.company.id ? "active" : ""} onClick={() => selectCompany(company.id)}><span>{company.ticker}</span><div><strong>{company.name}</strong><small>{company.periodCount} periods · {company.latestPeriod}</small></div><ChevronRight size={14} /></button>)}</aside>
 
       <div className="company-intelligence-main">
         <section className="panel company-period-header"><div className="company-identity"><span>{data.company.ticker}</span><div><p className="section-kicker">Neocloud intelligence</p><h2>{data.company.name}</h2><div className="period-resolution"><b>{data.currentPeriod.periodBasis === "calendar-fallback" ? "Calendar fallback" : data.currentPeriod.periodBasis}</b><small>{data.currentPeriod.resolutionMethod.replaceAll("-", " ")} · {data.currentPeriod.resolutionConfidence}% confidence</small></div></div></div><div className="period-comparison-controls"><label><span>Current period</span><select value={data.currentPeriod.id} onChange={(event) => { const index = data.periods.findIndex((period) => period.id === event.target.value); const selected = data.periods[index]; const prior = data.periods.slice(index + 1).find((period) => period.periodKind === selected.periodKind); void load({ company: data.company.id, current: event.target.value, previous: prior?.id }); }}>{data.periods.map((period) => <option value={period.id} key={period.id}>{period.label}{period.periodBasis === "calendar-fallback" ? " · fallback" : ""}</option>)}</select></label><ArrowRight size={16} /><label><span>Compare with</span><select value={data.previousPeriod?.id ?? ""} onChange={(event) => void load({ company: data.company.id, current: data.currentPeriod.id, previous: event.target.value })}><option value="">No prior period</option>{previousOptions.map((period) => <option value={period.id} key={period.id}>{period.label}</option>)}</select></label></div></section>

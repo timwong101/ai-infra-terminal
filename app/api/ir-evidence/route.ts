@@ -10,6 +10,9 @@ let lastSuccessfulRefresh = 0;
 let refreshInFlight: Promise<IrEvidenceCache> | null = null;
 
 async function getIrEvidence(): Promise<IrEvidenceResponse> {
+  if (process.env.E2E_TEST === "1") {
+    return { cache: fallbackCache, refresh: { status: "cached" } };
+  }
   if (lastSuccessfulRefresh > 0 && Date.now() - lastSuccessfulRefresh < REFRESH_TTL_MS) {
     return { cache: runtimeCache, refresh: { status: "cached" } };
   }
@@ -28,6 +31,9 @@ async function getIrEvidence(): Promise<IrEvidenceResponse> {
 export async function GET() {
   try {
     const result = await getIrEvidence();
+    if (process.env.E2E_TEST === "1") {
+      return Response.json({ ...result, ingestion: { pending: 0, processing: 0, completed: 0, failed: 0 } }, { headers: { "Cache-Control": "private, no-store" } });
+    }
     const ingestion = await syncIrCatalog(result.cache) ?? undefined;
     return Response.json({ ...result, ingestion }, { headers: { "Cache-Control": "private, no-store" } });
   } catch {

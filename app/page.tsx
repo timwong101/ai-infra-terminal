@@ -25,7 +25,7 @@ import {
   Target,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertsWorkspace } from "@/app/components/alerts-workspace";
 import { ComparisonWorkspace } from "@/app/components/comparison-workspace";
 import { CompanyIntelligenceWorkspace } from "@/app/components/company-intelligence-workspace";
@@ -106,22 +106,22 @@ function formatRefreshDate(value: string) {
 }
 
 const navItems = [
-  { label: "AI Infra Map", icon: Network },
-  { label: "Companies", icon: Building2 },
-  { label: "Themes", icon: Layers3 },
-  { label: "Evidence Feed", icon: FileText },
-  { label: "Theses", icon: Target },
-  { label: "Memos", icon: Sparkles },
-  { label: "Alerts", icon: Bell },
-  { label: "Activity", icon: Activity },
+  { label: "AI Infra Map", icon: Network, path: "/" },
+  { label: "Companies", icon: Building2, path: "/companies" },
+  { label: "Themes", icon: Layers3, path: "/themes/neoclouds" },
+  { label: "Evidence Feed", icon: FileText, path: "/evidence" },
+  { label: "Theses", icon: Target, path: "/theses" },
+  { label: "Memos", icon: Sparkles, path: "/memos" },
+  { label: "Alerts", icon: Bell, path: "/alerts" },
+  { label: "Activity", icon: Activity, path: "/activity" },
 ];
 
 const LIVE_THEME = "Neoclouds";
 const TRACKED_COMPANIES = [
-  { name: "CoreWeave", ticker: "CRWV" },
-  { name: "Nebius", ticker: "NBIS" },
-  { name: "Applied Digital", ticker: "APLD" },
-  { name: "IREN", ticker: "IREN" },
+  { id: "coreweave", name: "CoreWeave", ticker: "CRWV" },
+  { id: "nebius", name: "Nebius", ticker: "NBIS" },
+  { id: "applied-digital", name: "Applied Digital", ticker: "APLD" },
+  { id: "iren", name: "IREN", ticker: "IREN" },
 ] as const;
 
 const themeGroups = [
@@ -132,6 +132,35 @@ const themeGroups = [
   { title: "Networking", items: ["Ethernet / Switching", "InfiniBand / Fabrics", "Optical Networking", "Network Software"] },
   { title: "Physical AI", items: ["Edge Compute", "Sensors / Vision", "Robotics Platforms", "Actuators / Motion"] },
 ];
+
+const themeNames = themeGroups.flatMap((group) => group.items);
+
+function slugify(value: string) {
+  return value.toLowerCase().replaceAll("&", "and").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+type TerminalRoute = {
+  activeNav: string;
+  selectedTheme?: string;
+  companyId?: string;
+  evidenceCompanyId?: string;
+  memoId?: string;
+};
+
+function parseRoute(): TerminalRoute {
+  const parts = window.location.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  const search = new URLSearchParams(window.location.search);
+  if (parts[0] === "companies") return { activeNav: "Companies", companyId: parts[1] ?? "" };
+  if (parts[0] === "evidence") return { activeNav: "Evidence Feed", evidenceCompanyId: search.get("company") ?? "" };
+  if (parts[0] === "memos") return { activeNav: "Memos", memoId: parts[1] ?? "" };
+  if (parts[0] === "theses") return { activeNav: "Theses" };
+  if (parts[0] === "alerts") return { activeNav: "Alerts" };
+  if (parts[0] === "activity") return { activeNav: "Activity" };
+  if (parts[0] === "themes") {
+    return { activeNav: "Themes", selectedTheme: themeNames.find((theme) => slugify(theme) === parts[1]) ?? LIVE_THEME };
+  }
+  return { activeNav: "AI Infra Map", selectedTheme: LIVE_THEME };
+}
 
 function createNeocloudResearchView(cache: EvidenceCache, irCache: IrEvidenceCache): ResearchView {
   const secEvidence: Evidence[] = cache.filings.map((filing) => ({
@@ -266,7 +295,35 @@ export default function Home() {
   const [detailError, setDetailError] = useState("");
   const [copiedPassage, setCopiedPassage] = useState<string | null>(null);
   const [unreadAlertCount, setUnreadAlertCount] = useState(0);
+  const [routeCompanyId, setRouteCompanyId] = useState("");
+  const [routeEvidenceCompanyId, setRouteEvidenceCompanyId] = useState("");
+  const [routeMemoId, setRouteMemoId] = useState("");
   const detailRequest = useRef<AbortController | null>(null);
+
+  const syncRoute = useCallback(() => {
+    const route = parseRoute();
+    setActiveNav(route.activeNav);
+    setRouteCompanyId(route.companyId ?? "");
+    setRouteEvidenceCompanyId(route.evidenceCompanyId ?? "");
+    setRouteMemoId(route.memoId ?? "");
+    if (route.selectedTheme) {
+      setSelectedTheme(route.selectedTheme);
+      setActiveTab("Overview");
+      setSourceFilter("All sources");
+    }
+  }, []);
+
+  const navigate = useCallback((path: string) => {
+    if (`${window.location.pathname}${window.location.search}` !== path) window.history.pushState({}, "", path);
+    syncRoute();
+    setSidebarOpen(false);
+  }, [syncRoute]);
+
+  useEffect(() => {
+    queueMicrotask(syncRoute);
+    window.addEventListener("popstate", syncRoute);
+    return () => window.removeEventListener("popstate", syncRoute);
+  }, [syncRoute]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -435,6 +492,7 @@ export default function Home() {
     setSourceFilter("All sources");
     setToast(`${theme} research view loaded`);
     window.setTimeout(() => setToast(null), 2200);
+    navigate(`/themes/${slugify(theme)}`);
   };
 
   const closeEvidenceDetail = () => {
@@ -584,7 +642,7 @@ export default function Home() {
               <button
                 key={item.label}
                 className={`nav-item ${activeNav === item.label ? "active" : ""}`}
-                onClick={() => { setActiveNav(item.label); setSidebarOpen(false); setToast(`${item.label} selected`); window.setTimeout(() => setToast(null), 1800); }}
+                onClick={() => { navigate(item.path); setToast(`${item.label} selected`); window.setTimeout(() => setToast(null), 1800); }}
               >
                 <Icon size={17} strokeWidth={1.8} />
                 <span>{item.label}</span>
@@ -610,8 +668,8 @@ export default function Home() {
             {query && <button onClick={() => setQuery("")} aria-label="Clear search"><X size={15} /></button>}
           </label>
           <div className="header-actions">
-            <button className="command-button" onClick={() => setActiveNav("Memos")}><Plus size={16} /> <span>New Memo</span></button>
-            <button className="command-button" onClick={() => setActiveNav("Activity")}><Star size={16} /> <span>Watchlist</span></button>
+            <button className="command-button" onClick={() => navigate("/memos")}><Plus size={16} /> <span>New Memo</span></button>
+            <button className="command-button" onClick={() => navigate("/activity")}><Star size={16} /> <span>Watchlist</span></button>
             <button className="avatar" aria-label="Open profile menu">TW</button>
             <ChevronDown size={15} className="profile-chevron" />
           </div>
@@ -620,11 +678,23 @@ export default function Home() {
         {activeNav === "Alerts" ? (
           <AlertsWorkspace onOpenFiling={openAlertFiling} onUnreadChange={setUnreadAlertCount} />
         ) : activeNav === "Evidence Feed" ? (
-          <EvidenceWorkspace onBuildComparison={() => setActiveNav("Memos")} />
+          <EvidenceWorkspace
+            initialCompanyId={routeEvidenceCompanyId}
+            onBuildComparison={() => navigate("/memos")}
+            onCompanyChange={(companyId) => navigate(companyId ? `/evidence?company=${encodeURIComponent(companyId)}` : "/evidence")}
+          />
         ) : activeNav === "Memos" ? (
-          <ComparisonWorkspace onReviewEvidence={() => setActiveNav("Evidence Feed")} />
+          <ComparisonWorkspace
+            key={routeMemoId || "memo-index"}
+            initialMemoId={routeMemoId}
+            onReviewEvidence={() => navigate("/evidence")}
+            onMemoSelect={(memoId) => navigate(`/memos/${encodeURIComponent(memoId)}`)}
+          />
         ) : activeNav === "Companies" ? (
-          <CompanyIntelligenceWorkspace />
+          <CompanyIntelligenceWorkspace
+            initialCompanyId={routeCompanyId}
+            onCompanyChange={(companyId) => navigate(`/companies/${encodeURIComponent(companyId)}`)}
+          />
         ) : activeNav === "Theses" ? (
           <ThesisWorkspace />
         ) : activeNav === "Activity" ? (
@@ -706,21 +776,21 @@ export default function Home() {
                       ) : (
                         <button className="evidence-item" key={item.title}><FileText size={16} /><span><strong>{item.title}</strong><em>{item.source}</em></span><time>{item.age}</time></button>
                       ))}
-                      <button className="text-link" onClick={() => setActiveNav("Evidence Feed")}>View all evidence <ChevronRight size={15} /></button>
+                      <button className="text-link" onClick={() => navigate("/evidence")}>View all evidence <ChevronRight size={15} /></button>
                     </div>
                     <div className="thesis-column">
                       <h3>Key companies</h3>
-                      <div className="company-tags">{researchView.companies.map((company) => <button key={company} onClick={() => setActiveNav("Companies")}>{company}</button>)}</div>
+                      <div className="company-tags">{TRACKED_COMPANIES.map((company) => { const label = `${company.name} (${company.ticker})`; return <button key={company.id} onClick={() => navigate(`/companies/${company.id}`)}>{label}</button>; })}</div>
                       <div className="thesis-copy"><h3>Bull thesis</h3><p>{researchView.bull}</p><h3>Bear thesis</h3><p>{researchView.bear}</p></div>
                     </div>
-                    <div className="scores-column"><ScoreGauge score={researchView.confidence} label="Coverage confidence" /><ScoreGauge score={researchView.quality} label="Source quality" /><button className="text-link" onClick={() => setActiveNav("Evidence Feed")}>Review inputs <ChevronRight size={14} /></button></div>
+                    <div className="scores-column"><ScoreGauge score={researchView.confidence} label="Coverage confidence" /><ScoreGauge score={researchView.quality} label="Source quality" /><button className="text-link" onClick={() => navigate("/evidence")}>Review inputs <ChevronRight size={14} /></button></div>
                   </>
                 ) : (
                   <div className="tab-placeholder">
                     <span className="tab-icon"><Layers3 size={22} /></span>
                     <h3>{activeTab} for {selectedTheme}</h3>
                     <p>Open the dedicated workspace to inspect the underlying records and complete this research workflow.</p>
-                    <button onClick={() => setActiveNav(activeTab === "Companies" ? "Companies" : activeTab === "Memos" ? "Memos" : activeTab === "Evidence" ? "Evidence Feed" : "Theses")}>Open {activeTab.toLowerCase()} workspace</button>
+                    <button onClick={() => navigate(activeTab === "Companies" ? "/companies" : activeTab === "Memos" ? "/memos" : activeTab === "Evidence" ? "/evidence" : "/theses")}>Open {activeTab.toLowerCase()} workspace</button>
                   </div>
                 )}
               </div>
@@ -729,7 +799,7 @@ export default function Home() {
 
           <section className="secondary-grid">
             <article className="panel evidence-panel">
-              <div className="panel-heading compact"><div className="heading-with-count"><h2>Evidence Feed</h2><span>{filteredEvidence.length}</span></div><div className="table-actions"><select aria-label="Filter evidence source" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}>{sourceOptions.map((source) => <option key={source}>{source}</option>)}</select><button className="text-link" onClick={() => setActiveNav("Evidence Feed")}>View all <ChevronRight size={14} /></button></div></div>
+              <div className="panel-heading compact"><div className="heading-with-count"><h2>Evidence Feed</h2><span>{filteredEvidence.length}</span></div><div className="table-actions"><select aria-label="Filter evidence source" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}>{sourceOptions.map((source) => <option key={source}>{source}</option>)}</select><button className="text-link" onClick={() => navigate("/evidence")}>View all <ChevronRight size={14} /></button></div></div>
               <div className="evidence-table-wrap">
                 <table className="evidence-table">
                   <colgroup>
@@ -776,17 +846,17 @@ export default function Home() {
                 </table>
                 {!evidencePreview.length && <div className="empty-state"><Search size={19} /><span>{researchView.isCovered ? "No evidence matches this search." : `${selectedTheme} evidence is not yet integrated.`}</span>{researchView.isCovered ? <button onClick={() => { setQuery(""); setSourceFilter("All sources"); }}>Clear filters</button> : <button onClick={() => selectTheme(LIVE_THEME)}>View Neocloud evidence</button>}</div>}
               </div>
-              <button className="footer-link" onClick={() => setActiveNav("Evidence Feed")}>View all evidence feed <ChevronRight size={15} /></button>
+              <button className="footer-link" onClick={() => navigate("/evidence")}>View all evidence feed <ChevronRight size={15} /></button>
             </article>
 
             <article className="panel memo-panel">
-              <div className="panel-heading compact"><div className="heading-with-count"><h2>Memo Workspace</h2><span>{researchView.isCovered ? "Grounded" : "Unavailable"}</span></div><button className="command-button small" disabled={!researchView.isCovered} onClick={() => setActiveNav("Memos")}>Open in editor <ChevronRight size={14} /></button></div>
+              <div className="panel-heading compact"><div className="heading-with-count"><h2>Memo Workspace</h2><span>{researchView.isCovered ? "Grounded" : "Unavailable"}</span></div><button className="command-button small" disabled={!researchView.isCovered} onClick={() => navigate("/memos")}>Open in editor <ChevronRight size={14} /></button></div>
               {researchView.isCovered ? <>
                 <div className="memo-title"><div><h3>{researchView.memoTitle}</h3><p>Built from accepted evidence in the research catalog</p></div><div><span>{researchView.coveredCompanyCount} companies</span><span>{researchView.evidence.length} source documents</span></div></div>
                 <div className="memo-readiness">
                   <div className="memo-readiness-score"><Sparkles size={19} /><span><strong>{researchView.confidence}</strong><small>coverage confidence</small></span></div>
                   <div><strong>Claim-to-evidence comparisons</strong><p>The memo builder retrieves accepted SEC and IR passages, verifies every citation, and preserves the exact source packet.</p></div>
-                  <button className="primary-button" onClick={() => setActiveNav("Memos")}><Plus size={15} /> Build comparison</button>
+                  <button className="primary-button" onClick={() => navigate("/memos")}><Plus size={15} /> Build comparison</button>
                 </div>
               </> : <div className="workspace-state memo-roadmap-state"><CircleHelp size={24} /><strong>No supported memo universe</strong><span>Memo creation is available only for themes with configured companies and reviewed evidence.</span><button className="command-button" onClick={() => selectTheme(LIVE_THEME)}>Return to Neoclouds</button></div>}
             </article>
@@ -797,7 +867,7 @@ export default function Home() {
         <footer className="ingestion-bar">
           <div className="ingestion-title"><strong>Ingestion Status</strong><CircleHelp size={14} /></div>
           {ingestion.map((item) => <div className="ingestion-item" key={item.name}><div><strong>{item.name}</strong><span>Last run: {item.time}</span><span>{item.detail}</span></div><span className={item.connected ? "success-dot" : "success-dot status-pending"}>{item.connected ? <ShieldCheck size={15} /> : <CircleHelp size={15} />}{item.status}</span></div>)}
-          <button onClick={() => setActiveNav("Activity")}>View Ingestion Dashboard <ChevronRight size={15} /></button>
+          <button onClick={() => navigate("/activity")}>View Ingestion Dashboard <ChevronRight size={15} /></button>
         </footer>
       </section>
 

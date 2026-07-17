@@ -11,6 +11,9 @@ let lastSuccessfulRefresh = 0;
 let refreshInFlight: Promise<EvidenceCache> | null = null;
 
 async function getSecEvidence(): Promise<SecEvidenceResponse> {
+  if (process.env.E2E_TEST === "1") {
+    return { cache: fallbackCache, refresh: { status: "cached" } };
+  }
   if (lastSuccessfulRefresh > 0 && Date.now() - lastSuccessfulRefresh < REFRESH_TTL_MS) {
     return { cache: runtimeCache, refresh: { status: "cached" } };
   }

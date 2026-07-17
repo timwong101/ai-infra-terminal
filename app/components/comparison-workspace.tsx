@@ -1,14 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, BookOpenText, ChevronRight, ExternalLink, FileText, LoaderCircle, Scale, ShieldCheck, Sparkles } from "lucide-react";
 import type { ComparisonMemo, EvidenceWorkspaceResponse } from "@/lib/research/types";
 
-type Props = { onReviewEvidence: () => void };
+type Props = {
+  initialMemoId?: string;
+  onMemoSelect?: (memoId: string) => void;
+  onReviewEvidence: () => void;
+};
 
 function scoreTone(score: number) { return score >= 75 ? "high" : score >= 55 ? "medium" : "low"; }
 
-export function ComparisonWorkspace({ onReviewEvidence }: Props) {
+export function ComparisonWorkspace({ initialMemoId = "", onMemoSelect, onReviewEvidence }: Props) {
+  const initialMemoIdRef = useRef(initialMemoId);
   const [evidence, setEvidence] = useState<EvidenceWorkspaceResponse | null>(null);
   const [memos, setMemos] = useState<ComparisonMemo[]>([]);
   const [selectedMemo, setSelectedMemo] = useState<ComparisonMemo | null>(null);
@@ -29,7 +34,7 @@ export function ComparisonWorkspace({ onReviewEvidence }: Props) {
       setEvidence(evidenceResult as EvidenceWorkspaceResponse);
       const loadedMemos = (memoResult.memos ?? []) as ComparisonMemo[];
       setMemos(loadedMemos);
-      setSelectedMemo(loadedMemos[0] ?? null);
+      setSelectedMemo(loadedMemos.find((memo) => memo.id === initialMemoIdRef.current) ?? loadedMemos[0] ?? null);
       const eligible = (evidenceResult as EvidenceWorkspaceResponse).companies.filter((company) => (evidenceResult as EvidenceWorkspaceResponse).items.some((item) => item.companyId === company.id && item.reviewStatus === "accepted"));
       setCompanyA(eligible[0]?.id ?? "");
       setCompanyB(eligible[1]?.id ?? "");
@@ -58,6 +63,7 @@ export function ComparisonWorkspace({ onReviewEvidence }: Props) {
       if (!response.ok || !result.memo) throw new Error(result.error || "Unable to generate memo.");
       setMemos((current) => [result.memo!, ...current]);
       setSelectedMemo(result.memo);
+      onMemoSelect?.(result.memo.id);
       setStatus("ready");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to generate memo."); setStatus("ready"); }
   };
@@ -82,7 +88,7 @@ export function ComparisonWorkspace({ onReviewEvidence }: Props) {
             {error && <div className="builder-error"><AlertTriangle size={14} /> {error}</div>}
             <button className="primary-button generate-button" disabled={status === "generating" || !companyA || !companyB || companyA === companyB} onClick={() => void generate()}>{status === "generating" ? <LoaderCircle className="drawer-spinner" size={16} /> : <Sparkles size={16} />} Generate grounded memo</button>
           </div>
-          <div className="saved-memos"><div className="saved-heading"><h3>Research history</h3><span>{memos.length}</span></div>{memos.map((memo) => <button className={`${selectedMemo?.id === memo.id ? "active" : ""} ${memo.isStale ? "stale" : ""}`} onClick={() => setSelectedMemo(memo)} key={memo.id}>{memo.isStale ? <AlertTriangle size={15} /> : <FileText size={15} />}<span><strong>{memo.title}</strong><small>{memo.isStale ? "Evidence changed · regeneration needed" : `${memo.topic} · ${memo.citations.length} citations`}</small></span><ChevronRight size={14} /></button>)}{!memos.length && <p>No saved comparison memos yet.</p>}</div>
+          <div className="saved-memos"><div className="saved-heading"><h3>Research history</h3><span>{memos.length}</span></div>{memos.map((memo) => <button className={`${selectedMemo?.id === memo.id ? "active" : ""} ${memo.isStale ? "stale" : ""}`} data-memo-id={memo.id} onClick={() => { setSelectedMemo(memo); onMemoSelect?.(memo.id); }} key={memo.id}>{memo.isStale ? <AlertTriangle size={15} /> : <FileText size={15} />}<span><strong>{memo.title}</strong><small>{memo.isStale ? "Evidence changed · regeneration needed" : `${memo.topic} · ${memo.citations.length} citations`}</small></span><ChevronRight size={14} /></button>)}{!memos.length && <p>No saved comparison memos yet.</p>}</div>
         </aside>
 
         <section className="memo-document panel">
