@@ -17,6 +17,7 @@ const researchAssistantOutputSchema = z.object({
 
 type Verification = { passed: boolean; rejectedClaims: number; checkedClaims: number; allowedCitations: number };
 type ResearchAssistantOutput = { claims: ResearchAssistantClaim[]; openQuestions: Array<{ companyId: string; text: string }> };
+export type ResearchAssistantEngine = "auto" | "deterministic" | "ai";
 
 export function chunkResearchAssistantMarkdown(value: string, size = 80) {
   const chunks: string[] = [];
@@ -97,6 +98,64 @@ function normalizeFilters(filters: Partial<ResearchAssistantFilters>, availableC
   return { companyIds, topic: filters.topic?.trim() || "All topics", sourceKinds, dateFrom: filters.dateFrom || undefined, dateTo: filters.dateTo || undefined };
 }
 
+export async function runResearchAssistantPipeline(
+  questionValue: string,
+  inputFilters: Partial<ResearchAssistantFilters>,
+  requestedEngine: ResearchAssistantEngine = "auto",
+) {
+  const startedAt = performance.now();
+  const catalog = await getResearchAssistantCatalog();
+  const filters = normalizeFilters(inputFilters, new Set(catalog.companies.map((item) => item.id)));
+  const question = questionValue.trim();
+  if (!question) throw new Error("Enter a research question.");
+  if (!filters.companyIds.length) throw new Error("Select at least one company.");
+
+  const model = process.env.AI_RESEARCH_ASSISTANT_MODEL?.trim() || "gpt-5-mini";
+  const canUseAi = Boolean(process.env.OPENAI_API_KEY?.trim());
+  if (requestedEngine === "ai" && !canUseAi) throw new Error("OPENAI_API_KEY is required for an AI quality run.");
+  const useAi = requestedEngine === "ai" || (requestedEngine === "auto" && canUseAi);
+  const retrieval = await searchAcceptedEvidence({ ...filters, query: question, limit: 36 });
+  const selected = filters.companyIds.flatMap((companyId) => retrieval.items.filter((item) => item.companyId === companyId).slice(0, 6)).slice(0, 24);
+  const names = new Map(catalog.companies.map((item) => [item.id, item.name]));
+  const prompt = buildPrompt(question, names, selected);
+  let raw = deterministicOutput(selected, filters.companyIds);
+  let engine = useAi ? "ai" : "deterministic";
+  let error: string | null = null;
+  let usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } = {};
+
+  if (useAi && selected.length) {
+    try {
+      const [{ generateText, Output }, { openai }] = await Promise.all([import("ai"), import("@ai-sdk/openai")]);
+      const result = await generateText({ model: openai(model), output: Output.object({ schema: researchAssistantOutputSchema }), prompt, maxOutputTokens: 2200 });
+      raw = result.output as ResearchAssistantOutput;
+      usage = result.totalUsage;
+    } catch (generationError) {
+      engine = "deterministic-fallback";
+      error = generationError instanceof Error ? generationError.message : "AI generation failed; deterministic fallback used.";
+    }
+  }
+
+  const verified = verifyResearchAssistantOutput(raw, selected, filters.companyIds);
+  const scores = scoreResearchAssistantEvidence(selected, filters.companyIds);
+  return {
+    question,
+    filters,
+    selected,
+    claims: verified.claims,
+    openQuestions: verified.openQuestions,
+    verification: verified.verification,
+    rawClaimCount: raw.claims.length,
+    scores,
+    markdown: answerMarkdown(verified, selected, names),
+    engine,
+    model: useAi ? model : "deterministic-v1",
+    retrievalMode: retrieval.mode,
+    usage,
+    error,
+    latencyMs: Math.max(1, Math.round(performance.now() - startedAt)),
+  };
+}
+
 export async function getResearchAssistantCatalog() {
   const result = await withDatabase(async (db) => {
     const companyRows = await db.select().from(companies).orderBy(asc(companies.name));
@@ -158,44 +217,20 @@ export async function getResearchAssistantSession(id: string): Promise<ResearchA
 }
 
 export async function answerResearchAssistantQuestion(sessionId: string, questionValue: string, inputFilters: Partial<ResearchAssistantFilters>) {
-  const catalog = await getResearchAssistantCatalog();
-  const filters = normalizeFilters(inputFilters, new Set(catalog.companies.map((item) => item.id)));
   const question = questionValue.trim();
   if (!question) throw new Error("Enter a research question.");
-  if (!filters.companyIds.length) throw new Error("Select at least one company.");
-  const model = process.env.AI_RESEARCH_ASSISTANT_MODEL?.trim() || "gpt-5-mini";
+  const requestedEngine: ResearchAssistantEngine = "auto";
   const hasAi = Boolean(process.env.OPENAI_API_KEY?.trim());
   const id = `research-assistant-message:${crypto.randomUUID()}`;
-  await withDatabase((db) => db.insert(researchAssistantMessages).values({ id, sessionId, question, engine: hasAi ? "ai" : "deterministic", model: hasAi ? model : "deterministic-v1", filters }));
+  await withDatabase((db) => db.insert(researchAssistantMessages).values({ id, sessionId, question, engine: hasAi ? "ai" : "deterministic", model: hasAi ? process.env.AI_RESEARCH_ASSISTANT_MODEL?.trim() || "gpt-5-mini" : "deterministic-v1", filters: inputFilters }));
 
   try {
-    const retrieval = await searchAcceptedEvidence({ ...filters, query: question, limit: 36 });
-    const selected = filters.companyIds.flatMap((companyId) => retrieval.items.filter((item) => item.companyId === companyId).slice(0, 6)).slice(0, 24);
-    const names = new Map(catalog.companies.map((item) => [item.id, item.name]));
-    const prompt = buildPrompt(question, names, selected);
-    let raw = deterministicOutput(selected, filters.companyIds);
-    let engine = hasAi ? "ai" : "deterministic";
-    let error: string | null = null;
-    let usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } = {};
-    if (hasAi && selected.length) {
-      try {
-        const [{ generateText, Output }, { openai }] = await Promise.all([import("ai"), import("@ai-sdk/openai")]);
-        const result = await generateText({ model: openai(model), output: Output.object({ schema: researchAssistantOutputSchema }), prompt, maxOutputTokens: 2200 });
-        raw = result.output as ResearchAssistantOutput;
-        usage = result.totalUsage;
-      } catch (generationError) {
-        engine = "deterministic-fallback";
-        error = generationError instanceof Error ? generationError.message : "AI generation failed; deterministic fallback used.";
-      }
-    }
-    const verified = verifyResearchAssistantOutput(raw, selected, filters.companyIds);
-    const scores = scoreResearchAssistantEvidence(selected, filters.companyIds);
-    const markdown = answerMarkdown(verified, selected, names);
+    const result = await runResearchAssistantPipeline(question, inputFilters, requestedEngine);
     await withDatabase(async (db) => {
-      await db.update(researchAssistantMessages).set({ answerMarkdown: markdown, claims: verified.claims, openQuestions: verified.openQuestions, confidenceScore: Math.max(0, scores.confidence - verified.verification.rejectedClaims * 5), evidenceQualityScore: scores.quality, sourceDiversityScore: scores.diversity, engine, retrievalMode: retrieval.mode, status: "completed", evidenceSnapshot: selected, verification: verified.verification, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, totalTokens: usage.totalTokens, error, completedAt: new Date() }).where(eq(researchAssistantMessages.id, id));
-      await db.update(researchAssistantSessions).set({ title: question.slice(0, 90), companyIds: filters.companyIds, topic: filters.topic, sourceKinds: filters.sourceKinds, dateFrom: filters.dateFrom, dateTo: filters.dateTo, updatedAt: new Date() }).where(eq(researchAssistantSessions.id, sessionId));
+      await db.update(researchAssistantMessages).set({ answerMarkdown: result.markdown, claims: result.claims, openQuestions: result.openQuestions, confidenceScore: Math.max(0, result.scores.confidence - result.verification.rejectedClaims * 5), evidenceQualityScore: result.scores.quality, sourceDiversityScore: result.scores.diversity, engine: result.engine, model: result.model, filters: result.filters, retrievalMode: result.retrievalMode, status: "completed", evidenceSnapshot: result.selected, verification: result.verification, inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, totalTokens: result.usage.totalTokens, error: result.error, completedAt: new Date() }).where(eq(researchAssistantMessages.id, id));
+      await db.update(researchAssistantSessions).set({ title: question.slice(0, 90), companyIds: result.filters.companyIds, topic: result.filters.topic, sourceKinds: result.filters.sourceKinds, dateFrom: result.filters.dateFrom, dateTo: result.filters.dateTo, updatedAt: new Date() }).where(eq(researchAssistantSessions.id, sessionId));
     });
-    return { id, markdown, verification: verified.verification };
+    return { id, markdown: result.markdown, verification: result.verification };
   } catch (generationError) {
     const message = generationError instanceof Error ? generationError.message : "Unable to answer this question.";
     await withDatabase((db) => db.update(researchAssistantMessages).set({ status: "error", error: message, completedAt: new Date() }).where(eq(researchAssistantMessages.id, id)));

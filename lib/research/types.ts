@@ -46,6 +46,56 @@ export type ResearchAssistantSession = {
   updatedAt: string;
 };
 
+export type ResearchQualityScores = {
+  retrievalCoverage: number;
+  citationPrecision: number;
+  groundedness: number;
+  companyAccuracy: number;
+  answerCompleteness: number;
+  overall: number;
+};
+
+export type ResearchQualityResult = {
+  id: string;
+  benchmarkId: string;
+  title: string;
+  category: string;
+  question: string;
+  companyIds: string[];
+  expectations: { topics: string[]; behavior: "answer" | "insufficient"; minimumCitations: number };
+  status: "passed" | "failed";
+  scores: ResearchQualityScores;
+  failureReasons: string[];
+  citations: ResearchEvidenceItem[];
+  claims: ResearchAssistantClaim[];
+  retrievalMode: string;
+  citationCount: number;
+  unsupportedClaimCount: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
+  estimatedCostMicros: number;
+  latencyMs: number;
+};
+
+export type ResearchQualityRun = {
+  id: string;
+  suiteVersion: string;
+  engine: string;
+  status: "running" | "completed" | "error";
+  overallScore: number | null;
+  passRate: number | null;
+  metrics: Omit<ResearchQualityScores, "overall"> | Record<string, never>;
+  caseCount: number;
+  passedCount: number;
+  failedCount: number;
+  durationMs: number | null;
+  error: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  results: ResearchQualityResult[];
+};
+
 export type ResearchEvidenceItem = {
   id: string;
   companyId: string;

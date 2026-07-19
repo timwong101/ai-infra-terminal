@@ -48,6 +48,11 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm lint
       - run: pnpm test
+      - name: Run deterministic research quality gate
+        run: |
+          pnpm db:migrate
+          pnpm db:seed:e2e
+          pnpm research:quality -- --gate
       - run: pnpm test:e2e
       - name: Upload browser diagnostics
         if: failure()

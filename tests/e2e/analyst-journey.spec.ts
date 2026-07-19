@@ -100,4 +100,21 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await expect(page.locator(".saved-answer").getByText("Compare the selected Neoclouds on capacity, demand, and financing risk.", { exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Evidence-backed answer" })).toBeVisible();
   });
+
+  test("research quality runs a durable grounding benchmark and exposes case evidence", async ({ page }) => {
+    await page.goto("/research-quality");
+    await expect(page.getByRole("heading", { name: "Research Quality" })).toBeVisible();
+    await page.getByRole("button", { name: "Run benchmark" }).click();
+
+    await expect(page).toHaveURL(/\/research-quality\/.+/, { timeout: 30_000 });
+    await expect(page.getByText("32/32 passed", { exact: false })).toBeVisible();
+    await expect(page.getByLabel("Quality metrics").getByText("Citation precision", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Quality metrics").getByText("Groundedness", { exact: true })).toBeVisible();
+    await expect(page.getByText("Evidence packet")).toBeVisible();
+
+    const runUrl = page.url();
+    await page.reload();
+    await expect(page).toHaveURL(runUrl);
+    await expect(page.getByText("32/32 passed", { exact: false })).toBeVisible();
+  });
 });

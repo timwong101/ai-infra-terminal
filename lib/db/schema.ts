@@ -522,6 +522,52 @@ export const researchAssistantMessages = pgTable("research_assistant_messages", 
   index("research_assistant_messages_status_idx").on(table.status, table.createdAt),
 ]);
 
+export const researchQualityRuns = pgTable("research_quality_runs", {
+  id: text("id").primaryKey(),
+  suiteVersion: text("suite_version").notNull(),
+  engine: text("engine").notNull(),
+  status: text("status").default("running").notNull(),
+  overallScore: integer("overall_score"),
+  passRate: integer("pass_rate"),
+  metrics: jsonb("metrics").default({}).notNull(),
+  caseCount: integer("case_count").default(0).notNull(),
+  passedCount: integer("passed_count").default(0).notNull(),
+  failedCount: integer("failed_count").default(0).notNull(),
+  durationMs: integer("duration_ms"),
+  error: text("error"),
+  startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("research_quality_runs_created_idx").on(table.createdAt)]);
+
+export const researchQualityResults = pgTable("research_quality_results", {
+  id: text("id").primaryKey(),
+  runId: text("run_id").notNull().references(() => researchQualityRuns.id, { onDelete: "cascade" }),
+  benchmarkId: text("benchmark_id").notNull(),
+  title: text("title").notNull(),
+  category: text("category").notNull(),
+  question: text("question").notNull(),
+  companyIds: jsonb("company_ids").default([]).notNull(),
+  expectations: jsonb("expectations").default({}).notNull(),
+  status: text("status").notNull(),
+  scores: jsonb("scores").default({}).notNull(),
+  failureReasons: jsonb("failure_reasons").default([]).notNull(),
+  evidenceSnapshot: jsonb("evidence_snapshot").default([]).notNull(),
+  claims: jsonb("claims").default([]).notNull(),
+  retrievalMode: text("retrieval_mode").notNull(),
+  citationCount: integer("citation_count").default(0).notNull(),
+  unsupportedClaimCount: integer("unsupported_claim_count").default(0).notNull(),
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  totalTokens: integer("total_tokens"),
+  estimatedCostMicros: integer("estimated_cost_micros").default(0).notNull(),
+  latencyMs: integer("latency_ms").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("research_quality_results_run_benchmark_unique").on(table.runId, table.benchmarkId),
+  index("research_quality_results_run_status_idx").on(table.runId, table.status),
+]);
+
 export const researchCycleRuns = pgTable("research_cycle_runs", {
   id: text("id").primaryKey(),
   trigger: text("trigger").notNull(),

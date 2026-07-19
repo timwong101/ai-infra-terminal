@@ -10,6 +10,7 @@ A responsive, evidence-first research dashboard for exploring the AI infrastruct
 - Persistent accept/reject review states and provenance records
 - Grounded company comparisons with inline citations and saved evidence packets
 - Streaming research assistant with saved question history, source filters, claim checks, and inline citations
+- Durable Research Quality benchmarks with retrieval, citation, groundedness, refusal, latency, token, and cost diagnostics
 - Responsive desktop and mobile layouts
 - Live SEC and investor-relations ingestion health
 - Real SEC filing metadata with permanent EDGAR source links
@@ -106,6 +107,10 @@ Only accepted evidence above the memo quality floor is eligible for retrieval. T
 The **Theses** workspace is a durable claim ledger. Accepted evidence and material filing changes link to capacity, demand, funding, customer, and execution claims, with weighted impact scores and chronological history. Reviewing evidence immediately rebuilds the affected thesis state and creates alerts for meaningful new support or contradiction.
 
 The **Research Assistant** answers free-form questions across one or more Neocloud companies using only analyst-accepted evidence above the same quality floor as comparison memos. Company, topic, SEC/IR source, and date filters are applied during retrieval rather than after generation. Each factual claim must cite an evidence ID owned by the same company; invalid, missing, and cross-company citations are rejected before the verified markdown is streamed to the browser. Answers expose confidence, evidence quality, source diversity, claim-check status, and the exact source packet. Sessions and generation records are created before work begins, retain model and token metadata, and have durable `/research-assistant/:id` URLs. An analyst can turn a two-company question into a comparison memo or save a generated evidence gap as an open question in the thesis ledger.
+
+The **Research Quality** workspace runs a versioned 32-case benchmark against that same retrieval, generation, and verification pipeline. Cases cover all four Neoclouds, expected topic retrieval, every pairwise capacity comparison, IR-only source policy, multi-company synthesis, and deliberate future-date questions that must refuse to answer. Every run persists metric breakdowns, failure reasons, latency, token and estimated-cost metadata, verified claims, and the exact evidence packet under a durable `/research-quality/:id` URL. The deterministic engine establishes a free reproducible baseline; the configured AI model can be evaluated separately.
+
+Run the benchmark locally with `pnpm research:quality`. Add `-- --gate` to enforce the CI thresholds: at least 85 overall, at least 85% case pass rate, and 100% citation precision and groundedness. Optional `AI_QUALITY_INPUT_COST_PER_MILLION` and `AI_QUALITY_OUTPUT_COST_PER_MILLION` values enable model-cost estimates without hard-coding provider pricing.
 
 With `OPENAI_API_KEY`, the research assistant uses structured AI generation before claim verification. Without a key, its deterministic engine still retrieves, scores, cites, streams, and saves grounded answers, keeping local and portfolio demos functional without model spend.
 

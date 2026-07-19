@@ -12,6 +12,7 @@ import {
   Copy,
   ExternalLink,
   FileText,
+  FlaskConical,
   Layers3,
   LoaderCircle,
   Menu,
@@ -31,6 +32,7 @@ import { AlertsWorkspace } from "@/app/components/alerts-workspace";
 import { ComparisonWorkspace } from "@/app/components/comparison-workspace";
 import { CompanyIntelligenceWorkspace } from "@/app/components/company-intelligence-workspace";
 import { ResearchAssistantWorkspace } from "@/app/components/research-assistant-workspace";
+import { ResearchQualityWorkspace } from "@/app/components/research-quality-workspace";
 import { EvidenceWorkspace } from "@/app/components/evidence-workspace";
 import { OperationsWorkspace } from "@/app/components/operations-workspace";
 import { ThesisWorkspace } from "@/app/components/thesis-workspace";
@@ -113,6 +115,7 @@ const navItems = [
   { label: "Themes", icon: Layers3, path: "/themes/neoclouds" },
   { label: "Evidence Feed", icon: FileText, path: "/evidence" },
   { label: "Research Assistant", icon: MessageSquareText, path: "/research-assistant" },
+  { label: "Research Quality", icon: FlaskConical, path: "/research-quality" },
   { label: "Theses", icon: Target, path: "/theses" },
   { label: "Memos", icon: Sparkles, path: "/memos" },
   { label: "Alerts", icon: Bell, path: "/alerts" },
@@ -149,6 +152,7 @@ type TerminalRoute = {
   evidenceCompanyId?: string;
   memoId?: string;
   researchAssistantId?: string;
+  researchQualityRunId?: string;
 };
 
 function parseRoute(): TerminalRoute {
@@ -158,6 +162,7 @@ function parseRoute(): TerminalRoute {
   if (parts[0] === "evidence") return { activeNav: "Evidence Feed", evidenceCompanyId: search.get("company") ?? "" };
   if (parts[0] === "memos") return { activeNav: "Memos", memoId: parts[1] ?? "" };
   if (parts[0] === "research-assistant") return { activeNav: "Research Assistant", researchAssistantId: parts[1] ?? "" };
+  if (parts[0] === "research-quality") return { activeNav: "Research Quality", researchQualityRunId: parts[1] ?? "" };
   if (parts[0] === "theses") return { activeNav: "Theses" };
   if (parts[0] === "alerts") return { activeNav: "Alerts" };
   if (parts[0] === "activity") return { activeNav: "Activity" };
@@ -304,6 +309,7 @@ export default function Home() {
   const [routeEvidenceCompanyId, setRouteEvidenceCompanyId] = useState("");
   const [routeMemoId, setRouteMemoId] = useState("");
   const [routeResearchAssistantId, setRouteResearchAssistantId] = useState("");
+  const [routeResearchQualityRunId, setRouteResearchQualityRunId] = useState("");
   const detailRequest = useRef<AbortController | null>(null);
 
   const syncRoute = useCallback(() => {
@@ -313,6 +319,7 @@ export default function Home() {
     setRouteEvidenceCompanyId(route.evidenceCompanyId ?? "");
     setRouteMemoId(route.memoId ?? "");
     setRouteResearchAssistantId(route.researchAssistantId ?? "");
+    setRouteResearchQualityRunId(route.researchQualityRunId ?? "");
     if (route.selectedTheme) {
       setSelectedTheme(route.selectedTheme);
       setActiveTab("Overview");
@@ -703,6 +710,12 @@ export default function Home() {
             initialSessionId={routeResearchAssistantId}
             onSessionSelect={(sessionId) => navigate(`/research-assistant/${encodeURIComponent(sessionId)}`)}
             onOpenMemo={(memoId) => navigate(`/memos/${encodeURIComponent(memoId)}`)}
+          />
+        ) : activeNav === "Research Quality" ? (
+          <ResearchQualityWorkspace
+            key={routeResearchQualityRunId || "research-quality-index"}
+            initialRunId={routeResearchQualityRunId}
+            onRunSelect={(runId) => navigate(`/research-quality/${encodeURIComponent(runId)}`)}
           />
         ) : activeNav === "Companies" ? (
           <CompanyIntelligenceWorkspace
