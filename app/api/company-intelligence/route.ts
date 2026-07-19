@@ -1,8 +1,11 @@
 import { getCompanyIntelligence, syncCompanyIntelligence } from "@/lib/company-intelligence/service";
+import { authorizeApi } from "@/lib/auth/session";
 
 export async function GET(request: Request) {
+  const params = new URL(request.url).searchParams;
+  const authorized = await authorizeApi(request, params.get("sync") === "1" ? "analyst" : "viewer");
+  if ("response" in authorized) return authorized.response;
   try {
-    const params = new URL(request.url).searchParams;
     if (params.get("sync") === "1") await syncCompanyIntelligence();
     return Response.json(await getCompanyIntelligence(
       params.get("company") ?? undefined,

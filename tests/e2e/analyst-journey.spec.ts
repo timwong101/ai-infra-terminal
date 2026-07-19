@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { Client } from "pg";
 
 const e2eDatabaseUrl = process.env.E2E_DATABASE_URL;
 if (!e2eDatabaseUrl) throw new Error("E2E_DATABASE_URL is required for analyst journey tests.");
@@ -16,6 +18,33 @@ function prepareTestDatabase() {
   }
 }
 
+async function createViewerSession() {
+  const token = randomBytes(32).toString("hex");
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const client = new Client({ connectionString: e2eDatabaseUrl });
+  await client.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      "INSERT INTO users (id, email, name, provider, provider_account_id) VALUES ('user:e2e-viewer', 'viewer@example.com', 'Read Only Reviewer', 'test', 'viewer') ON CONFLICT (id) DO NOTHING",
+    );
+    await client.query(
+      "INSERT INTO workspace_members (id, workspace_id, user_id, role) VALUES ('membership:e2e-viewer', 'workspace:demo', 'user:e2e-viewer', 'viewer') ON CONFLICT (id) DO NOTHING",
+    );
+    await client.query(
+      "INSERT INTO auth_sessions (id, token_hash, user_id, active_workspace_id, expires_at) VALUES ($1, $2, 'user:e2e-viewer', 'workspace:demo', now() + interval '1 hour')",
+      [`session:${randomUUID()}`, tokenHash],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    await client.end();
+  }
+  return token;
+}
+
 const companies = [
   { id: "coreweave", name: "CoreWeave" },
   { id: "nebius", name: "Nebius" },
@@ -25,6 +54,12 @@ const companies = [
 
 test.describe.serial("evidence-grounded analyst journey", () => {
   test.beforeAll(() => prepareTestDatabase());
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: /Open portfolio demo/ }).click();
+    await expect(page.getByRole("heading", { name: "AI Infrastructure Map" })).toBeVisible();
+  });
 
   test("theme and company deep links expose all four Neoclouds", async ({ page }) => {
     await page.goto("/themes/neoclouds");
@@ -41,6 +76,17 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await page.goto("/activity");
     await expect(page).toHaveURL(/\/activity$/);
     await expect(page.getByRole("heading", { name: "Activity & Briefings" })).toBeVisible();
+  });
+
+  test("viewer sessions can inspect research but cannot mutate it", async ({ context, page }) => {
+    const token = await createViewerSession();
+    await context.addCookies([{ name: "ai_infra_session", value: token, domain: "localhost", path: "/", httpOnly: true, sameSite: "Lax" }]);
+
+    await page.goto("/memos");
+    await expect(page.getByRole("heading", { name: "Comparison Memos" })).toBeVisible();
+    const response = await page.request.post("/api/comparison-memos", { data: { companyAId: "coreweave", companyBId: "nebius", topic: "All topics", question: "Viewer mutation check" } });
+    expect(response.status()).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "The analyst role is required for this action." });
   });
 
   test("reviewed evidence updates research and generates a reloadable cited memo", async ({ page }) => {
@@ -116,5 +162,27 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await page.reload();
     await expect(page).toHaveURL(runUrl);
     await expect(page.getByText("32/32 passed", { exact: false })).toBeVisible();
+  });
+
+  test("workspace switching isolates saved research and preserves attributed audit history", async ({ page }) => {
+    await page.getByRole("button", { name: "Open profile and workspace menu" }).click();
+    await page.getByRole("button", { name: "Create workspace" }).click();
+    await page.getByRole("textbox", { name: "Workspace name" }).fill("Second Analyst Workspace");
+    await page.getByRole("button", { name: "Save workspace" }).click();
+
+    await expect(page.getByRole("heading", { name: "AI Infrastructure Map" })).toBeVisible();
+    await page.goto("/memos");
+    await expect(page.getByRole("heading", { name: "Comparison Memos" })).toBeVisible();
+    await expect(page.getByText("No memo selected", { exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "Open profile and workspace menu" }).click();
+    await page.getByRole("button", { name: /Neocloud Research/ }).click();
+    await expect(page.getByRole("heading", { name: "AI Infrastructure Map" })).toBeVisible();
+    await page.goto("/memos");
+    await expect(page.getByRole("heading", { name: "CoreWeave vs. Nebius" })).toBeVisible();
+
+    await page.goto("/audit");
+    await expect(page.getByRole("heading", { name: "Audit Trail" })).toBeVisible();
+    await expect(page.getByText("Created CoreWeave vs. Nebius comparison memo.", { exact: true })).toBeVisible();
   });
 });

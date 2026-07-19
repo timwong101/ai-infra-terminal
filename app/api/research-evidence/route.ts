@@ -1,8 +1,11 @@
 import { listResearchEvidence, syncResearchEvidence, updateEvidenceReview } from "@/lib/research/evidence";
 import type { EvidenceReviewStatus, EvidenceSuggestionStatus, ResearchEvidenceItem, ResearchSourceKind } from "@/lib/research/types";
 import { generateResearchAlerts } from "@/lib/alerts/generate";
+import { authorizeApi } from "@/lib/auth/session";
 
 export async function GET(request: Request) {
+  const authorized = await authorizeApi(request);
+  if ("response" in authorized) return authorized.response;
   try {
     const params = new URL(request.url).searchParams;
     const synced = process.env.E2E_TEST === "1" || params.get("sync") === "0"
@@ -23,6 +26,8 @@ export async function GET(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const authorized = await authorizeApi(request, "analyst");
+  if ("response" in authorized) return authorized.response;
   try {
     const body = await request.json() as {
       ids?: string[];
@@ -43,7 +48,7 @@ export async function PATCH(request: Request) {
       status: body.suggestion.status,
       claimId: body.suggestion.claimId,
       impact: body.suggestion.impact,
-    } : undefined);
+    } : undefined, authorized.auth);
     const thesisSync = await generateResearchAlerts();
     return Response.json({ ...reviewResult, thesisSync });
   } catch (error) {

@@ -9,6 +9,69 @@ export const companies = pgTable("companies", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [uniqueIndex("companies_cik_unique").on(table.cik)]);
 
+export const users = pgTable("users", {
+  id: text("id").primaryKey(),
+  email: text("email").notNull(),
+  name: text("name").notNull(),
+  avatarUrl: text("avatar_url"),
+  provider: text("provider").notNull(),
+  providerAccountId: text("provider_account_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("users_email_unique").on(table.email),
+  uniqueIndex("users_provider_account_unique").on(table.provider, table.providerAccountId),
+]);
+
+export const workspaces = pgTable("workspaces", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  createdByUserId: text("created_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [uniqueIndex("workspaces_slug_unique").on(table.slug)]);
+
+export const workspaceMembers = pgTable("workspace_members", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: text("role").default("analyst").notNull(),
+  joinedAt: timestamp("joined_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("workspace_members_workspace_user_unique").on(table.workspaceId, table.userId),
+  index("workspace_members_user_idx").on(table.userId),
+]);
+
+export const authSessions = pgTable("auth_sessions", {
+  id: text("id").primaryKey(),
+  tokenHash: text("token_hash").notNull(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  activeWorkspaceId: text("active_workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("auth_sessions_token_hash_unique").on(table.tokenHash),
+  index("auth_sessions_user_idx").on(table.userId),
+  index("auth_sessions_expires_idx").on(table.expiresAt),
+]);
+
+export const auditEvents = pgTable("audit_events", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  actorUserId: text("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+  action: text("action").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  summary: text("summary").notNull(),
+  metadata: jsonb("metadata").default({}).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("audit_events_workspace_created_idx").on(table.workspaceId, table.createdAt),
+  index("audit_events_actor_idx").on(table.actorUserId, table.createdAt),
+]);
+
 export const filings = pgTable("filings", {
   id: text("id").primaryKey(),
   companyId: text("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
@@ -209,6 +272,19 @@ export const researchAlerts = pgTable("research_alerts", {
   index("research_alerts_company_idx").on(table.companyId),
 ]);
 
+export const userAlertStates = pgTable("user_alert_states", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  alertId: text("alert_id").notNull().references(() => researchAlerts.id, { onDelete: "cascade" }),
+  status: text("status").default("unread").notNull(),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("user_alert_states_scope_unique").on(table.workspaceId, table.userId, table.alertId),
+  index("user_alert_states_user_status_idx").on(table.workspaceId, table.userId, table.status),
+]);
+
 export const thesisSnapshots = pgTable("thesis_snapshots", {
   id: text("id").primaryKey(),
   claimId: text("claim_id").notNull().references(() => researchClaims.id, { onDelete: "cascade" }),
@@ -257,6 +333,7 @@ export const researchEvidence = pgTable("research_evidence", {
   embeddedAt: timestamp("embedded_at", { withTimezone: true }),
   reviewStatus: text("review_status").default("unreviewed").notNull(),
   reviewNote: text("review_note"),
+  reviewedByUserId: text("reviewed_by_user_id").references(() => users.id, { onDelete: "set null" }),
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -433,6 +510,8 @@ export const earningsChangeBriefVersions = pgTable("earnings_change_brief_versio
 
 export const comparisonMemos = pgTable("comparison_memos", {
   id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  ownerUserId: text("owner_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
   title: text("title").notNull(),
   question: text("question").notNull(),
   companyAId: text("company_a_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
@@ -456,6 +535,8 @@ export const comparisonMemos = pgTable("comparison_memos", {
 
 export const memoGenerations = pgTable("memo_generations", {
   id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  ownerUserId: text("owner_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
   memoId: text("memo_id").references(() => comparisonMemos.id, { onDelete: "set null" }),
   companyAId: text("company_a_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
   companyBId: text("company_b_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
@@ -483,6 +564,8 @@ export const memoGenerations = pgTable("memo_generations", {
 
 export const researchAssistantSessions = pgTable("research_assistant_sessions", {
   id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  ownerUserId: text("owner_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
   title: text("title").notNull(),
   companyIds: jsonb("company_ids").default([]).notNull(),
   topic: text("topic").default("All topics").notNull(),
@@ -524,6 +607,8 @@ export const researchAssistantMessages = pgTable("research_assistant_messages", 
 
 export const researchQualityRuns = pgTable("research_quality_runs", {
   id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  ownerUserId: text("owner_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
   suiteVersion: text("suite_version").notNull(),
   engine: text("engine").notNull(),
   status: text("status").default("running").notNull(),

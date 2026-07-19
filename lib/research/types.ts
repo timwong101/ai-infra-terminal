@@ -132,6 +132,7 @@ export type ResearchEvidenceItem = {
   reviewStatus: EvidenceReviewStatus;
   reviewNote: string | null;
   reviewedAt: string | null;
+  reviewedBy?: { id: string; name: string; email: string } | null;
 };
 
 export type EvidenceFilters = {

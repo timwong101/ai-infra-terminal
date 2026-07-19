@@ -1,9 +1,11 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withDatabase } from "@/lib/db/client";
 import { companies, researchAssistantMessages, researchAssistantSessions, researchEvidence } from "@/lib/db/schema";
 import { searchAcceptedEvidence } from "@/lib/research/search";
 import type { ResearchAssistantClaim, ResearchAssistantFilters, ResearchAssistantMessage, ResearchAssistantSession, ResearchEvidenceItem } from "@/lib/research/types";
+import type { AuthContext } from "@/lib/auth/types";
+import { recordAuditEvent } from "@/lib/auth/session";
 
 const researchAssistantOutputSchema = z.object({
   claims: z.array(z.object({
@@ -166,13 +168,14 @@ export async function getResearchAssistantCatalog() {
   return result;
 }
 
-export async function createResearchAssistantSession(filters: Partial<ResearchAssistantFilters> = {}) {
+export async function createResearchAssistantSession(auth: AuthContext, filters: Partial<ResearchAssistantFilters> = {}) {
   const catalog = await getResearchAssistantCatalog();
   const normalized = normalizeFilters(filters, new Set(catalog.companies.map((item) => item.id)));
   if (!normalized.companyIds.length) normalized.companyIds = catalog.companies.map((item) => item.id);
   const id = `research-assistant:${crypto.randomUUID()}`;
-  const rows = await withDatabase((db) => db.insert(researchAssistantSessions).values({ id, title: "New research question", companyIds: normalized.companyIds, topic: normalized.topic, sourceKinds: normalized.sourceKinds, dateFrom: normalized.dateFrom, dateTo: normalized.dateTo }).returning());
+  const rows = await withDatabase((db) => db.insert(researchAssistantSessions).values({ id, workspaceId: auth.workspace.id, ownerUserId: auth.user.id, title: "New research question", companyIds: normalized.companyIds, topic: normalized.topic, sourceKinds: normalized.sourceKinds, dateFrom: normalized.dateFrom, dateTo: normalized.dateTo }).returning());
   if (!rows?.[0]) throw new Error("Unable to create a research session.");
+  await recordAuditEvent(auth, { action: "research_session.created", entityType: "research_assistant_session", entityId: id, summary: "Started a new Research Assistant session." });
   return id;
 }
 
@@ -187,9 +190,9 @@ function messageFromRow(row: typeof researchAssistantMessages.$inferSelect): Res
   };
 }
 
-export async function listResearchAssistantSessions() {
+export async function listResearchAssistantSessions(workspaceId: string) {
   const result = await withDatabase(async (db) => {
-    const sessions = await db.select().from(researchAssistantSessions).orderBy(desc(researchAssistantSessions.updatedAt)).limit(30);
+    const sessions = await db.select().from(researchAssistantSessions).where(eq(researchAssistantSessions.workspaceId, workspaceId)).orderBy(desc(researchAssistantSessions.updatedAt)).limit(30);
     const messages = await db.select().from(researchAssistantMessages).orderBy(desc(researchAssistantMessages.createdAt));
     return sessions.map((session) => ({
       id: session.id, title: session.title, updatedAt: session.updatedAt.toISOString(),
@@ -201,9 +204,9 @@ export async function listResearchAssistantSessions() {
   return result;
 }
 
-export async function getResearchAssistantSession(id: string): Promise<ResearchAssistantSession> {
+export async function getResearchAssistantSession(id: string, workspaceId: string): Promise<ResearchAssistantSession> {
   const result = await withDatabase(async (db) => {
-    const session = (await db.select().from(researchAssistantSessions).where(eq(researchAssistantSessions.id, id)).limit(1))[0];
+    const session = (await db.select().from(researchAssistantSessions).where(and(eq(researchAssistantSessions.id, id), eq(researchAssistantSessions.workspaceId, workspaceId))).limit(1))[0];
     if (!session) return null;
     const messages = await db.select().from(researchAssistantMessages).where(eq(researchAssistantMessages.sessionId, id)).orderBy(asc(researchAssistantMessages.createdAt));
     return {
@@ -216,12 +219,14 @@ export async function getResearchAssistantSession(id: string): Promise<ResearchA
   return result;
 }
 
-export async function answerResearchAssistantQuestion(sessionId: string, questionValue: string, inputFilters: Partial<ResearchAssistantFilters>) {
+export async function answerResearchAssistantQuestion(sessionId: string, questionValue: string, inputFilters: Partial<ResearchAssistantFilters>, auth: AuthContext) {
   const question = questionValue.trim();
   if (!question) throw new Error("Enter a research question.");
   const requestedEngine: ResearchAssistantEngine = "auto";
   const hasAi = Boolean(process.env.OPENAI_API_KEY?.trim());
   const id = `research-assistant-message:${crypto.randomUUID()}`;
+  const ownsSession = await withDatabase(async (db) => Boolean((await db.select({ id: researchAssistantSessions.id }).from(researchAssistantSessions).where(and(eq(researchAssistantSessions.id, sessionId), eq(researchAssistantSessions.workspaceId, auth.workspace.id))).limit(1))[0]));
+  if (!ownsSession) throw new Error("Research session not found in this workspace.");
   await withDatabase((db) => db.insert(researchAssistantMessages).values({ id, sessionId, question, engine: hasAi ? "ai" : "deterministic", model: hasAi ? process.env.AI_RESEARCH_ASSISTANT_MODEL?.trim() || "gpt-5-mini" : "deterministic-v1", filters: inputFilters }));
 
   try {
@@ -230,6 +235,7 @@ export async function answerResearchAssistantQuestion(sessionId: string, questio
       await db.update(researchAssistantMessages).set({ answerMarkdown: result.markdown, claims: result.claims, openQuestions: result.openQuestions, confidenceScore: Math.max(0, result.scores.confidence - result.verification.rejectedClaims * 5), evidenceQualityScore: result.scores.quality, sourceDiversityScore: result.scores.diversity, engine: result.engine, model: result.model, filters: result.filters, retrievalMode: result.retrievalMode, status: "completed", evidenceSnapshot: result.selected, verification: result.verification, inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, totalTokens: result.usage.totalTokens, error: result.error, completedAt: new Date() }).where(eq(researchAssistantMessages.id, id));
       await db.update(researchAssistantSessions).set({ title: question.slice(0, 90), companyIds: result.filters.companyIds, topic: result.filters.topic, sourceKinds: result.filters.sourceKinds, dateFrom: result.filters.dateFrom, dateTo: result.filters.dateTo, updatedAt: new Date() }).where(eq(researchAssistantSessions.id, sessionId));
     });
+    await recordAuditEvent(auth, { action: "research_answer.created", entityType: "research_assistant_message", entityId: id, summary: `Answered: ${question.slice(0, 120)}`, metadata: { sessionId, engine: result.engine, citationCount: result.selected.length } });
     return { id, markdown: result.markdown, verification: result.verification };
   } catch (generationError) {
     const message = generationError instanceof Error ? generationError.message : "Unable to answer this question.";

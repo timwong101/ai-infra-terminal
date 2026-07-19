@@ -2,6 +2,7 @@ import irEvidenceCacheJson from "@/data/generated/ir-evidence.json";
 import { refreshIrEvidence } from "@/lib/ir/ingest";
 import { syncIrCatalog } from "@/lib/ir/pipeline";
 import type { IrEvidenceCache, IrEvidenceResponse } from "@/lib/ir/types";
+import { authorizeApi } from "@/lib/auth/session";
 
 const REFRESH_TTL_MS = 15 * 60 * 1000;
 const fallbackCache = irEvidenceCacheJson as unknown as IrEvidenceCache;
@@ -28,7 +29,9 @@ async function getIrEvidence(): Promise<IrEvidenceResponse> {
   return { cache: await refreshInFlight, refresh: { status: "fresh" } };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const authorized = await authorizeApi(request);
+  if ("response" in authorized) return authorized.response;
   try {
     const result = await getIrEvidence();
     if (process.env.E2E_TEST === "1") {

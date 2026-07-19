@@ -31,6 +31,21 @@ A responsive, evidence-first research dashboard for exploring the AI infrastruct
 - Lucide icons
 - PostgreSQL with Drizzle ORM
 
+## Authentication And Workspaces
+
+The terminal uses database-backed sessions with GitHub OAuth. Research artifacts are isolated by workspace, and each membership has a `viewer`, `analyst`, or `admin` role. Viewers can inspect research; analysts and admins can review evidence, update thesis state, run research workflows, and create memos. Generated artifacts and analyst decisions retain owner or reviewer attribution in the workspace audit trail.
+
+Create a GitHub OAuth app whose callback URL is `http://localhost:3000/api/auth/github/callback`, then add these values to `.env.local`:
+
+```env
+GITHUB_CLIENT_ID=""
+GITHUB_CLIENT_SECRET=""
+AUTH_BASE_URL="http://localhost:3000"
+ENABLE_DEMO_AUTH="true"
+```
+
+`AUTH_BASE_URL` should be the public application origin in deployed environments. The seeded portfolio demo is enabled automatically during local development and end-to-end tests; production requires the explicit `ENABLE_DEMO_AUTH=true` opt-in.
+
 ## Run Locally
 
 Node.js 22.13 or newer and pnpm are required.
@@ -180,4 +195,4 @@ E2E_DATABASE_URL="postgresql://ai_infra:ai_infra@localhost:5432/ai_infra_e2e" pn
 
 Company, theme, evidence-company, saved-memo, and research-assistant session selections have durable URLs, so an analyst can reload or share a research view without losing its primary context.
 
-There is intentionally no authentication or live market-price integration in this version. SEC and investor-relations evidence is real, while AI generation is optional and always constrained by the saved evidence packet. The infrastructure map labels Neoclouds as live coverage and treats every other theme as roadmap-only until official sources and company policies are integrated.
+There is intentionally no live market-price integration in this version. SEC and investor-relations evidence is real, while AI generation is optional and always constrained by the saved evidence packet. The infrastructure map labels Neoclouds as live coverage and treats every other theme as roadmap-only until official sources and company policies are integrated.

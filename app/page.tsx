@@ -6,8 +6,8 @@ import {
   Bell,
   BookOpenText,
   Building2,
-  ChevronDown,
   ChevronRight,
+  ClipboardList,
   CircleHelp,
   Copy,
   ExternalLink,
@@ -33,6 +33,8 @@ import { ComparisonWorkspace } from "@/app/components/comparison-workspace";
 import { CompanyIntelligenceWorkspace } from "@/app/components/company-intelligence-workspace";
 import { ResearchAssistantWorkspace } from "@/app/components/research-assistant-workspace";
 import { ResearchQualityWorkspace } from "@/app/components/research-quality-workspace";
+import { AuditWorkspace } from "@/app/components/audit-workspace";
+import { SignInScreen, UserMenu, type AuthSession, type PublicAuthState } from "@/app/components/auth-controls";
 import { EvidenceWorkspace } from "@/app/components/evidence-workspace";
 import { OperationsWorkspace } from "@/app/components/operations-workspace";
 import { ThesisWorkspace } from "@/app/components/thesis-workspace";
@@ -120,6 +122,7 @@ const navItems = [
   { label: "Memos", icon: Sparkles, path: "/memos" },
   { label: "Alerts", icon: Bell, path: "/alerts" },
   { label: "Activity", icon: Activity, path: "/activity" },
+  { label: "Audit Trail", icon: ClipboardList, path: "/audit" },
 ];
 
 const LIVE_THEME = "Neoclouds";
@@ -166,6 +169,7 @@ function parseRoute(): TerminalRoute {
   if (parts[0] === "theses") return { activeNav: "Theses" };
   if (parts[0] === "alerts") return { activeNav: "Alerts" };
   if (parts[0] === "activity") return { activeNav: "Activity" };
+  if (parts[0] === "audit") return { activeNav: "Audit Trail" };
   if (parts[0] === "themes") {
     return { activeNav: "Themes", selectedTheme: themeNames.find((theme) => slugify(theme) === parts[1]) ?? LIVE_THEME };
   }
@@ -283,6 +287,22 @@ function AppLogo() {
 }
 
 export default function Home() {
+  const [auth, setAuth] = useState<AuthSession | PublicAuthState | null>(null);
+
+  const loadAuth = useCallback(async () => {
+    const response = await fetch("/api/auth/session", { cache: "no-store" });
+    const result = await response.json() as AuthSession | PublicAuthState;
+    setAuth(result);
+  }, []);
+
+  useEffect(() => { queueMicrotask(() => void loadAuth()); }, [loadAuth]);
+
+  if (!auth) return <div className="workspace-state full-page"><LoaderCircle className="drawer-spinner" size={25} /><strong>Opening analyst workspace</strong><span>Validating your session and active workspace.</span></div>;
+  if (!auth.authenticated) return <SignInScreen state={auth} onSignedIn={loadAuth} />;
+  return <Terminal auth={auth} onAuthChange={loadAuth} />;
+}
+
+function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () => Promise<void> }) {
   const [selectedTheme, setSelectedTheme] = useState("Neoclouds");
   const [activeTab, setActiveTab] = useState("Overview");
   const [activeNav, setActiveNav] = useState("AI Infra Map");
@@ -684,8 +704,7 @@ export default function Home() {
           <div className="header-actions">
             <button className="command-button" onClick={() => navigate("/memos")}><Plus size={16} /> <span>New Memo</span></button>
             <button className="command-button" onClick={() => navigate("/activity")}><Star size={16} /> <span>Watchlist</span></button>
-            <button className="avatar" aria-label="Open profile menu">TW</button>
-            <ChevronDown size={15} className="profile-chevron" />
+            <UserMenu auth={auth} onAuthChange={onAuthChange} />
           </div>
         </header>
 
@@ -726,6 +745,8 @@ export default function Home() {
           <ThesisWorkspace />
         ) : activeNav === "Activity" ? (
           <OperationsWorkspace />
+        ) : activeNav === "Audit Trail" ? (
+          <AuditWorkspace />
         ) : (
         <div className="dashboard">
           <div className="title-row">

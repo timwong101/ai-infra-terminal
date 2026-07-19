@@ -12,9 +12,12 @@ import {
   irEvidencePassages,
   researchEvidence,
   researchClaims,
+  users,
 } from "@/lib/db/schema";
 import { assessEvidenceQuality } from "@/lib/research/quality";
 import type { EvidenceFilters, EvidenceReviewStatus, EvidenceSuggestionStatus, ResearchEvidenceItem } from "@/lib/research/types";
+import type { AuthContext } from "@/lib/auth/types";
+import { recordAuditEvent } from "@/lib/auth/session";
 
 const TOPIC_RULES: Array<[string, RegExp]> = [
   ["Power & capacity", /power|energy|electric|megawatt|gigawatt|capacity|campus|data cent(?:er|re)/i],
@@ -255,7 +258,7 @@ export async function syncResearchEvidence() {
     for (const [groupId, duplicateCount] of duplicateCounts) {
       await db.update(researchEvidence).set({ duplicateCount }).where(eq(researchEvidence.duplicateGroupId, groupId));
     }
-    await db.update(researchEvidence).set({ reviewStatus: "unreviewed", reviewNote: null, reviewedAt: null, updatedAt: new Date() }).where(and(
+    await db.update(researchEvidence).set({ reviewStatus: "unreviewed", reviewNote: null, reviewedByUserId: null, reviewedAt: null, updatedAt: new Date() }).where(and(
       eq(researchEvidence.reviewStatus, "accepted"),
       sql`${researchEvidence.reviewNote} LIKE 'System baseline:%'`,
       sql`(${researchEvidence.evidenceQualityScore} < 65 OR ${researchEvidence.boilerplateRisk} >= 60)`,
@@ -281,7 +284,7 @@ export async function syncResearchEvidence() {
   return result;
 }
 
-function toItem(row: { evidence: typeof researchEvidence.$inferSelect; company: typeof companies.$inferSelect }, claimTitle?: string | null): ResearchEvidenceItem {
+function toItem(row: { evidence: typeof researchEvidence.$inferSelect; company: typeof companies.$inferSelect; reviewer?: typeof users.$inferSelect | null }, claimTitle?: string | null): ResearchEvidenceItem {
   return {
     id: row.evidence.id,
     companyId: row.company.id,
@@ -318,14 +321,16 @@ function toItem(row: { evidence: typeof researchEvidence.$inferSelect; company: 
     reviewStatus: row.evidence.reviewStatus as EvidenceReviewStatus,
     reviewNote: row.evidence.reviewNote,
     reviewedAt: row.evidence.reviewedAt?.toISOString() ?? null,
+    reviewedBy: row.reviewer ? { id: row.reviewer.id, name: row.reviewer.name, email: row.reviewer.email } : null,
   };
 }
 
 export async function listResearchEvidence(filters: EvidenceFilters = {}) {
   const result = await withDatabase(async (db) => {
-    const rows = await db.select({ evidence: researchEvidence, company: companies })
+    const rows = await db.select({ evidence: researchEvidence, company: companies, reviewer: users })
       .from(researchEvidence)
       .innerJoin(companies, eq(researchEvidence.companyId, companies.id))
+      .leftJoin(users, eq(researchEvidence.reviewedByUserId, users.id))
       .orderBy(desc(researchEvidence.documentDate), desc(researchEvidence.sourceQuality));
     const claimRows = await db.select().from(researchClaims);
     const claimsById = new Map(claimRows.map((claim) => [claim.id, claim.title]));
@@ -368,13 +373,14 @@ export async function listResearchEvidence(filters: EvidenceFilters = {}) {
   return result;
 }
 
-export async function updateEvidenceReview(ids: string[], status: EvidenceReviewStatus, note?: string, suggestion?: { status: EvidenceSuggestionStatus; claimId?: string; impact?: ResearchEvidenceItem["suggestedImpact"] }) {
+export async function updateEvidenceReview(ids: string[], status: EvidenceReviewStatus, note: string | undefined, suggestion: { status: EvidenceSuggestionStatus; claimId?: string; impact?: ResearchEvidenceItem["suggestedImpact"] } | undefined, auth: AuthContext) {
   if (!ids.length) return 0;
   const result = await withDatabase(async (db) => {
     const existing = await db.select().from(researchEvidence).where(inArray(researchEvidence.id, ids));
     const rows = await db.update(researchEvidence).set({
       reviewStatus: status,
       reviewNote: note?.trim() || null,
+      reviewedByUserId: auth.user.id,
       ...(suggestion ? {
         suggestionStatus: suggestion.status,
         ...(suggestion.claimId ? { suggestedClaimId: suggestion.claimId } : {}),
@@ -401,6 +407,7 @@ export async function updateEvidenceReview(ids: string[], status: EvidenceReview
     return { updated: rows.length, staleMemos, staleClaims: affectedClaimIds.size };
   });
   if (result === null) throw new Error("Postgres is required for evidence review.");
+  await recordAuditEvent(auth, { action: "evidence.reviewed", entityType: "research_evidence", entityId: ids[0], summary: `${status === "accepted" ? "Accepted" : status === "rejected" ? "Rejected" : "Reset"} ${result.updated} evidence passage${result.updated === 1 ? "" : "s"}.`, metadata: { evidenceIds: ids, status, suggestionStatus: suggestion?.status ?? null } });
   return result;
 }
 

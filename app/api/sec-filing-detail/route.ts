@@ -9,6 +9,7 @@ import {
 import { fetchSecDocument, validateSecUserAgent } from "@/lib/sec/client";
 import { extractSecFilingDetail } from "@/lib/sec/extract";
 import { buildSecArchiveUrl } from "@/lib/sec/normalize";
+import { authorizeApi } from "@/lib/auth/session";
 
 const DETAIL_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const detailCache = new Map<string, { expiresAt: number; detail: SecFilingDetail }>();
@@ -97,6 +98,8 @@ async function loadFilingDetail(filing: FilingRequest) {
 }
 
 export async function GET(request: Request) {
+  const authorized = await authorizeApi(request);
+  if ("response" in authorized) return authorized.response;
   try {
     const currentRequest = parseFilingRequest(request);
     if (!currentRequest) throw new Error("Invalid filing request.");

@@ -1,9 +1,12 @@
 import type { AlertStatus } from "@/lib/alerts/types";
 import { listResearchAlerts, updateResearchAlertStatus } from "@/lib/alerts/repository";
+import { authorizeApi } from "@/lib/auth/session";
 
 const VALID_STATUSES = new Set<AlertStatus>(["unread", "reviewed", "watching", "dismissed"]);
 
 export async function GET(request: Request) {
+  const authorized = await authorizeApi(request);
+  if ("response" in authorized) return authorized.response;
   try {
     const params = new URL(request.url).searchParams;
     const result = await listResearchAlerts({
@@ -11,7 +14,7 @@ export async function GET(request: Request) {
       company: params.get("company") ?? undefined,
       category: params.get("category") ?? undefined,
       significance: params.get("significance") ?? undefined,
-    });
+    }, authorized.auth);
     return Response.json(result, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return Response.json(
@@ -22,12 +25,14 @@ export async function GET(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const authorized = await authorizeApi(request, "analyst");
+  if ("response" in authorized) return authorized.response;
   try {
     const body = await request.json() as { id?: string; status?: AlertStatus };
     if (!body.id || !body.status || !VALID_STATUSES.has(body.status)) {
       return Response.json({ error: "A valid alert id and status are required." }, { status: 400 });
     }
-    return Response.json(await updateResearchAlertStatus(body.id, body.status), {
+    return Response.json(await updateResearchAlertStatus(body.id, body.status, authorized.auth), {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {

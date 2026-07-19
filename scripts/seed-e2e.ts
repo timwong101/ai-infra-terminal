@@ -40,7 +40,7 @@ const evidenceTemplates = [
 
 try {
   await client.query("BEGIN");
-  await client.query("TRUNCATE TABLE companies CASCADE");
+  await client.query("TRUNCATE TABLE users, companies CASCADE");
 
   for (const company of secCompanies) {
     await client.query(

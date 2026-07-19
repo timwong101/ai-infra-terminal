@@ -2,6 +2,7 @@ import secEvidenceCacheJson from "@/data/generated/sec-evidence.json";
 import type { EvidenceCache, SecEvidenceResponse } from "@/lib/evidence/types";
 import { validateSecUserAgent } from "@/lib/sec/client";
 import { refreshSecEvidence } from "@/lib/sec/ingest";
+import { authorizeApi } from "@/lib/auth/session";
 
 const REFRESH_TTL_MS = 5 * 60 * 1000;
 const fallbackCache = secEvidenceCacheJson as unknown as EvidenceCache;
@@ -35,7 +36,9 @@ async function getSecEvidence(): Promise<SecEvidenceResponse> {
   return { cache, refresh: { status: "fresh" } };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const authorized = await authorizeApi(request);
+  if ("response" in authorized) return authorized.response;
   try {
     return Response.json(await getSecEvidence(), {
       headers: { "Cache-Control": "private, no-store" },

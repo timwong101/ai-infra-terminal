@@ -4,6 +4,7 @@ import { getIrSourceDocument, getPersistedIrDocumentDetail, persistIrDocumentDet
 import { fetchIrDocumentContent } from "@/lib/ir/client";
 import { buildCatalogOnlyIrDetail, extractIrHtmlDetail, extractIrPdfDetail } from "@/lib/ir/extract";
 import type { IrDocumentDetail, IrDocumentDetailResponse, IrEvidenceCache } from "@/lib/ir/types";
+import { authorizeApi } from "@/lib/auth/session";
 
 const cache = irEvidenceCacheJson as unknown as IrEvidenceCache;
 const DETAIL_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -50,6 +51,8 @@ async function loadDocumentDetail(documentId: string) {
 }
 
 export async function GET(request: Request) {
+  const authorized = await authorizeApi(request);
+  if ("response" in authorized) return authorized.response;
   try {
     const documentId = new URL(request.url).searchParams.get("id") ?? "";
     if (!documentId || documentId.length > 180) throw new Error("Invalid IR document identifier.");

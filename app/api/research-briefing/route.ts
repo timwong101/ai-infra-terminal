@@ -1,9 +1,13 @@
 import { createResearchBriefing } from "@/lib/operations/briefing";
+import { authorizeApi } from "@/lib/auth/session";
 
 export async function POST(request: Request) {
   const secret = process.env.SCHEDULE_SECRET?.trim();
   const supplied = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || request.headers.get("x-schedule-secret");
-  if (secret && supplied !== secret && process.env.NODE_ENV === "production") return Response.json({ error: "Unauthorized." }, { status: 401 });
+  if (!secret || supplied !== secret) {
+    const authorized = await authorizeApi(request, "analyst");
+    if ("response" in authorized) return authorized.response;
+  }
   try {
     const body = await request.json().catch(() => ({})) as { hours?: number };
     const hours = Math.max(1, Math.min(168, Number(body.hours) || 24));

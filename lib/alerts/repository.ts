@@ -1,4 +1,4 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import type { AlertStatus, AlertsResponse, ResearchAlert, ResearchClaim } from "@/lib/alerts/types";
 import { withDatabase } from "@/lib/db/client";
 import {
@@ -10,7 +10,10 @@ import {
   researchClaims,
   researchEvidence,
   thesisSnapshots,
+  userAlertStates,
 } from "@/lib/db/schema";
+import type { AuthContext } from "@/lib/auth/types";
+import { recordAuditEvent } from "@/lib/auth/session";
 
 type AlertFilters = {
   status?: string;
@@ -19,7 +22,7 @@ type AlertFilters = {
   significance?: string;
 };
 
-export async function listResearchAlerts(filters: AlertFilters = {}): Promise<AlertsResponse> {
+export async function listResearchAlerts(filters: AlertFilters = {}, auth: AuthContext): Promise<AlertsResponse> {
   const result = await withDatabase(async (db) => {
     const rows = await db
       .select({ alert: researchAlerts, company: companies, filing: filings, change: filingChanges, evidence: researchEvidence })
@@ -30,6 +33,8 @@ export async function listResearchAlerts(filters: AlertFilters = {}): Promise<Al
       .leftJoin(researchEvidence, eq(researchAlerts.researchEvidenceId, researchEvidence.id))
       .orderBy(desc(researchAlerts.createdAt));
 
+    const stateRows = await db.select().from(userAlertStates).where(and(eq(userAlertStates.workspaceId, auth.workspace.id), eq(userAlertStates.userId, auth.user.id)));
+    const stateByAlert = new Map(stateRows.map((item) => [item.alertId, item.status as AlertStatus]));
     const allAlerts: ResearchAlert[] = rows.map(({ alert, company, filing, change, evidence }) => ({
       id: alert.id,
       companyId: company.id,
@@ -52,7 +57,7 @@ export async function listResearchAlerts(filters: AlertFilters = {}): Promise<Al
       eventCode: change?.eventCode ?? null,
       relevanceScore: change?.relevanceScore ?? evidence?.sourceQuality ?? null,
       relevanceReason: change?.relevanceReason ?? alert.summary,
-      status: alert.status as AlertStatus,
+      status: stateByAlert.get(alert.id) ?? "unread",
       createdAt: alert.createdAt.toISOString(),
     }));
 
@@ -117,15 +122,15 @@ export async function listResearchAlerts(filters: AlertFilters = {}): Promise<Al
   return result;
 }
 
-export async function updateResearchAlertStatus(id: string, status: AlertStatus) {
+export async function updateResearchAlertStatus(id: string, status: AlertStatus, auth: AuthContext) {
   const result = await withDatabase(async (db) => {
-    const updated = await db.update(researchAlerts).set({
-      status,
-      reviewedAt: status === "reviewed" ? new Date() : null,
-      updatedAt: new Date(),
-    }).where(eq(researchAlerts.id, id)).returning({ id: researchAlerts.id, status: researchAlerts.status });
-    return updated[0] ?? null;
+    const alert = (await db.select({ id: researchAlerts.id, title: researchAlerts.title }).from(researchAlerts).where(eq(researchAlerts.id, id)).limit(1))[0];
+    if (!alert) return null;
+    const stateId = `alert-state:${auth.workspace.id}:${auth.user.id}:${id}`;
+    const updated = await db.insert(userAlertStates).values({ id: stateId, workspaceId: auth.workspace.id, userId: auth.user.id, alertId: id, status, reviewedAt: status === "reviewed" ? new Date() : null, updatedAt: new Date() }).onConflictDoUpdate({ target: [userAlertStates.workspaceId, userAlertStates.userId, userAlertStates.alertId], set: { status, reviewedAt: status === "reviewed" ? new Date() : null, updatedAt: new Date() } }).returning({ id: userAlertStates.alertId, status: userAlertStates.status });
+    return { ...(updated[0] ?? { id, status }), title: alert.title };
   });
   if (!result) throw new Error("Alert not found.");
-  return result;
+  await recordAuditEvent(auth, { action: "alert.status_changed", entityType: "research_alert", entityId: id, summary: `Marked ${result.title} as ${status}.`, metadata: { status } });
+  return { id: result.id, status: result.status };
 }

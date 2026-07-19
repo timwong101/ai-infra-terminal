@@ -1,8 +1,10 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { withDatabase } from "@/lib/db/client";
 import { researchQualityResults, researchQualityRuns } from "@/lib/db/schema";
 import { runResearchAssistantPipeline, type ResearchAssistantEngine } from "@/lib/research/research-assistant";
 import type { ResearchAssistantClaim, ResearchEvidenceItem, ResearchQualityResult, ResearchQualityRun, ResearchQualityScores } from "@/lib/research/types";
+import type { AuthContext } from "@/lib/auth/types";
+import { ensureDemoIdentity, recordAuditEvent } from "@/lib/auth/session";
 
 export const RESEARCH_QUALITY_SUITE_VERSION = "neocloud-grounding-v1";
 
@@ -138,10 +140,11 @@ function estimatedCostMicros(usage: { inputTokens?: number; outputTokens?: numbe
   return Math.round((usage.inputTokens ?? 0) * inputRate + (usage.outputTokens ?? 0) * outputRate);
 }
 
-export async function runResearchQualitySuite(engine: Exclude<ResearchAssistantEngine, "auto"> = "deterministic") {
+export async function runResearchQualitySuite(engine: Exclude<ResearchAssistantEngine, "auto"> = "deterministic", auth?: AuthContext) {
+  const owner = auth ? { userId: auth.user.id, workspaceId: auth.workspace.id } : await ensureDemoIdentity();
   const id = `research-quality:${crypto.randomUUID()}`;
   const startedAt = performance.now();
-  const inserted = await withDatabase((db) => db.insert(researchQualityRuns).values({ id, suiteVersion: RESEARCH_QUALITY_SUITE_VERSION, engine, caseCount: RESEARCH_QUALITY_BENCHMARKS.length }).returning());
+  const inserted = await withDatabase((db) => db.insert(researchQualityRuns).values({ id, workspaceId: owner.workspaceId, ownerUserId: owner.userId, suiteVersion: RESEARCH_QUALITY_SUITE_VERSION, engine, caseCount: RESEARCH_QUALITY_BENCHMARKS.length }).returning());
   if (!inserted?.[0]) throw new Error("Postgres is required to run the research quality suite.");
 
   try {
@@ -194,7 +197,8 @@ export async function runResearchQualitySuite(engine: Exclude<ResearchAssistantE
     const passRate = percentage(passedCount, results.length);
     const durationMs = Math.max(1, Math.round(performance.now() - startedAt));
     await withDatabase((db) => db.update(researchQualityRuns).set({ status: "completed", overallScore, passRate, metrics, passedCount, failedCount: results.length - passedCount, durationMs, completedAt: new Date() }).where(eq(researchQualityRuns.id, id)));
-    return getResearchQualityRun(id);
+    if (auth) await recordAuditEvent(auth, { action: "quality_run.completed", entityType: "research_quality_run", entityId: id, summary: `Completed ${RESEARCH_QUALITY_SUITE_VERSION} with ${overallScore}/100.`, metadata: { engine, passRate, caseCount: results.length } });
+    return getResearchQualityRun(id, owner.workspaceId);
   } catch (error) {
     const message = error instanceof Error ? error.message : "The research quality run failed.";
     await withDatabase((db) => db.update(researchQualityRuns).set({ status: "error", error: message, durationMs: Math.max(1, Math.round(performance.now() - startedAt)), completedAt: new Date() }).where(eq(researchQualityRuns.id, id)));
@@ -220,15 +224,15 @@ function runFromRow(row: typeof researchQualityRuns.$inferSelect, results: Resea
   };
 }
 
-export async function listResearchQualityRuns() {
-  const rows = await withDatabase((db) => db.select().from(researchQualityRuns).orderBy(desc(researchQualityRuns.createdAt)).limit(20));
+export async function listResearchQualityRuns(workspaceId: string) {
+  const rows = await withDatabase((db) => db.select().from(researchQualityRuns).where(eq(researchQualityRuns.workspaceId, workspaceId)).orderBy(desc(researchQualityRuns.createdAt)).limit(20));
   if (!rows) throw new Error("Postgres is required for research quality history.");
   return rows.map((row) => runFromRow(row));
 }
 
-export async function getResearchQualityRun(id: string) {
+export async function getResearchQualityRun(id: string, workspaceId: string) {
   const result = await withDatabase(async (db) => {
-    const run = (await db.select().from(researchQualityRuns).where(eq(researchQualityRuns.id, id)).limit(1))[0];
+    const run = (await db.select().from(researchQualityRuns).where(and(eq(researchQualityRuns.id, id), eq(researchQualityRuns.workspaceId, workspaceId))).limit(1))[0];
     if (!run) return null;
     const rows = await db.select().from(researchQualityResults).where(eq(researchQualityResults.runId, id)).orderBy(asc(researchQualityResults.createdAt));
     return runFromRow(run, rows.map(resultFromRow));

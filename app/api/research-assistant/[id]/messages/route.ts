@@ -1,18 +1,21 @@
 import { createUIMessageStream, createUIMessageStreamResponse, type UIMessage } from "ai";
 import { answerResearchAssistantQuestion, chunkResearchAssistantMarkdown } from "@/lib/research/research-assistant";
 import type { ResearchAssistantFilters } from "@/lib/research/types";
+import { authorizeApi } from "@/lib/auth/session";
 
 function textFromMessage(message: UIMessage | undefined) {
   return message?.parts.filter((part): part is Extract<typeof part, { type: "text" }> => part.type === "text").map((part) => part.text).join("\n").trim() ?? "";
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+  const authorized = await authorizeApi(request, "analyst");
+  if ("response" in authorized) return authorized.response;
   const { id } = await context.params;
   const body = await request.json() as { messages?: UIMessage[]; filters?: Partial<ResearchAssistantFilters> };
   const question = textFromMessage(body.messages?.at(-1));
   const stream = createUIMessageStream({
     execute: async ({ writer }) => {
-      const result = await answerResearchAssistantQuestion(decodeURIComponent(id), question, body.filters ?? {});
+      const result = await answerResearchAssistantQuestion(decodeURIComponent(id), question, body.filters ?? {}, authorized.auth);
       const partId = result.id;
       writer.write({ type: "text-start", id: partId });
       for (const chunk of chunkResearchAssistantMarkdown(result.markdown)) writer.write({ type: "text-delta", id: partId, delta: chunk });
