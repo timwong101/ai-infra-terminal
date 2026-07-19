@@ -80,4 +80,24 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await expect(page).toHaveURL(memoUrl);
     await expect(page.getByRole("heading", { name: "CoreWeave vs. Nebius" })).toBeVisible();
   });
+
+  test("copilot streams, verifies, and persists a cited research answer", async ({ page }) => {
+    await page.goto("/copilot");
+    await expect(page).toHaveURL(/\/copilot\/.+/);
+    await expect(page.getByRole("heading", { name: "Research Copilot" })).toBeVisible();
+
+    await page.getByRole("textbox", { name: "Research question" }).fill("Compare the selected Neoclouds on capacity, demand, and financing risk.");
+    await page.getByRole("button", { name: "Send question" }).click();
+
+    await expect(page.getByRole("heading", { name: "Evidence-backed answer" })).toBeVisible();
+    await expect(page.getByText("Claim checks")).toBeVisible();
+    await expect(page.getByText("Pass", { exact: true })).toBeVisible();
+    await expect(page.getByText("Evidence packet")).toBeVisible();
+
+    const sessionUrl = page.url();
+    await page.reload();
+    await expect(page).toHaveURL(sessionUrl);
+    await expect(page.locator(".saved-answer").getByText("Compare the selected Neoclouds on capacity, demand, and financing risk.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Evidence-backed answer" })).toBeVisible();
+  });
 });

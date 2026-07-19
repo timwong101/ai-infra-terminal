@@ -2,6 +2,50 @@ export type EvidenceReviewStatus = "unreviewed" | "accepted" | "rejected";
 export type EvidenceSuggestionStatus = "pending" | "accepted" | "rejected";
 export type ResearchSourceKind = "sec" | "ir";
 
+export type CopilotFilters = {
+  companyIds: string[];
+  topic: string;
+  sourceKinds: ResearchSourceKind[];
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+export type CopilotClaim = {
+  companyId: string;
+  text: string;
+  citationIds: string[];
+  confidenceScore: number;
+};
+
+export type CopilotMessage = {
+  id: string;
+  question: string;
+  answerMarkdown: string | null;
+  claims: CopilotClaim[];
+  openQuestions: Array<{ companyId: string; text: string }>;
+  confidenceScore: number | null;
+  evidenceQualityScore: number | null;
+  sourceDiversityScore: number | null;
+  engine: string;
+  model: string;
+  retrievalMode: string;
+  status: "running" | "completed" | "error";
+  filters: CopilotFilters;
+  citations: ResearchEvidenceItem[];
+  verification: { passed: boolean; rejectedClaims: number; checkedClaims: number; allowedCitations: number } | null;
+  error: string | null;
+  createdAt: string;
+};
+
+export type CopilotSession = {
+  id: string;
+  title: string;
+  filters: CopilotFilters;
+  messages: CopilotMessage[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ResearchEvidenceItem = {
   id: string;
   companyId: string;

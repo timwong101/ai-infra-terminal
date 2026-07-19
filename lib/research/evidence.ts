@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, lt, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, lte, notInArray, sql } from "drizzle-orm";
 import { withDatabase } from "@/lib/db/client";
 import {
   companies,
@@ -404,10 +404,13 @@ export async function updateEvidenceReview(ids: string[], status: EvidenceReview
   return result;
 }
 
-export async function getAcceptedEvidence(companyIds: string[], topic?: string) {
+export async function getAcceptedEvidence(companyIds: string[], topic?: string, filters?: { sourceKinds?: Array<"sec" | "ir">; dateFrom?: string; dateTo?: string }) {
   const result = await withDatabase(async (db) => {
     const conditions = [eq(researchEvidence.reviewStatus, "accepted"), gte(researchEvidence.evidenceQualityScore, 45), lt(researchEvidence.boilerplateRisk, 60), inArray(researchEvidence.companyId, companyIds)];
     if (topic && topic !== "All topics") conditions.push(eq(researchEvidence.topic, topic));
+    if (filters?.sourceKinds?.length) conditions.push(inArray(researchEvidence.sourceKind, filters.sourceKinds));
+    if (filters?.dateFrom) conditions.push(gte(researchEvidence.documentDate, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(researchEvidence.documentDate, filters.dateTo));
     const rows = await db.select({ evidence: researchEvidence, company: companies })
       .from(researchEvidence)
       .innerJoin(companies, eq(researchEvidence.companyId, companies.id))

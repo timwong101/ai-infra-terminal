@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { withDatabase } from "@/lib/db/client";
 import { getAcceptedEvidence } from "@/lib/research/evidence";
 import type { ResearchEvidenceItem } from "@/lib/research/types";
+import type { ResearchSourceKind } from "@/lib/research/types";
 
 type RankedRow = { id: string; score: number };
 
@@ -60,8 +61,11 @@ export async function searchAcceptedEvidence(input: {
   topic?: string;
   query: string;
   limit?: number;
+  sourceKinds?: ResearchSourceKind[];
+  dateFrom?: string;
+  dateTo?: string;
 }) {
-  const all = await getAcceptedEvidence(input.companyIds, input.topic);
+  const all = await getAcceptedEvidence(input.companyIds, input.topic, input);
   const query = `${input.topic === "All topics" ? "" : input.topic ?? ""} ${input.query}`.trim();
   if (!query) return { items: all.slice(0, input.limit ?? 20), mode: "quality" as const };
 
@@ -75,6 +79,9 @@ export async function searchAcceptedEvidence(input: {
   try {
     const ids = sql.join(input.companyIds.map((id) => sql`${id}`), sql`, `);
     const topicFilter = input.topic && input.topic !== "All topics" ? sql`AND topic = ${input.topic}` : sql``;
+    const sourceFilter = input.sourceKinds?.length ? sql`AND source_kind IN (${sql.join(input.sourceKinds.map((kind) => sql`${kind}`), sql`, `)})` : sql``;
+    const dateFromFilter = input.dateFrom ? sql`AND document_date >= ${input.dateFrom}` : sql``;
+    const dateToFilter = input.dateTo ? sql`AND document_date <= ${input.dateTo}` : sql``;
     const vectorScore = embedding
       ? sql`CASE WHEN embedding IS NULL THEN 0 ELSE 1 - (embedding <=> ${JSON.stringify(embedding)}::vector) END`
       : sql`0`;
@@ -84,7 +91,7 @@ export async function searchAcceptedEvidence(input: {
         + (0.42 * ${vectorScore})
         + (evidence_quality_score / 10000.0) AS score
       FROM research_evidence
-      WHERE review_status = 'accepted' AND evidence_quality_score >= 45 AND boilerplate_risk < 60 AND company_id IN (${ids}) ${topicFilter}
+      WHERE review_status = 'accepted' AND evidence_quality_score >= 45 AND boilerplate_risk < 60 AND company_id IN (${ids}) ${topicFilter} ${sourceFilter} ${dateFromFilter} ${dateToFilter}
       ORDER BY score DESC, document_date DESC
       LIMIT ${Math.max(1, Math.min(input.limit ?? 20, 50))}
     `));

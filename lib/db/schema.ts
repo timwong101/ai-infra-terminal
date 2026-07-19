@@ -481,6 +481,47 @@ export const memoGenerations = pgTable("memo_generations", {
   index("memo_generations_pair_idx").on(table.companyAId, table.companyBId),
 ]);
 
+export const researchCopilotSessions = pgTable("research_copilot_sessions", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  companyIds: jsonb("company_ids").default([]).notNull(),
+  topic: text("topic").default("All topics").notNull(),
+  sourceKinds: jsonb("source_kinds").default([]).notNull(),
+  dateFrom: date("date_from"),
+  dateTo: date("date_to"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("research_copilot_sessions_updated_idx").on(table.updatedAt)]);
+
+export const researchCopilotMessages = pgTable("research_copilot_messages", {
+  id: text("id").primaryKey(),
+  sessionId: text("session_id").notNull().references(() => researchCopilotSessions.id, { onDelete: "cascade" }),
+  question: text("question").notNull(),
+  answerMarkdown: text("answer_markdown"),
+  claims: jsonb("claims").default([]).notNull(),
+  openQuestions: jsonb("open_questions").default([]).notNull(),
+  confidenceScore: integer("confidence_score"),
+  evidenceQualityScore: integer("evidence_quality_score"),
+  sourceDiversityScore: integer("source_diversity_score"),
+  engine: text("engine").notNull(),
+  model: text("model").notNull(),
+  retrievalMode: text("retrieval_mode").default("pending").notNull(),
+  status: text("status").default("running").notNull(),
+  filters: jsonb("filters").notNull(),
+  evidenceSnapshot: jsonb("evidence_snapshot").default([]).notNull(),
+  verification: jsonb("verification"),
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  totalTokens: integer("total_tokens"),
+  error: text("error"),
+  startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("research_copilot_messages_session_idx").on(table.sessionId, table.createdAt),
+  index("research_copilot_messages_status_idx").on(table.status, table.createdAt),
+]);
+
 export const researchCycleRuns = pgTable("research_cycle_runs", {
   id: text("id").primaryKey(),
   trigger: text("trigger").notNull(),
