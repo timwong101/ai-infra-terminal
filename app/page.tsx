@@ -112,7 +112,7 @@ const navItems = [
   { label: "Companies", icon: Building2, path: "/companies" },
   { label: "Themes", icon: Layers3, path: "/themes/neoclouds" },
   { label: "Evidence Feed", icon: FileText, path: "/evidence" },
-  { label: "Copilot", icon: MessageSquareText, path: "/copilot" },
+  { label: "Research Assistant", icon: MessageSquareText, path: "/copilot" },
   { label: "Theses", icon: Target, path: "/theses" },
   { label: "Memos", icon: Sparkles, path: "/memos" },
   { label: "Alerts", icon: Bell, path: "/alerts" },
@@ -157,7 +157,7 @@ function parseRoute(): TerminalRoute {
   if (parts[0] === "companies") return { activeNav: "Companies", companyId: parts[1] ?? "" };
   if (parts[0] === "evidence") return { activeNav: "Evidence Feed", evidenceCompanyId: search.get("company") ?? "" };
   if (parts[0] === "memos") return { activeNav: "Memos", memoId: parts[1] ?? "" };
-  if (parts[0] === "copilot") return { activeNav: "Copilot", copilotId: parts[1] ?? "" };
+  if (parts[0] === "copilot") return { activeNav: "Research Assistant", copilotId: parts[1] ?? "" };
   if (parts[0] === "theses") return { activeNav: "Theses" };
   if (parts[0] === "alerts") return { activeNav: "Alerts" };
   if (parts[0] === "activity") return { activeNav: "Activity" };
@@ -697,7 +697,7 @@ export default function Home() {
             onReviewEvidence={() => navigate("/evidence")}
             onMemoSelect={(memoId) => navigate(`/memos/${encodeURIComponent(memoId)}`)}
           />
-        ) : activeNav === "Copilot" ? (
+        ) : activeNav === "Research Assistant" ? (
           <CopilotWorkspace
             key={routeCopilotId || "copilot-index"}
             initialSessionId={routeCopilotId}

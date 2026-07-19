@@ -81,10 +81,10 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await expect(page.getByRole("heading", { name: "CoreWeave vs. Nebius" })).toBeVisible();
   });
 
-  test("copilot streams, verifies, and persists a cited research answer", async ({ page }) => {
+  test("research assistant streams, verifies, and persists a cited research answer", async ({ page }) => {
     await page.goto("/copilot");
     await expect(page).toHaveURL(/\/copilot\/.+/);
-    await expect(page.getByRole("heading", { name: "Research Copilot" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Research Assistant" })).toBeVisible();
 
     await page.getByRole("textbox", { name: "Research question" }).fill("Compare the selected Neoclouds on capacity, demand, and financing risk.");
     await page.getByRole("button", { name: "Send question" }).click();

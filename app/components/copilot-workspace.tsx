@@ -102,7 +102,7 @@ export function CopilotWorkspace({ initialSessionId = "", onSessionSelect, onOpe
           }
           setLoadStatus("ready");
         })
-        .catch((loadError) => { if (!cancelled) { setNotice(loadError instanceof Error ? loadError.message : "Unable to load the copilot."); setLoadStatus("error"); } });
+        .catch((loadError) => { if (!cancelled) { setNotice(loadError instanceof Error ? loadError.message : "Unable to load the research assistant."); setLoadStatus("error"); } });
     });
     return () => { cancelled = true; };
   }, [createSession, initialSessionId, loadCatalog, loadSession]);
@@ -139,8 +139,8 @@ export function CopilotWorkspace({ initialSessionId = "", onSessionSelect, onOpe
     setNotice(response.ok ? `Open question saved for ${company?.name ?? openQuestion.companyId}.` : result.error ?? "Unable to save the open question.");
   };
 
-  if (loadStatus === "loading" && !catalog) return <div className="workspace-state full-page"><LoaderCircle className="drawer-spinner" size={25} /><strong>Loading research copilot</strong><span>Opening saved questions and evidence controls.</span></div>;
-  if (loadStatus === "error" && !catalog) return <div className="workspace-state full-page"><FileQuestion size={25} /><strong>Research copilot unavailable</strong><span>{notice}</span></div>;
+  if (loadStatus === "loading" && !catalog) return <div className="workspace-state full-page"><LoaderCircle className="drawer-spinner" size={25} /><strong>Loading research assistant</strong><span>Opening saved questions and evidence controls.</span></div>;
+  if (loadStatus === "error" && !catalog) return <div className="workspace-state full-page"><FileQuestion size={25} /><strong>Research assistant unavailable</strong><span>{notice}</span></div>;
 
   return (
     <div className="copilot-workspace">
@@ -153,7 +153,7 @@ export function CopilotWorkspace({ initialSessionId = "", onSessionSelect, onOpe
       </aside>
 
       <section className="copilot-main">
-        <header className="copilot-title"><div><p className="breadcrumb">Research workspace / Evidence-grounded Q&amp;A</p><h1>Research Copilot</h1><span>Answers are limited to analyst-accepted SEC and investor-relations evidence.</span></div><div className="copilot-policy"><ShieldCheck size={16} /><span><strong>Grounded mode</strong>Unsupported claims are rejected</span></div></header>
+        <header className="copilot-title"><div><p className="breadcrumb">Research workspace / Evidence-grounded Q&amp;A</p><h1>Research Assistant</h1><span>Answers are limited to analyst-accepted SEC and investor-relations evidence.</span></div><div className="copilot-policy"><ShieldCheck size={16} /><span><strong>Grounded mode</strong>Unsupported claims are rejected</span></div></header>
 
         <section className="copilot-filters" aria-label="Research filters">
           <div className="filter-block companies"><span>Companies</span><div>{catalog?.companies.map((company) => <label key={company.id}><input type="checkbox" checked={filters.companyIds.includes(company.id)} onChange={() => toggleCompany(company.id)} /><i>{filters.companyIds.includes(company.id) && <Check size={10} />}</i>{company.ticker}</label>)}</div></div>
