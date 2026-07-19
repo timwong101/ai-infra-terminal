@@ -135,7 +135,9 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await page.getByRole("textbox", { name: "Research question" }).fill("Compare the selected Neoclouds on capacity, demand, and financing risk.");
     await page.getByRole("button", { name: "Send question" }).click();
 
-    await expect(page.getByRole("heading", { name: "Evidence-backed answer" })).toBeVisible();
+    const answerHeadings = page.getByRole("heading", { name: "Evidence-backed answer" });
+    await expect(answerHeadings).toHaveCount(1);
+    await expect(answerHeadings).toBeVisible();
     await expect(page.getByText("Claim checks")).toBeVisible();
     await expect(page.getByText("Pass", { exact: true })).toBeVisible();
     await expect(page.getByText("Evidence packet")).toBeVisible();

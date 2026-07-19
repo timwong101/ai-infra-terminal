@@ -51,14 +51,19 @@ export function ResearchAssistantWorkspace({ initialSessionId = "", onSessionSel
     return result;
   }, []);
 
-  const loadSession = useCallback(async (id: string) => {
+  const fetchSession = useCallback(async (id: string) => {
     const response = await fetch(`/api/research-assistant/${encodeURIComponent(id)}`, { cache: "no-store" });
     const result = await response.json() as { session: ResearchAssistantSession } | { error: string };
     if (!response.ok || "error" in result) throw new Error("error" in result ? result.error : "Unable to load this research session.");
-    setSession(result.session);
-    setFilters(result.session.filters);
     return result.session;
   }, []);
+
+  const loadSession = useCallback(async (id: string) => {
+    const nextSession = await fetchSession(id);
+    setSession(nextSession);
+    setFilters(nextSession.filters);
+    return nextSession;
+  }, [fetchSession]);
 
   const transport = useMemo(() => new DefaultChatTransport({ api: initialSessionId ? `/api/research-assistant/${encodeURIComponent(initialSessionId)}/messages` : "/api/research-assistant/invalid/messages" }), [initialSessionId]);
   const { messages, sendMessage, setMessages, status, error: chatError, stop } = useChat({
@@ -66,7 +71,9 @@ export function ResearchAssistantWorkspace({ initialSessionId = "", onSessionSel
     transport,
     onFinish: async () => {
       if (!initialSessionId) return;
-      await Promise.all([loadSession(initialSessionId), loadCatalog()]);
+      const [nextSession] = await Promise.all([fetchSession(initialSessionId), loadCatalog()]);
+      setSession(nextSession);
+      setFilters(nextSession.filters);
       setMessages([]);
     },
   });
