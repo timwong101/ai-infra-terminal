@@ -1,4 +1,4 @@
-import { oauthCookie, OAUTH_RETURN_COOKIE, OAUTH_STATE_COOKIE, safeReturnPath } from "@/lib/auth/session";
+import { oauthCookie, OAUTH_RETURN_COOKIE, OAUTH_STATE_COOKIE, redirectResponse, safeReturnPath } from "@/lib/auth/session";
 
 export async function GET(request: Request) {
   const clientId = process.env.GITHUB_CLIENT_ID?.trim();
@@ -12,7 +12,7 @@ export async function GET(request: Request) {
   authorization.searchParams.set("redirect_uri", callback);
   authorization.searchParams.set("scope", "user:email");
   authorization.searchParams.set("state", state);
-  const response = Response.redirect(authorization, 302);
+  const response = redirectResponse(authorization);
   response.headers.append("Set-Cookie", oauthCookie(OAUTH_STATE_COOKIE, state, request));
   response.headers.append("Set-Cookie", oauthCookie(OAUTH_RETURN_COOKIE, returnTo, request));
   return response;

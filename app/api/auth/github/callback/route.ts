@@ -1,4 +1,4 @@
-import { createSession, oauthCookie, OAUTH_RETURN_COOKIE, OAUTH_STATE_COOKIE, readOAuthCookie, safeReturnPath, sessionCookie, upsertGitHubIdentity } from "@/lib/auth/session";
+import { createSession, oauthCookie, OAUTH_RETURN_COOKIE, OAUTH_STATE_COOKIE, readOAuthCookie, redirectResponse, safeReturnPath, sessionCookie, upsertGitHubIdentity } from "@/lib/auth/session";
 
 type GitHubProfile = { id: number; login: string; name: string | null; email: string | null; avatar_url: string | null };
 type GitHubEmail = { email: string; primary: boolean; verified: boolean };
@@ -6,7 +6,7 @@ type GitHubEmail = { email: string; primary: boolean; verified: boolean };
 function redirectWithError(request: Request, message: string) {
   const url = new URL("/", request.url);
   url.searchParams.set("authError", message);
-  return Response.redirect(url, 302);
+  return redirectResponse(url);
 }
 
 export async function GET(request: Request) {
@@ -33,7 +33,7 @@ export async function GET(request: Request) {
     const identity = await upsertGitHubIdentity({ id: profile.id, login: profile.login, name: profile.name, email, avatarUrl: profile.avatar_url });
     const session = await createSession(identity.userId, identity.workspaceId);
     const returnTo = safeReturnPath(readOAuthCookie(request, OAUTH_RETURN_COOKIE));
-    const response = Response.redirect(new URL(returnTo, request.url), 302);
+    const response = redirectResponse(new URL(returnTo, request.url));
     response.headers.append("Set-Cookie", sessionCookie(session.token, request));
     response.headers.append("Set-Cookie", oauthCookie(OAUTH_STATE_COOKIE, "", request, 0));
     response.headers.append("Set-Cookie", oauthCookie(OAUTH_RETURN_COOKIE, "", request, 0));

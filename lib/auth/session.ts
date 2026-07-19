@@ -60,6 +60,10 @@ export function oauthCookie(name: string, value: string, request: Request, maxAg
   return cookie(name, value, { maxAge, secure: new URL(request.url).protocol === "https:" });
 }
 
+export function redirectResponse(location: string | URL, status = 302) {
+  return new Response(null, { status, headers: { Location: location.toString() } });
+}
+
 export function readOAuthCookie(request: Request, name: string) {
   return cookieValue(request, name);
 }
