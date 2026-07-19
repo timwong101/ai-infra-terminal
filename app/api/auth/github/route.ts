@@ -5,7 +5,7 @@ export async function GET(request: Request) {
   if (!clientId || !process.env.GITHUB_CLIENT_SECRET?.trim()) return Response.json({ error: "GitHub OAuth is not configured." }, { status: 503 });
   const url = new URL(request.url);
   const state = crypto.randomUUID();
-  const returnTo = safeReturnPath(url.searchParams.get("returnTo"));
+  const returnTo = safeReturnPath(url.searchParams.get("returnTo") || "/home");
   const callback = `${process.env.AUTH_BASE_URL?.replace(/\/$/, "") || url.origin}/api/auth/github/callback`;
   const authorization = new URL("https://github.com/login/oauth/authorize");
   authorization.searchParams.set("client_id", clientId);

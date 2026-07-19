@@ -4,7 +4,7 @@ type GitHubProfile = { id: number; login: string; name: string | null; email: st
 type GitHubEmail = { email: string; primary: boolean; verified: boolean };
 
 function redirectWithError(request: Request, message: string) {
-  const url = new URL("/", request.url);
+  const url = new URL("/login", request.url);
   url.searchParams.set("authError", message);
   return redirectResponse(url);
 }

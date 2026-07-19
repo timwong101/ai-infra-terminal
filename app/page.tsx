@@ -112,7 +112,7 @@ function formatRefreshDate(value: string) {
 }
 
 const navItems = [
-  { label: "AI Infra Map", icon: Network, path: "/" },
+  { label: "AI Infra Map", icon: Network, path: "/home" },
   { label: "Companies", icon: Building2, path: "/companies" },
   { label: "Themes", icon: Layers3, path: "/themes/neoclouds" },
   { label: "Evidence Feed", icon: FileText, path: "/evidence" },
@@ -174,6 +174,28 @@ function parseRoute(): TerminalRoute {
     return { activeNav: "Themes", selectedTheme: themeNames.find((theme) => slugify(theme) === parts[1]) ?? LIVE_THEME };
   }
   return { activeNav: "AI Infra Map", selectedTheme: LIVE_THEME };
+}
+
+function safeClientReturnPath(value: string | null) {
+  if (!value?.startsWith("/") || value.startsWith("//") || value.startsWith("/login")) return "/home";
+  try {
+    const url = new URL(value, window.location.origin);
+    if (url.origin !== window.location.origin) return "/home";
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return "/home";
+  }
+}
+
+function resolveAuthPath(authenticated: boolean) {
+  const current = `${window.location.pathname}${window.location.search}`;
+  if (authenticated) {
+    if (window.location.pathname === "/login") return safeClientReturnPath(new URLSearchParams(window.location.search).get("returnTo"));
+    return window.location.pathname === "/" ? "/home" : current;
+  }
+  if (window.location.pathname === "/login") return current;
+  if (window.location.pathname === "/") return "/login";
+  return `/login?returnTo=${encodeURIComponent(current)}`;
 }
 
 function createNeocloudResearchView(cache: EvidenceCache, irCache: IrEvidenceCache): ResearchView {
@@ -292,6 +314,8 @@ export default function Home() {
   const loadAuth = useCallback(async () => {
     const response = await fetch("/api/auth/session", { cache: "no-store" });
     const result = await response.json() as AuthSession | PublicAuthState;
+    const nextPath = resolveAuthPath(result.authenticated);
+    if (`${window.location.pathname}${window.location.search}` !== nextPath) window.history.replaceState({}, "", nextPath);
     setAuth(result);
   }, []);
 

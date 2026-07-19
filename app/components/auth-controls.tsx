@@ -23,12 +23,17 @@ export function SignInScreen({ state, onSignedIn }: { state: PublicAuthState; on
     await onSignedIn();
   };
 
+  const github = () => {
+    const requested = new URLSearchParams(window.location.search).get("returnTo") || "/home";
+    window.location.assign(`/api/auth/github?returnTo=${encodeURIComponent(requested)}`);
+  };
+
   return <main className="sign-in-shell">
     <section className="sign-in-panel">
       <div className="sign-in-brand"><span className="sign-in-mark"><i /><i /><i /></span><span>AI Infrastructure<br />Terminal</span></div>
       <div className="sign-in-content"><span className="section-kicker">Evidence-grounded research</span><h1>Analyst Workspace</h1><p>Sign in to keep research decisions, memos, watchlists, and question history attributable and isolated by workspace.</p>
         <div className="sign-in-policies"><span><ShieldCheck size={14} /> Durable analyst audit trail</span><span><Users size={14} /> Role-based workspaces</span></div>
-        {state.githubAvailable && <button className="github-sign-in" onClick={() => window.location.assign("/api/auth/github")}><Code2 size={17} /> Continue with GitHub</button>}
+        {state.githubAvailable && <button className="github-sign-in" onClick={github}><Code2 size={17} /> Continue with GitHub</button>}
         {state.demoAvailable && <button className="demo-sign-in" disabled={status === "loading"} onClick={() => void demo()}>{status === "loading" ? <LoaderCircle className="drawer-spinner" size={17} /> : <span className="demo-avatar">DA</span>}<span><strong>Open portfolio demo</strong><small>Seeded admin analyst · no setup required</small></span></button>}
         {!state.githubAvailable && <p className="auth-configuration">GitHub sign-in is not configured for this environment.</p>}
         {error && <p className="sign-in-error">{error}</p>}
@@ -57,7 +62,7 @@ export function UserMenu({ auth, onAuthChange }: { auth: AuthSession; onAuthChan
     const result = await response.json() as { error?: string };
     if (!response.ok) { setError(result.error ?? "Unable to switch workspace."); return; }
     await onAuthChange();
-    window.location.assign("/");
+    window.location.assign("/home");
   };
 
   const create = async () => {
@@ -67,11 +72,12 @@ export function UserMenu({ auth, onAuthChange }: { auth: AuthSession; onAuthChan
     const result = await response.json() as { error?: string };
     if (!response.ok) { setError(result.error ?? "Unable to create workspace."); return; }
     await onAuthChange();
-    window.location.assign("/");
+    window.location.assign("/home");
   };
 
   const signOut = async () => {
     await fetch("/api/auth/session", { method: "DELETE" });
+    window.history.replaceState({}, "", "/login");
     await onAuthChange();
   };
 

@@ -57,6 +57,8 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+The root URL resolves to `/login`. Successful authentication opens `/home`, while protected deep links preserve their destination through the login flow.
+
 ## SEC Filing Refresh
 
 The checked-in SEC cache keeps the dashboard usable without a backend. Add your identifying user agent to the ignored `.env.local` file:

@@ -57,7 +57,9 @@ test.describe.serial("evidence-grounded analyst journey", () => {
 
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
+    await expect(page).toHaveURL(/\/login$/);
     await page.getByRole("button", { name: /Open portfolio demo/ }).click();
+    await expect(page).toHaveURL(/\/home$/);
     await expect(page.getByRole("heading", { name: "AI Infrastructure Map" })).toBeVisible();
   });
 
