@@ -481,7 +481,7 @@ export const memoGenerations = pgTable("memo_generations", {
   index("memo_generations_pair_idx").on(table.companyAId, table.companyBId),
 ]);
 
-export const researchCopilotSessions = pgTable("research_copilot_sessions", {
+export const researchAssistantSessions = pgTable("research_assistant_sessions", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
   companyIds: jsonb("company_ids").default([]).notNull(),
@@ -491,11 +491,11 @@ export const researchCopilotSessions = pgTable("research_copilot_sessions", {
   dateTo: date("date_to"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [index("research_copilot_sessions_updated_idx").on(table.updatedAt)]);
+}, (table) => [index("research_assistant_sessions_updated_idx").on(table.updatedAt)]);
 
-export const researchCopilotMessages = pgTable("research_copilot_messages", {
+export const researchAssistantMessages = pgTable("research_assistant_messages", {
   id: text("id").primaryKey(),
-  sessionId: text("session_id").notNull().references(() => researchCopilotSessions.id, { onDelete: "cascade" }),
+  sessionId: text("session_id").notNull().references(() => researchAssistantSessions.id, { onDelete: "cascade" }),
   question: text("question").notNull(),
   answerMarkdown: text("answer_markdown"),
   claims: jsonb("claims").default([]).notNull(),
@@ -518,8 +518,8 @@ export const researchCopilotMessages = pgTable("research_copilot_messages", {
   completedAt: timestamp("completed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
-  index("research_copilot_messages_session_idx").on(table.sessionId, table.createdAt),
-  index("research_copilot_messages_status_idx").on(table.status, table.createdAt),
+  index("research_assistant_messages_session_idx").on(table.sessionId, table.createdAt),
+  index("research_assistant_messages_status_idx").on(table.status, table.createdAt),
 ]);
 
 export const researchCycleRuns = pgTable("research_cycle_runs", {

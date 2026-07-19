@@ -2,7 +2,7 @@ export type EvidenceReviewStatus = "unreviewed" | "accepted" | "rejected";
 export type EvidenceSuggestionStatus = "pending" | "accepted" | "rejected";
 export type ResearchSourceKind = "sec" | "ir";
 
-export type CopilotFilters = {
+export type ResearchAssistantFilters = {
   companyIds: string[];
   topic: string;
   sourceKinds: ResearchSourceKind[];
@@ -10,18 +10,18 @@ export type CopilotFilters = {
   dateTo?: string;
 };
 
-export type CopilotClaim = {
+export type ResearchAssistantClaim = {
   companyId: string;
   text: string;
   citationIds: string[];
   confidenceScore: number;
 };
 
-export type CopilotMessage = {
+export type ResearchAssistantMessage = {
   id: string;
   question: string;
   answerMarkdown: string | null;
-  claims: CopilotClaim[];
+  claims: ResearchAssistantClaim[];
   openQuestions: Array<{ companyId: string; text: string }>;
   confidenceScore: number | null;
   evidenceQualityScore: number | null;
@@ -30,18 +30,18 @@ export type CopilotMessage = {
   model: string;
   retrievalMode: string;
   status: "running" | "completed" | "error";
-  filters: CopilotFilters;
+  filters: ResearchAssistantFilters;
   citations: ResearchEvidenceItem[];
   verification: { passed: boolean; rejectedClaims: number; checkedClaims: number; allowedCitations: number } | null;
   error: string | null;
   createdAt: string;
 };
 
-export type CopilotSession = {
+export type ResearchAssistantSession = {
   id: string;
   title: string;
-  filters: CopilotFilters;
-  messages: CopilotMessage[];
+  filters: ResearchAssistantFilters;
+  messages: ResearchAssistantMessage[];
   createdAt: string;
   updatedAt: string;
 };

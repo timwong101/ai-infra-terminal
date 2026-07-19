@@ -105,7 +105,7 @@ Only accepted evidence above the memo quality floor is eligible for retrieval. T
 
 The **Theses** workspace is a durable claim ledger. Accepted evidence and material filing changes link to capacity, demand, funding, customer, and execution claims, with weighted impact scores and chronological history. Reviewing evidence immediately rebuilds the affected thesis state and creates alerts for meaningful new support or contradiction.
 
-The **Research Assistant** answers free-form questions across one or more Neocloud companies using only analyst-accepted evidence above the same quality floor as comparison memos. Company, topic, SEC/IR source, and date filters are applied during retrieval rather than after generation. Each factual claim must cite an evidence ID owned by the same company; invalid, missing, and cross-company citations are rejected before the verified markdown is streamed to the browser. Answers expose confidence, evidence quality, source diversity, claim-check status, and the exact source packet. Sessions and generation records are created before work begins, retain model and token metadata, and have durable `/copilot/:id` URLs. An analyst can turn a two-company question into a comparison memo or save a generated evidence gap as an open question in the thesis ledger.
+The **Research Assistant** answers free-form questions across one or more Neocloud companies using only analyst-accepted evidence above the same quality floor as comparison memos. Company, topic, SEC/IR source, and date filters are applied during retrieval rather than after generation. Each factual claim must cite an evidence ID owned by the same company; invalid, missing, and cross-company citations are rejected before the verified markdown is streamed to the browser. Answers expose confidence, evidence quality, source diversity, claim-check status, and the exact source packet. Sessions and generation records are created before work begins, retain model and token metadata, and have durable `/research-assistant/:id` URLs. An analyst can turn a two-company question into a comparison memo or save a generated evidence gap as an open question in the thesis ledger.
 
 With `OPENAI_API_KEY`, the research assistant uses structured AI generation before claim verification. Without a key, its deterministic engine still retrieves, scores, cites, streams, and saves grounded answers, keeping local and portfolio demos functional without model spend.
 
@@ -128,7 +128,7 @@ AI settings are optional:
 ```env
 OPENAI_API_KEY=""
 AI_MEMO_MODEL="gpt-5-mini"
-AI_COPILOT_MODEL="gpt-5-mini"
+AI_RESEARCH_ASSISTANT_MODEL="gpt-5-mini"
 AI_EMBEDDING_MODEL="text-embedding-3-small"
 SCHEDULE_SECRET="replace-with-a-long-random-value"
 ```

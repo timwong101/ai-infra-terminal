@@ -82,8 +82,8 @@ test.describe.serial("evidence-grounded analyst journey", () => {
   });
 
   test("research assistant streams, verifies, and persists a cited research answer", async ({ page }) => {
-    await page.goto("/copilot");
-    await expect(page).toHaveURL(/\/copilot\/.+/);
+    await page.goto("/research-assistant");
+    await expect(page).toHaveURL(/\/research-assistant\/.+/);
     await expect(page.getByRole("heading", { name: "Research Assistant" })).toBeVisible();
 
     await page.getByRole("textbox", { name: "Research question" }).fill("Compare the selected Neoclouds on capacity, demand, and financing risk.");

@@ -30,7 +30,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertsWorkspace } from "@/app/components/alerts-workspace";
 import { ComparisonWorkspace } from "@/app/components/comparison-workspace";
 import { CompanyIntelligenceWorkspace } from "@/app/components/company-intelligence-workspace";
-import { CopilotWorkspace } from "@/app/components/copilot-workspace";
+import { ResearchAssistantWorkspace } from "@/app/components/research-assistant-workspace";
 import { EvidenceWorkspace } from "@/app/components/evidence-workspace";
 import { OperationsWorkspace } from "@/app/components/operations-workspace";
 import { ThesisWorkspace } from "@/app/components/thesis-workspace";
@@ -112,7 +112,7 @@ const navItems = [
   { label: "Companies", icon: Building2, path: "/companies" },
   { label: "Themes", icon: Layers3, path: "/themes/neoclouds" },
   { label: "Evidence Feed", icon: FileText, path: "/evidence" },
-  { label: "Research Assistant", icon: MessageSquareText, path: "/copilot" },
+  { label: "Research Assistant", icon: MessageSquareText, path: "/research-assistant" },
   { label: "Theses", icon: Target, path: "/theses" },
   { label: "Memos", icon: Sparkles, path: "/memos" },
   { label: "Alerts", icon: Bell, path: "/alerts" },
@@ -148,7 +148,7 @@ type TerminalRoute = {
   companyId?: string;
   evidenceCompanyId?: string;
   memoId?: string;
-  copilotId?: string;
+  researchAssistantId?: string;
 };
 
 function parseRoute(): TerminalRoute {
@@ -157,7 +157,7 @@ function parseRoute(): TerminalRoute {
   if (parts[0] === "companies") return { activeNav: "Companies", companyId: parts[1] ?? "" };
   if (parts[0] === "evidence") return { activeNav: "Evidence Feed", evidenceCompanyId: search.get("company") ?? "" };
   if (parts[0] === "memos") return { activeNav: "Memos", memoId: parts[1] ?? "" };
-  if (parts[0] === "copilot") return { activeNav: "Research Assistant", copilotId: parts[1] ?? "" };
+  if (parts[0] === "research-assistant") return { activeNav: "Research Assistant", researchAssistantId: parts[1] ?? "" };
   if (parts[0] === "theses") return { activeNav: "Theses" };
   if (parts[0] === "alerts") return { activeNav: "Alerts" };
   if (parts[0] === "activity") return { activeNav: "Activity" };
@@ -303,7 +303,7 @@ export default function Home() {
   const [routeCompanyId, setRouteCompanyId] = useState("");
   const [routeEvidenceCompanyId, setRouteEvidenceCompanyId] = useState("");
   const [routeMemoId, setRouteMemoId] = useState("");
-  const [routeCopilotId, setRouteCopilotId] = useState("");
+  const [routeResearchAssistantId, setRouteResearchAssistantId] = useState("");
   const detailRequest = useRef<AbortController | null>(null);
 
   const syncRoute = useCallback(() => {
@@ -312,7 +312,7 @@ export default function Home() {
     setRouteCompanyId(route.companyId ?? "");
     setRouteEvidenceCompanyId(route.evidenceCompanyId ?? "");
     setRouteMemoId(route.memoId ?? "");
-    setRouteCopilotId(route.copilotId ?? "");
+    setRouteResearchAssistantId(route.researchAssistantId ?? "");
     if (route.selectedTheme) {
       setSelectedTheme(route.selectedTheme);
       setActiveTab("Overview");
@@ -698,10 +698,10 @@ export default function Home() {
             onMemoSelect={(memoId) => navigate(`/memos/${encodeURIComponent(memoId)}`)}
           />
         ) : activeNav === "Research Assistant" ? (
-          <CopilotWorkspace
-            key={routeCopilotId || "copilot-index"}
-            initialSessionId={routeCopilotId}
-            onSessionSelect={(sessionId) => navigate(`/copilot/${encodeURIComponent(sessionId)}`)}
+          <ResearchAssistantWorkspace
+            key={routeResearchAssistantId || "research-assistant-index"}
+            initialSessionId={routeResearchAssistantId}
+            onSessionSelect={(sessionId) => navigate(`/research-assistant/${encodeURIComponent(sessionId)}`)}
             onOpenMemo={(memoId) => navigate(`/memos/${encodeURIComponent(memoId)}`)}
           />
         ) : activeNav === "Companies" ? (
