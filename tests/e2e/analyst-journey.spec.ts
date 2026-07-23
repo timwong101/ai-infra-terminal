@@ -86,6 +86,15 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await expect(systemTools.getByRole("button", { name: "Quality", exact: true })).toHaveClass(/active/);
   });
 
+  test("core workspaces stay inside the mobile viewport", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    for (const route of ["/home", "/evidence", "/alerts", "/research-assistant", "/lineage"]) {
+      await page.goto(route);
+      await expect.poll(async () => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    }
+    await expect(page.getByRole("navigation", { name: "Research tools" })).toBeVisible();
+  });
+
   test("theme and company deep links expose all four Neoclouds", async ({ page }) => {
     await page.goto("/themes/neoclouds");
     await expect(page.getByRole("heading", { name: "AI Infrastructure Map" })).toBeVisible();

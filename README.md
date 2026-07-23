@@ -6,6 +6,7 @@ A responsive, evidence-first research dashboard for exploring the AI infrastruct
 
 - Interactive AI infrastructure theme map
 - Workflow-based navigation with contextual Monitor, Research, Analysis, and System tools
+- Accessible dense-dashboard type scale, high-contrast metadata, custom scrollbars, and responsive tablet/mobile layouts
 - Unified SEC and IR evidence-review workspace
 - Persistent accept/reject review states and provenance records
 - Grounded company comparisons with inline citations and saved evidence packets
@@ -208,7 +209,7 @@ pnpm build
 pnpm test
 ```
 
-GitHub Actions runs lint, the production build, all deterministic tests, and eight Chromium analyst journeys against an isolated pgvector/Postgres service. The browser coverage includes workflow navigation, every Neocloud, evidence review and claim linking, thesis alerts, cited memo generation, Research Assistant persistence, quality benchmarks, live events, point-in-time replay, compliance lineage, workspace isolation, and attributed audit history.
+GitHub Actions runs lint, the production build, all deterministic tests, and nine Chromium analyst journeys against an isolated pgvector/Postgres service. The browser coverage includes workflow navigation, responsive viewport containment, every Neocloud, evidence review and claim linking, thesis alerts, cited memo generation, Research Assistant persistence, quality benchmarks, live events, point-in-time replay, compliance lineage, workspace isolation, and attributed audit history.
 
 To run that journey locally, create a dedicated database once and pass it explicitly. The fixture command refuses to truncate any database whose name does not end in `_e2e` or `_test`.
 
