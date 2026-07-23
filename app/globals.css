@@ -65,8 +65,7 @@ input::placeholder, textarea::placeholder { color: #758791; opacity: 1; }
 .command-button.small { height: 28px; padding: 0 9px; font-size: 10px; }
 .avatar { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--border); background: #24333d; font-size: 10px; cursor: pointer; }
 .profile-chevron { color: var(--muted); }
-.context-nav { min-height: 44px; padding: 0 18px; border-bottom: 1px solid var(--border); background: rgba(6, 18, 26, .96); backdrop-filter: blur(14px); display: flex; align-items: center; gap: 15px; position: sticky; top: 58px; z-index: 29; }
-.context-nav-heading { flex: 0 0 auto; color: #617d8b; display: flex; align-items: center; gap: 7px; font-size: 11px; text-transform: uppercase; }
+.context-nav { min-height: 44px; padding: 0 18px; border-bottom: 1px solid var(--border); background: rgba(6, 18, 26, .96); backdrop-filter: blur(14px); display: flex; align-items: center; position: sticky; top: 58px; z-index: 29; }
 .context-nav-tools { min-width: 0; display: flex; align-self: stretch; overflow-x: auto; }
 .context-nav-tools button { min-width: 86px; padding: 0 13px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #7f929c; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 10px; cursor: pointer; white-space: nowrap; }
 .context-nav-tools button:hover { color: #dce7eb; background: #0a1a24; }
@@ -1184,8 +1183,7 @@ input::placeholder, textarea::placeholder { color: #758791; opacity: 1; }
 
 @media (max-width: 640px) {
   .topbar { padding: 0 10px; }
-  .context-nav { padding: 0 9px; gap: 8px; }
-  .context-nav-heading { display: none; }
+  .context-nav { padding: 0 9px; }
   .context-nav-tools { width: 100%; }
   .context-nav-tools button { flex: 1 0 auto; min-width: 80px; padding: 0 10px; }
   .dashboard { padding: 12px 9px; }

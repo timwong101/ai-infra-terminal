@@ -84,6 +84,17 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     const systemTools = page.getByRole("navigation", { name: "System tools" });
     await expect(systemTools.getByRole("button")).toHaveCount(3);
     await expect(systemTools.getByRole("button", { name: "Quality", exact: true })).toHaveClass(/active/);
+
+    for (const section of [
+      { route: "/alerts", label: "Monitor" },
+      { route: "/companies", label: "Research" },
+      { route: "/research-assistant", label: "Analysis" },
+      { route: "/activity", label: "System" },
+    ]) {
+      await page.goto(section.route);
+      const toolNavigation = page.getByRole("navigation", { name: `${section.label} tools` });
+      await expect(toolNavigation.getByText(section.label, { exact: true })).toHaveCount(0);
+    }
   });
 
   test("core workspaces stay inside the mobile viewport", async ({ page }) => {

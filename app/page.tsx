@@ -717,7 +717,6 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
 
         {activeSection.tools.length > 0 && (
           <nav className="context-nav" aria-label={`${activeSection.label} tools`}>
-            <div className="context-nav-heading"><ActiveSectionIcon size={15} /><span>{activeSection.label}</span></div>
             <div className="context-nav-tools">
               {activeSection.tools.map((tool) => {
                 const ToolIcon = tool.icon;
