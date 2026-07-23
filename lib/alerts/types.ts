@@ -10,14 +10,14 @@ export type ResearchAlert = {
   formType: string;
   filedAt: string;
   sourceUrl: string | null;
-  alertType: "filing_change" | "claim_impact";
+  alertType: "filing_change" | "claim_impact" | "external_event";
   category: string;
   significance: "high" | "medium" | "low";
   impact: AlertImpact;
   title: string;
   summary: string;
   sectionTitle: string;
-  changeType: "new_event" | "added" | "modified" | "explicitly_removed" | "reviewed_evidence";
+  changeType: "new_event" | "added" | "modified" | "explicitly_removed" | "reviewed_evidence" | "external_event";
   similarity: number | null;
   eventType: string | null;
   eventCode: string | null;

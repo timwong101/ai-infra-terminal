@@ -411,13 +411,23 @@ export async function updateEvidenceReview(ids: string[], status: EvidenceReview
   return result;
 }
 
-export async function getAcceptedEvidence(companyIds: string[], topic?: string, filters?: { sourceKinds?: Array<"sec" | "ir">; dateFrom?: string; dateTo?: string }) {
+export async function getAcceptedEvidence(companyIds: string[], topic?: string, filters?: {
+  sourceKinds?: Array<"sec" | "ir">;
+  dateFrom?: string;
+  dateTo?: string;
+  knownAt?: string;
+}) {
   const result = await withDatabase(async (db) => {
     const conditions = [eq(researchEvidence.reviewStatus, "accepted"), gte(researchEvidence.evidenceQualityScore, 45), lt(researchEvidence.boilerplateRisk, 60), inArray(researchEvidence.companyId, companyIds)];
     if (topic && topic !== "All topics") conditions.push(eq(researchEvidence.topic, topic));
     if (filters?.sourceKinds?.length) conditions.push(inArray(researchEvidence.sourceKind, filters.sourceKinds));
     if (filters?.dateFrom) conditions.push(gte(researchEvidence.documentDate, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(researchEvidence.documentDate, filters.dateTo));
+    if (filters?.knownAt) {
+      const knownAt = new Date(`${filters.knownAt}T23:59:59.999Z`);
+      conditions.push(lte(researchEvidence.createdAt, knownAt));
+      conditions.push(sql`COALESCE(${researchEvidence.reviewedAt}, ${researchEvidence.createdAt}) <= ${knownAt}`);
+    }
     const rows = await db.select({ evidence: researchEvidence, company: companies })
       .from(researchEvidence)
       .innerJoin(companies, eq(researchEvidence.companyId, companies.id))

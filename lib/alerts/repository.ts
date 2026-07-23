@@ -6,6 +6,7 @@ import {
   companies,
   filingChanges,
   filings,
+  liveEvents,
   researchAlerts,
   researchClaims,
   researchEvidence,
@@ -25,37 +26,38 @@ type AlertFilters = {
 export async function listResearchAlerts(filters: AlertFilters = {}, auth: AuthContext): Promise<AlertsResponse> {
   const result = await withDatabase(async (db) => {
     const rows = await db
-      .select({ alert: researchAlerts, company: companies, filing: filings, change: filingChanges, evidence: researchEvidence })
+      .select({ alert: researchAlerts, company: companies, filing: filings, change: filingChanges, evidence: researchEvidence, liveEvent: liveEvents })
       .from(researchAlerts)
       .innerJoin(companies, eq(researchAlerts.companyId, companies.id))
       .leftJoin(filings, eq(researchAlerts.filingId, filings.id))
       .leftJoin(filingChanges, eq(researchAlerts.filingChangeId, filingChanges.id))
       .leftJoin(researchEvidence, eq(researchAlerts.researchEvidenceId, researchEvidence.id))
+      .leftJoin(liveEvents, eq(researchAlerts.liveEventId, liveEvents.id))
       .orderBy(desc(researchAlerts.createdAt));
 
     const stateRows = await db.select().from(userAlertStates).where(and(eq(userAlertStates.workspaceId, auth.workspace.id), eq(userAlertStates.userId, auth.user.id)));
     const stateByAlert = new Map(stateRows.map((item) => [item.alertId, item.status as AlertStatus]));
-    const allAlerts: ResearchAlert[] = rows.map(({ alert, company, filing, change, evidence }) => ({
+    const allAlerts: ResearchAlert[] = rows.map(({ alert, company, filing, change, evidence, liveEvent }) => ({
       id: alert.id,
       companyId: company.id,
       companyName: company.name,
       ticker: company.ticker,
       filingId: filing?.id ?? null,
-      formType: filing?.formType ?? evidence?.sourceType ?? "Reviewed evidence",
-      filedAt: filing?.filedAt ?? evidence?.documentDate ?? alert.createdAt.toISOString().slice(0, 10),
-      sourceUrl: filing?.sourceUrl ?? evidence?.sourceUrl ?? null,
+      formType: filing?.formType ?? evidence?.sourceType ?? (liveEvent?.evidenceStatus === "official" ? "Official IR event" : liveEvent ? "Discovery signal" : "Reviewed evidence"),
+      filedAt: filing?.filedAt ?? evidence?.documentDate ?? liveEvent?.publishedAt.toISOString().slice(0, 10) ?? alert.createdAt.toISOString().slice(0, 10),
+      sourceUrl: filing?.sourceUrl ?? evidence?.sourceUrl ?? liveEvent?.sourceUrl ?? null,
       alertType: alert.alertType as ResearchAlert["alertType"],
       category: alert.category,
       significance: alert.significance as ResearchAlert["significance"],
       impact: alert.impact as ResearchAlert["impact"],
       title: alert.title,
       summary: alert.summary,
-      sectionTitle: change?.sectionTitle ?? evidence?.sectionTitle ?? "Accepted evidence",
-      changeType: change?.changeType as ResearchAlert["changeType"] ?? "reviewed_evidence",
+      sectionTitle: change?.sectionTitle ?? evidence?.sectionTitle ?? liveEvent?.eventType ?? "Accepted evidence",
+      changeType: change?.changeType as ResearchAlert["changeType"] ?? (liveEvent ? "external_event" : "reviewed_evidence"),
       similarity: change?.similarity ?? null,
-      eventType: change?.eventType ?? null,
+      eventType: change?.eventType ?? liveEvent?.eventType ?? null,
       eventCode: change?.eventCode ?? null,
-      relevanceScore: change?.relevanceScore ?? evidence?.sourceQuality ?? null,
+      relevanceScore: change?.relevanceScore ?? evidence?.sourceQuality ?? liveEvent?.materialityScore ?? null,
       relevanceReason: change?.relevanceReason ?? alert.summary,
       status: stateByAlert.get(alert.id) ?? "unread",
       createdAt: alert.createdAt.toISOString(),

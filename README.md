@@ -11,6 +11,9 @@ A responsive, evidence-first research dashboard for exploring the AI infrastruct
 - Grounded company comparisons with inline citations and saved evidence packets
 - Streaming research assistant with saved question history, source filters, claim checks, and inline citations
 - Durable Research Quality benchmarks with retrieval, citation, groundedness, refusal, latency, token, and cost diagnostics
+- Live event intelligence combining official issuer updates with GDELT discovery signals
+- Point-in-time research replay with strict availability policies and leakage checks
+- Interactive source-to-evidence-to-claim lineage with a compliance-only mode
 - Responsive desktop and mobile layouts
 - Live SEC and investor-relations ingestion health
 - Real SEC filing metadata with permanent EDGAR source links
@@ -131,6 +134,20 @@ Run the benchmark locally with `pnpm research:quality`. Add `-- --gate` to enfor
 
 With `OPENAI_API_KEY`, the research assistant uses structured AI generation before claim verification. Without a key, its deterministic engine still retrieves, scores, cites, streams, and saves grounded answers, keeping local and portfolio demos functional without model spend.
 
+## Live Events, Replay, And Lineage
+
+The **Live Event Intelligence** workspace normalizes recent official investor-relations updates and GDELT DOC 2.0 discoveries into a single Neocloud timeline. Events retain their source domain, publication time, event type, materiality, credibility, and proposed thesis impact. Official issuer items are marked as official; GDELT articles remain discovery signals and cannot enter memo retrieval or alter thesis scores until an official passage is extracted and accepted. The GDELT integration uses one bounded multi-company query with rate-limit retry, preserves stored events when the upstream service is unavailable, and deduplicates normalized URLs with content fingerprints.
+
+Refresh events independently with:
+
+```bash
+pnpm research:events
+```
+
+The **Point-in-Time Research Replay** workspace freezes both historical and current evidence packets. `system-known` mode requires a passage to have been ingested and accepted by the selected cutoff. `publication-time` mode reconstructs material that had been published by that date using the current review policy. Every run rejects future-dated evidence, records leakage diagnostics, saves its grounded claims and citations, and explains which currently approved passages entered the packet later.
+
+The **Claim-to-Evidence Lineage** workspace projects the existing relational model into an interactive graph: company to source, source to passage, passage or event to claim, and generated claim to memo. Company and node filters keep large graphs navigable. Compliance mode removes discovery-only events, rejected passages, stale artifacts, and unsupported claim paths instead of presenting them as trusted research.
+
 The **Companies** workspace turns that source catalog into quarter-over-quarter company intelligence. Periodic SEC filings use their official period of report, while explicit IR labels such as `Q3 FY26` and nearby earnings materials are resolved into persisted earnings packages. Publication date remains separate, annual results never compare against quarterly figures, and ambiguous news is visibly retained as a lower-confidence calendar fallback. Each package records its resolution method, confidence, source documents, and extraction status. Deterministic extraction captures only stated metrics such as revenue, backlog, contract value, liquidity, debt, GPU count, and active or planned power capacity; every value and disclosure change retains its exact source excerpt and URL. Persisted earnings change briefs organize those comparisons into what changed, bull implications, bear implications, and open questions. Factual brief claims require same-company evidence IDs, while confidence combines period resolution, evidence quality, source diversity, and comparison coverage. Content-addressed versions survive intelligence rebuilds, preserving prior thesis-impact results whenever the underlying evidence changes.
 
 Rebuild reporting periods, earnings packages, normalized metrics, material comparisons, and cited change briefs from the durable evidence catalog with:
@@ -139,11 +156,11 @@ Rebuild reporting periods, earnings packages, normalized metrics, material compa
 pnpm research:intelligence
 ```
 
-The scheduled research cycle performs this step automatically after SEC and IR evidence synchronization, so opening the site reads persisted intelligence instead of refetching and recomputing every document.
+The scheduled research cycle performs this step automatically after SEC, IR, and live-event synchronization, so opening the site reads persisted intelligence instead of refetching and recomputing every document.
 
 The **Activity & Briefings** workspace turns scheduled ingestion into an analyst inbox. Every research cycle records stage-level start, completion, duration, and failure events under a trace ID, then persists an immutable briefing covering evidence added since the previous successful run. Briefings summarize new SEC and IR documents, high-value passages, proposed thesis impacts, stale research, ingestion failures, and company-level source packets. The UI also retains briefing history, end-to-end company coverage, and the full pipeline timeline.
 
-Run the complete SEC, IR, evidence, intelligence, embedding, thesis, and briefing pipeline locally with `pnpm research:cycle`. Build a lightweight snapshot of the current 24-hour evidence window with `pnpm research:briefing`, or pass a custom window such as `pnpm research:briefing 48`. The included GitHub Actions workflow runs the complete cycle every six hours after `DATABASE_URL`, `SEC_USER_AGENT`, and optionally `OPENAI_API_KEY` are added as repository secrets. The database URL must point to a hosted Postgres instance reachable from GitHub Actions.
+Run the complete SEC, IR, event, evidence, intelligence, embedding, thesis, and briefing pipeline locally with `pnpm research:cycle`. Build a lightweight snapshot of the current 24-hour evidence window with `pnpm research:briefing`, or pass a custom window such as `pnpm research:briefing 48`. The included GitHub Actions workflow runs the complete cycle every six hours after `DATABASE_URL`, `SEC_USER_AGENT`, and optionally `OPENAI_API_KEY` are added as repository secrets. The database URL must point to a hosted Postgres instance reachable from GitHub Actions.
 
 AI settings are optional:
 
@@ -182,11 +199,12 @@ The **Alerts** workspace converts those changes into a review queue. Alerts can 
 
 ```bash
 pnpm lint
+pnpm typecheck
 pnpm build
 pnpm test
 ```
 
-GitHub Actions runs lint, the production build, all deterministic tests, and a Chromium analyst journey against an isolated pgvector/Postgres service. The browser journey verifies direct links for every covered Neocloud, evidence review and claim linking, thesis alerts, cited memo generation, saved-memo reloads, the Activity workspace, and a streamed research-assistant answer that survives reload with its claim checks and evidence packet intact.
+GitHub Actions runs lint, the production build, all deterministic tests, and seven Chromium analyst journeys against an isolated pgvector/Postgres service. The browser coverage includes every Neocloud, evidence review and claim linking, thesis alerts, cited memo generation, Research Assistant persistence, quality benchmarks, live events, point-in-time replay, compliance lineage, workspace isolation, and attributed audit history.
 
 To run that journey locally, create a dedicated database once and pass it explicitly. The fixture command refuses to truncate any database whose name does not end in `_e2e` or `_test`.
 
@@ -195,6 +213,6 @@ docker compose exec -T postgres createdb -U ai_infra ai_infra_e2e
 E2E_DATABASE_URL="postgresql://ai_infra:ai_infra@localhost:5432/ai_infra_e2e" pnpm test:e2e
 ```
 
-Company, theme, evidence-company, saved-memo, and research-assistant session selections have durable URLs, so an analyst can reload or share a research view without losing its primary context.
+Company, theme, evidence-company, saved-memo, research-assistant session, replay, and lineage workspaces have durable URLs, so an analyst can reload or share a research view without losing its primary context.
 
 There is intentionally no live market-price integration in this version. SEC and investor-relations evidence is real, while AI generation is optional and always constrained by the saved evidence packet. The infrastructure map labels Neoclouds as live coverage and treats every other theme as roadmap-only until official sources and company policies are integrated.

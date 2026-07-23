@@ -22,11 +22,13 @@
     "research:briefing": "tsx --env-file-if-exists=.env.local scripts/generate-research-briefing.ts",
     "research:embeddings": "tsx --env-file-if-exists=.env.local scripts/backfill-research-embeddings.ts",
     "research:intelligence": "tsx --env-file-if-exists=.env.local scripts/sync-company-intelligence.ts",
+    "research:events": "tsx --env-file-if-exists=.env.local scripts/refresh-live-events.ts",
     "research:quality": "tsx --env-file-if-exists=.env.local scripts/run-research-quality.ts",
     "db:generate": "drizzle-kit generate",
     "db:setup": "pnpm db:migrate && pnpm db:backfill && pnpm db:backfill:ir",
-    "test": "pnpm run build && node --test tests/rendered-html.test.mjs && tsx --test tests/auth.test.ts tests/sec-normalize.test.ts tests/sec-ingest.test.ts tests/sec-extract.test.ts tests/sec-event-policy.test.ts tests/ir-normalize.test.ts tests/ir-extract.test.ts tests/filing-compare.test.ts tests/alert-classification.test.ts tests/evidence-quality.test.ts tests/research-evidence.test.ts tests/research-briefing.test.ts tests/memo-verification.test.ts tests/research-assistant-verification.test.ts tests/research-quality.test.ts tests/company-intelligence.test.ts tests/company-coverage.test.ts",
+    "test": "pnpm run build && node --test tests/rendered-html.test.mjs && tsx --test tests/auth.test.ts tests/sec-normalize.test.ts tests/sec-ingest.test.ts tests/sec-extract.test.ts tests/sec-event-policy.test.ts tests/ir-normalize.test.ts tests/ir-extract.test.ts tests/filing-compare.test.ts tests/alert-classification.test.ts tests/evidence-quality.test.ts tests/research-evidence.test.ts tests/research-briefing.test.ts tests/memo-verification.test.ts tests/research-assistant-verification.test.ts tests/research-quality.test.ts tests/company-intelligence.test.ts tests/company-coverage.test.ts tests/event-intelligence.test.ts tests/research-replay.test.ts",
     "test:e2e": "playwright test",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },
   "dependencies": {
@@ -34,6 +36,7 @@
     "@ai-sdk/react": "4.0.24",
     "ai": "^7.0.23",
     "cheerio": "^1.2.0",
+    "cytoscape": "^3.34.0",
     "drizzle-orm": "^0.45.2",
     "lucide-react": "^1.24.0",
     "next": "16.2.6",

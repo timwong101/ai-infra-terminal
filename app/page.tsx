@@ -13,11 +13,14 @@ import {
   ExternalLink,
   FileText,
   FlaskConical,
+  GitBranch,
+  History,
   Layers3,
   LoaderCircle,
   Menu,
   MessageSquareText,
   Network,
+  Newspaper,
   PanelLeftClose,
   Plus,
   Search,
@@ -38,6 +41,9 @@ import { SignInScreen, UserMenu, type AuthSession, type PublicAuthState } from "
 import { EvidenceWorkspace } from "@/app/components/evidence-workspace";
 import { OperationsWorkspace } from "@/app/components/operations-workspace";
 import { ThesisWorkspace } from "@/app/components/thesis-workspace";
+import { EventIntelligenceWorkspace } from "@/app/components/event-intelligence-workspace";
+import { ResearchReplayWorkspace } from "@/app/components/research-replay-workspace";
+import { LineageWorkspace } from "@/app/components/lineage-workspace";
 import secEvidenceCacheJson from "@/data/generated/sec-evidence.json";
 import irEvidenceCacheJson from "@/data/generated/ir-evidence.json";
 import type {
@@ -51,6 +57,7 @@ import type {
 } from "@/lib/evidence/types";
 import { baseFilingForm, getFilingComparisonMode } from "@/lib/evidence/compare";
 import type { IrDocumentDetail, IrDocumentDetailResponse, IrEvidenceCache, IrEvidenceResponse, IrIngestionRun, IrIngestionSummary } from "@/lib/ir/types";
+import type { LiveEventCatalog } from "@/lib/events/types";
 
 type Signal = EvidenceSignal;
 type SecUiStatus = SecRefreshStatus | "refreshing";
@@ -116,10 +123,13 @@ const navItems = [
   { label: "Companies", icon: Building2, path: "/companies" },
   { label: "Themes", icon: Layers3, path: "/themes/neoclouds" },
   { label: "Evidence Feed", icon: FileText, path: "/evidence" },
+  { label: "Live Events", icon: Newspaper, path: "/events" },
   { label: "Research Assistant", icon: MessageSquareText, path: "/research-assistant" },
+  { label: "Research Replay", icon: History, path: "/research-replay" },
   { label: "Research Quality", icon: FlaskConical, path: "/research-quality" },
   { label: "Theses", icon: Target, path: "/theses" },
   { label: "Memos", icon: Sparkles, path: "/memos" },
+  { label: "Lineage", icon: GitBranch, path: "/lineage" },
   { label: "Alerts", icon: Bell, path: "/alerts" },
   { label: "Activity", icon: Activity, path: "/activity" },
   { label: "Audit Trail", icon: ClipboardList, path: "/audit" },
@@ -163,12 +173,15 @@ function parseRoute(): TerminalRoute {
   const search = new URLSearchParams(window.location.search);
   if (parts[0] === "companies") return { activeNav: "Companies", companyId: parts[1] ?? "" };
   if (parts[0] === "evidence") return { activeNav: "Evidence Feed", evidenceCompanyId: search.get("company") ?? "" };
+  if (parts[0] === "events") return { activeNav: "Live Events" };
   if (parts[0] === "memos") return { activeNav: "Memos", memoId: parts[1] ?? "" };
   if (parts[0] === "research-assistant") return { activeNav: "Research Assistant", researchAssistantId: parts[1] ?? "" };
+  if (parts[0] === "research-replay") return { activeNav: "Research Replay" };
   if (parts[0] === "research-quality") return { activeNav: "Research Quality", researchQualityRunId: parts[1] ?? "" };
   if (parts[0] === "theses") return { activeNav: "Theses" };
   if (parts[0] === "alerts") return { activeNav: "Alerts" };
   if (parts[0] === "activity") return { activeNav: "Activity" };
+  if (parts[0] === "lineage") return { activeNav: "Lineage" };
   if (parts[0] === "audit") return { activeNav: "Audit Trail" };
   if (parts[0] === "themes") {
     return { activeNav: "Themes", selectedTheme: themeNames.find((theme) => slugify(theme) === parts[1]) ?? LIVE_THEME };
@@ -349,6 +362,7 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
   const [detailError, setDetailError] = useState("");
   const [copiedPassage, setCopiedPassage] = useState<string | null>(null);
   const [unreadAlertCount, setUnreadAlertCount] = useState(0);
+  const [liveEventCatalog, setLiveEventCatalog] = useState<LiveEventCatalog | null>(null);
   const [routeCompanyId, setRouteCompanyId] = useState("");
   const [routeEvidenceCompanyId, setRouteEvidenceCompanyId] = useState("");
   const [routeMemoId, setRouteMemoId] = useState("");
@@ -452,6 +466,17 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
     return () => controller.abort();
   }, []);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/events", { cache: "no-store", signal: controller.signal })
+      .then((response) => response.ok ? response.json() : null)
+      .then((result) => {
+        if (result?.events) setLiveEventCatalog(result as LiveEventCatalog);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+
   const neocloudResearchView = useMemo(
     () => createNeocloudResearchView(liveSecCache, liveIrCache),
     [liveIrCache, liveSecCache],
@@ -516,10 +541,16 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
       status: irRefreshStatus === "refreshing" ? "Refreshing" : irRefreshStatus === "fresh" ? "Live" : irRefreshStatus === "cached" ? "Cached" : "Stale cache",
       connected: irRefreshStatus === "fresh" || irRefreshStatus === "cached",
     },
-    { name: "GDELT News", detail: "Not connected", time: "Roadmap", status: "Planned", connected: false },
+    {
+      name: "Event Intelligence",
+      detail: liveEventCatalog ? `${liveEventCatalog.summary.discovery} discovery · ${liveEventCatalog.summary.official} official` : "Loading event catalog",
+      time: liveEventCatalog?.refresh.lastSeenAt ? formatRefreshDate(liveEventCatalog.refresh.lastSeenAt) : "Awaiting first refresh",
+      status: liveEventCatalog ? "Live" : "Connecting",
+      connected: Boolean(liveEventCatalog),
+    },
     { name: "EIA Power Data", detail: "Not connected", time: "Roadmap", status: "Planned", connected: false },
     { name: "Manual Notes", detail: "Not configured", time: "Roadmap", status: "Planned", connected: false },
-  ], [irIngestionSummary, irRefreshStatus, liveIrCache, liveSecCache, secRefreshStatus]);
+  ], [irIngestionSummary, irRefreshStatus, liveEventCatalog, liveIrCache, liveSecCache, secRefreshStatus]);
 
   const liveStatusLabel = secRefreshStatus === "refreshing"
     ? "Refreshing SEC"
@@ -734,6 +765,8 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
 
         {activeNav === "Alerts" ? (
           <AlertsWorkspace onOpenFiling={openAlertFiling} onUnreadChange={setUnreadAlertCount} />
+        ) : activeNav === "Live Events" ? (
+          <EventIntelligenceWorkspace />
         ) : activeNav === "Evidence Feed" ? (
           <EvidenceWorkspace
             initialCompanyId={routeEvidenceCompanyId}
@@ -754,6 +787,8 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
             onSessionSelect={(sessionId) => navigate(`/research-assistant/${encodeURIComponent(sessionId)}`)}
             onOpenMemo={(memoId) => navigate(`/memos/${encodeURIComponent(memoId)}`)}
           />
+        ) : activeNav === "Research Replay" ? (
+          <ResearchReplayWorkspace />
         ) : activeNav === "Research Quality" ? (
           <ResearchQualityWorkspace
             key={routeResearchQualityRunId || "research-quality-index"}
@@ -771,6 +806,8 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
           <OperationsWorkspace />
         ) : activeNav === "Audit Trail" ? (
           <AuditWorkspace />
+        ) : activeNav === "Lineage" ? (
+          <LineageWorkspace />
         ) : (
         <div className="dashboard">
           <div className="title-row">

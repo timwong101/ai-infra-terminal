@@ -111,6 +111,30 @@ try {
         claimId,
       ],
     );
+
+    const eventId = `event:e2e:${company.id}`;
+    await client.query(
+      `INSERT INTO live_events (
+        id, company_id, source_kind, source_name, source_domain, title, summary, source_url,
+        published_at, event_type, materiality_score, credibility_score, evidence_status, fingerprint
+      ) VALUES (
+        $1, $2, 'official-ir', 'Official investor relations', 'example.com', $3, $4, $5,
+        '2026-04-15T12:00:00Z', 'Capacity', 88, 92, 'official', $6
+      )`,
+      [
+        eventId,
+        company.id,
+        `${company.name} announces additional AI infrastructure capacity`,
+        `${company.name} published an official update covering contracted GPU infrastructure and delivery milestones.`,
+        `https://example.com/${company.id}/event`,
+        `e2e-event-${company.id}`,
+      ],
+    );
+    await client.query(
+      `INSERT INTO event_claim_impacts (id, event_id, claim_id, impact, impact_score, rationale)
+       VALUES ($1, $2, $3, 'supports', 7, 'Official issuer update proposes support for the capacity thesis; analyst confirmation remains required.')`,
+      [`event-impact:e2e:${company.id}`, eventId, claimId],
+    );
   }
 
   await client.query("COMMIT");

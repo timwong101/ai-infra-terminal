@@ -23,9 +23,10 @@ test("session cookies are http-only, same-site, and secure on https", () => {
 
 test("API authorization rejects requests without a session before database access", async () => {
   const result = await authorizeApi(new Request("http://localhost/api/protected"));
-  assert.ok("response" in result);
-  assert.equal(result.response.status, 401);
-  assert.deepEqual(await result.response.json(), { error: "Sign in is required." });
+  const response = "response" in result ? result.response : null;
+  assert.ok(response);
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { error: "Sign in is required." });
 });
 
 test("OAuth redirects retain mutable headers for state cookies", async () => {

@@ -214,6 +214,35 @@ export const filingChanges = pgTable("filing_changes", {
   index("filing_changes_current_idx").on(table.currentFilingId),
 ]);
 
+export const liveEvents = pgTable("live_events", {
+  id: text("id").primaryKey(),
+  companyId: text("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  theme: text("theme").default("Neoclouds").notNull(),
+  sourceKind: text("source_kind").notNull(),
+  sourceName: text("source_name").notNull(),
+  sourceDomain: text("source_domain").notNull(),
+  title: text("title").notNull(),
+  summary: text("summary").notNull(),
+  sourceUrl: text("source_url").notNull(),
+  publishedAt: timestamp("published_at", { withTimezone: true }).notNull(),
+  eventType: text("event_type").notNull(),
+  materialityScore: integer("materiality_score").notNull(),
+  credibilityScore: integer("credibility_score").notNull(),
+  evidenceStatus: text("evidence_status").default("discovery").notNull(),
+  language: text("language"),
+  sourceCountry: text("source_country"),
+  fingerprint: text("fingerprint").notNull(),
+  raw: jsonb("raw").default({}).notNull(),
+  discoveredAt: timestamp("discovered_at", { withTimezone: true }).defaultNow().notNull(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("live_events_fingerprint_unique").on(table.fingerprint),
+  index("live_events_company_published_idx").on(table.companyId, table.publishedAt),
+  index("live_events_status_materiality_idx").on(table.evidenceStatus, table.materialityScore),
+]);
+
 export const researchClaims = pgTable("research_claims", {
   id: text("id").primaryKey(),
   companyId: text("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
@@ -248,6 +277,21 @@ export const claimEvidence = pgTable("claim_evidence", {
   index("claim_evidence_claim_idx").on(table.claimId),
 ]);
 
+export const eventClaimImpacts = pgTable("event_claim_impacts", {
+  id: text("id").primaryKey(),
+  eventId: text("event_id").notNull().references(() => liveEvents.id, { onDelete: "cascade" }),
+  claimId: text("claim_id").notNull().references(() => researchClaims.id, { onDelete: "cascade" }),
+  impact: text("impact").notNull(),
+  impactScore: integer("impact_score").notNull(),
+  rationale: text("rationale").notNull(),
+  status: text("status").default("proposed").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("event_claim_impacts_event_claim_unique").on(table.eventId, table.claimId),
+  index("event_claim_impacts_claim_status_idx").on(table.claimId, table.status),
+]);
+
 export const researchAlerts = pgTable("research_alerts", {
   id: text("id").primaryKey(),
   companyId: text("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
@@ -255,6 +299,7 @@ export const researchAlerts = pgTable("research_alerts", {
   filingChangeId: text("filing_change_id").references(() => filingChanges.id, { onDelete: "cascade" }),
   claimId: text("claim_id").references(() => researchClaims.id, { onDelete: "cascade" }),
   researchEvidenceId: text("research_evidence_id"),
+  liveEventId: text("live_event_id").references(() => liveEvents.id, { onDelete: "cascade" }),
   alertType: text("alert_type").default("filing_change").notNull(),
   category: text("category").notNull(),
   significance: text("significance").notNull(),
@@ -268,6 +313,7 @@ export const researchAlerts = pgTable("research_alerts", {
 }, (table) => [
   uniqueIndex("research_alerts_change_unique").on(table.filingChangeId),
   uniqueIndex("research_alerts_claim_evidence_unique").on(table.claimId, table.researchEvidenceId),
+  uniqueIndex("research_alerts_live_event_unique").on(table.liveEventId),
   index("research_alerts_status_significance_idx").on(table.status, table.significance),
   index("research_alerts_company_idx").on(table.companyId),
 ]);
@@ -651,6 +697,29 @@ export const researchQualityResults = pgTable("research_quality_results", {
 }, (table) => [
   uniqueIndex("research_quality_results_run_benchmark_unique").on(table.runId, table.benchmarkId),
   index("research_quality_results_run_status_idx").on(table.runId, table.status),
+]);
+
+export const researchReplayRuns = pgTable("research_replay_runs", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  ownerUserId: text("owner_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  asOfDate: date("as_of_date").notNull(),
+  mode: text("mode").default("system-known").notNull(),
+  companyIds: jsonb("company_ids").default([]).notNull(),
+  topic: text("topic").default("All topics").notNull(),
+  question: text("question").notNull(),
+  status: text("status").default("completed").notNull(),
+  summary: text("summary").notNull(),
+  historicalClaims: jsonb("historical_claims").default([]).notNull(),
+  currentClaims: jsonb("current_claims").default([]).notNull(),
+  historicalEvidenceSnapshot: jsonb("historical_evidence_snapshot").default([]).notNull(),
+  currentEvidenceSnapshot: jsonb("current_evidence_snapshot").default([]).notNull(),
+  addedEvidenceSnapshot: jsonb("added_evidence_snapshot").default([]).notNull(),
+  metrics: jsonb("metrics").default({}).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("research_replay_runs_workspace_created_idx").on(table.workspaceId, table.createdAt),
+  index("research_replay_runs_as_of_idx").on(table.asOfDate),
 ]);
 
 export const researchCycleRuns = pgTable("research_cycle_runs", {

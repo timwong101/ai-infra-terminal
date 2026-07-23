@@ -168,6 +168,30 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await expect(page.getByText("32/32 passed", { exact: false })).toBeVisible();
   });
 
+  test("live events, temporal replay, and lineage expose one connected research workflow", async ({ page }) => {
+    await page.goto("/events");
+    await expect(page.getByRole("heading", { name: "Live Event Intelligence" })).toBeVisible();
+    await expect(page.getByText("Discovery is not evidence", { exact: true })).toBeVisible();
+    await expect(page.locator(".event-list > button")).toHaveCount(4);
+    await expect(page.getByText("Official", { exact: true }).first()).toBeVisible();
+
+    await page.goto("/research-replay");
+    await expect(page.getByRole("heading", { name: "Point-in-Time Research Replay" })).toBeVisible();
+    await page.getByRole("button", { name: "Publication time" }).click();
+    await page.getByLabel("Replay research question").fill("What capacity evidence was available then, and what arrived later?");
+    await page.locator('input[type="date"]').fill("2026-02-01");
+    await page.getByRole("button", { name: "Run replay" }).click();
+    await expect(page.getByText("Leakage check passed", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "What changed the packet" })).toBeVisible();
+    await expect(page.getByText("Durable snapshots", { exact: true })).toBeVisible();
+
+    await page.goto("/lineage");
+    await expect(page.getByRole("heading", { name: "Claim-to-Evidence Lineage" })).toBeVisible();
+    await expect(page.getByLabel("Interactive evidence lineage graph")).toBeVisible();
+    await page.getByRole("button", { name: "Compliance" }).click();
+    await expect(page.getByText(/nodes · .* links/)).toBeVisible();
+  });
+
   test("workspace switching isolates saved research and preserves attributed audit history", async ({ page }) => {
     await page.getByRole("button", { name: "Open profile and workspace menu" }).click();
     await page.getByRole("button", { name: "Create workspace" }).click();

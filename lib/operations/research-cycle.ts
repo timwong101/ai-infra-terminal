@@ -12,6 +12,7 @@ import type { IrEvidenceCache } from "@/lib/ir/types";
 import { syncResearchEvidence } from "@/lib/research/evidence";
 import { backfillResearchEmbeddings } from "@/lib/research/search";
 import { syncCompanyIntelligence } from "@/lib/company-intelligence/service";
+import { refreshLiveEvents } from "@/lib/events/service";
 import { validateSecUserAgent } from "@/lib/sec/client";
 import { refreshSecEvidence } from "@/lib/sec/ingest";
 import { syncSecFilingEvidence } from "@/lib/sec/persist";
@@ -69,6 +70,7 @@ export async function runResearchCycle(trigger = "manual") {
     metrics.sec = await runStage(id, "persisting-sec", () => syncSecFilingEvidence(secCache, userAgent, { requestDelayMs: 120 }));
     const irCache = await runStage(id, "refreshing-ir", () => refreshIrEvidence({ previousCache: irCacheJson as unknown as IrEvidenceCache }));
     metrics.irCatalog = await runStage(id, "cataloging-ir", () => syncIrCatalog(irCache));
+    metrics.events = await runStage(id, "refreshing-events", () => refreshLiveEvents());
     metrics.irExtraction = await runStage(id, "extracting-ir", () => processIrExtractionQueue(5));
     metrics.evidence = await runStage(id, "syncing-evidence", () => syncResearchEvidence());
     metrics.companyIntelligence = await runStage(id, "updating-company-intelligence", () => syncCompanyIntelligence());
