@@ -793,9 +793,8 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
 
           <section className="primary-grid">
             <article className="panel themes-panel">
-              <div className="panel-heading"><div><span className="section-kicker">Market structure</span><h2>Infrastructure Themes</h2></div><button className="icon-button" aria-label="Theme map help"><CircleHelp size={16} /></button></div>
+              <div className="panel-heading"><div><span className="section-kicker">Coverage universe</span><h2>Infrastructure Themes</h2></div></div>
               <div className="theme-map">
-                <div className="map-origin"><div className="chip-icon"><Activity size={17} /></div><span>AI<br />Infrastructure</span></div>
                 <div className="theme-grid">
                   {themeGroups.map((group) => (
                     <div className="theme-group" key={group.title}>
@@ -806,9 +805,11 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
                             key={theme}
                             className={`${selectedTheme === theme ? "selected" : ""} ${theme === LIVE_THEME ? "covered" : "roadmap"}`}
                             onClick={() => selectTheme(theme)}
+                            aria-pressed={selectedTheme === theme}
+                            aria-label={`${theme}, ${theme === LIVE_THEME ? "live" : "planned"} coverage`}
                           >
                             <span>{theme}</span>
-                            <em>{theme === LIVE_THEME ? "Live" : "Roadmap"}</em>
+                            {theme === LIVE_THEME && <em>Live</em>}
                           </button>
                         ))}
                       </div>
@@ -816,7 +817,7 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
                   ))}
                 </div>
               </div>
-              <div className="map-legend"><span><i className="coverage-dot live" /> Live coverage</span><span><i className="coverage-dot roadmap" /> Research roadmap</span><span className="selected-label">Selected: {selectedTheme}</span></div>
+              <div className="map-legend"><span><i className="coverage-dot live" /> Live coverage</span><span><i className="coverage-dot roadmap" /> Planned coverage</span><span className="selected-label">Selected: {selectedTheme}</span></div>
             </article>
 
             <article className="panel research-panel">
