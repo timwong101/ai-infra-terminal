@@ -95,6 +95,31 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await expect(page.getByRole("navigation", { name: "Research tools" })).toBeVisible();
   });
 
+  test("the theme browser stays readable and stacked on wide screens", async ({ page }) => {
+    await page.setViewportSize({ width: 2048, height: 1024 });
+    await page.goto("/home");
+
+    const themePanel = page.locator(".themes-panel");
+    const researchPanel = page.locator(".research-panel");
+    const themeBox = await themePanel.boundingBox();
+    const researchBox = await researchPanel.boundingBox();
+    expect(themeBox).not.toBeNull();
+    expect(researchBox).not.toBeNull();
+    expect(researchBox!.y).toBeGreaterThanOrEqual(themeBox!.y + themeBox!.height);
+
+    const domainButtons = page.getByRole("navigation", { name: "Infrastructure domains" }).getByRole("button");
+    await expect(domainButtons).toHaveCount(6);
+    await domainButtons.filter({ hasText: "Power & Electrical" }).click();
+    await expect(page.getByRole("region", { name: "Power & Electrical themes" })).toBeVisible();
+
+    const themeOptions = page.locator(".theme-options button");
+    await expect(themeOptions).toHaveCount(4);
+    for (const option of await themeOptions.all()) {
+      const box = await option.boundingBox();
+      expect(box?.width ?? 0).toBeGreaterThan(200);
+    }
+  });
+
   test("theme and company deep links expose all four Neoclouds", async ({ page }) => {
     await page.goto("/themes/neoclouds");
     await expect(page.getByRole("heading", { name: "AI Infrastructure Map" })).toBeVisible();

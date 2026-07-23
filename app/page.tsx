@@ -8,9 +8,12 @@ import {
   Building2,
   ChevronRight,
   ClipboardList,
+  Cloud,
   CircleHelp,
   Copy,
+  Cpu,
   ExternalLink,
+  Fan,
   FileText,
   FlaskConical,
   GitBranch,
@@ -22,9 +25,11 @@ import {
   Network,
   Newspaper,
   Plus,
+  Bot,
   ShieldCheck,
   Sparkles,
   Target,
+  Zap,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -174,12 +179,12 @@ const TRACKED_COMPANIES = [
 ] as const;
 
 const themeGroups = [
-  { title: "Compute & Silicon", items: ["GPUs / Accelerators", "AI Servers / Racks", "Memory / HBM", "Foundry / Packaging"] },
-  { title: "Cloud & Capacity", items: ["Hyperscalers", "Neoclouds", "Colocation / DC REITs", "Sovereign AI"] },
-  { title: "Power & Electrical", items: ["Utilities / Generation", "Grid & Interconnect", "Power Equipment", "UPS / Batteries"] },
-  { title: "Cooling & Facilities", items: ["Liquid Cooling", "Air Cooling", "Construction / EPC", "Land / Permitting"] },
-  { title: "Networking", items: ["Ethernet / Switching", "InfiniBand / Fabrics", "Optical Networking", "Network Software"] },
-  { title: "Physical AI", items: ["Edge Compute", "Sensors / Vision", "Robotics Platforms", "Actuators / Motion"] },
+  { title: "Compute & Silicon", icon: Cpu, items: ["GPUs / Accelerators", "AI Servers / Racks", "Memory / HBM", "Foundry / Packaging"] },
+  { title: "Cloud & Capacity", icon: Cloud, items: ["Hyperscalers", "Neoclouds", "Colocation / DC REITs", "Sovereign AI"] },
+  { title: "Power & Electrical", icon: Zap, items: ["Utilities / Generation", "Grid & Interconnect", "Power Equipment", "UPS / Batteries"] },
+  { title: "Cooling & Facilities", icon: Fan, items: ["Liquid Cooling", "Air Cooling", "Construction / EPC", "Land / Permitting"] },
+  { title: "Networking", icon: Network, items: ["Ethernet / Switching", "InfiniBand / Fabrics", "Optical Networking", "Network Software"] },
+  { title: "Physical AI", icon: Bot, items: ["Edge Compute", "Sensors / Vision", "Robotics Platforms", "Actuators / Motion"] },
 ];
 
 const themeNames = themeGroups.flatMap((group) => group.items);
@@ -371,6 +376,7 @@ export default function Home() {
 
 function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () => Promise<void> }) {
   const [selectedTheme, setSelectedTheme] = useState("Neoclouds");
+  const [activeThemeGroup, setActiveThemeGroup] = useState("Cloud & Capacity");
   const [activeNav, setActiveNav] = useState("AI Infra Map");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -403,7 +409,10 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
     setRouteResearchAssistantId(route.researchAssistantId ?? "");
     setRouteResearchQualityRunId(route.researchQualityRunId ?? "");
     if (route.selectedTheme) {
-      setSelectedTheme(route.selectedTheme);
+      const routeTheme = route.selectedTheme;
+      setSelectedTheme(routeTheme);
+      const matchingGroup = themeGroups.find((group) => (group.items as readonly string[]).includes(routeTheme));
+      if (matchingGroup) setActiveThemeGroup(matchingGroup.title);
     }
   }, []);
 
@@ -489,6 +498,7 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
     () => selectedTheme === LIVE_THEME ? neocloudResearchView : createRoadmapResearchView(selectedTheme),
     [neocloudResearchView, selectedTheme],
   );
+  const activeThemeGroupData = themeGroups.find((group) => group.title === activeThemeGroup) ?? themeGroups[1];
 
   const metrics = useMemo(() => [
     {
@@ -793,31 +803,53 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
 
           <section className="primary-grid">
             <article className="panel themes-panel">
-              <div className="panel-heading"><div><span className="section-kicker">Coverage universe</span><h2>Infrastructure Themes</h2></div></div>
+              <div className="panel-heading">
+                <div><span className="section-kicker">Coverage universe</span><h2>Infrastructure Themes</h2></div>
+                <span className="theme-panel-summary"><i className="coverage-dot live" /> 1 live <b>24 themes · 6 domains</b></span>
+              </div>
               <div className="theme-map">
-                <div className="theme-grid">
+                <div className="theme-browser">
+                  <nav className="theme-domain-nav" aria-label="Infrastructure domains">
                   {themeGroups.map((group) => (
-                    <div className="theme-group" key={group.title}>
-                      <h3>{group.title}</h3>
-                      <div className="theme-list">
-                        {group.items.map((theme) => (
-                          <button
-                            key={theme}
-                            className={`${selectedTheme === theme ? "selected" : ""} ${theme === LIVE_THEME ? "covered" : "roadmap"}`}
-                            onClick={() => selectTheme(theme)}
-                            aria-pressed={selectedTheme === theme}
-                            aria-label={`${theme}, ${theme === LIVE_THEME ? "live" : "planned"} coverage`}
-                          >
-                            <span>{theme}</span>
-                            {theme === LIVE_THEME && <em>Live</em>}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                    <button
+                      key={group.title}
+                      className={`${activeThemeGroup === group.title ? "active" : ""} ${(group.items as readonly string[]).includes(selectedTheme) ? "contains-selection" : ""}`}
+                      onClick={() => setActiveThemeGroup(group.title)}
+                      aria-pressed={activeThemeGroup === group.title}
+                    >
+                      <group.icon size={17} strokeWidth={1.7} />
+                      <span><strong>{group.title}</strong><small>{group.items.length} themes</small></span>
+                      <i aria-hidden="true" />
+                    </button>
                   ))}
+                  </nav>
+                  <section className="theme-domain-detail" aria-label={`${activeThemeGroupData.title} themes`}>
+                    <header>
+                      <div><span className="section-kicker">Active domain</span><h3>{activeThemeGroupData.title}</h3></div>
+                      <span>{activeThemeGroupData.items.length} themes</span>
+                    </header>
+                    <div className="theme-options">
+                      {activeThemeGroupData.items.map((theme) => (
+                        <button
+                          key={theme}
+                          className={`${selectedTheme === theme ? "selected" : ""} ${theme === LIVE_THEME ? "covered" : "roadmap"}`}
+                          onClick={() => selectTheme(theme)}
+                          aria-pressed={selectedTheme === theme}
+                        >
+                          <i className={`coverage-dot ${theme === LIVE_THEME ? "live" : "roadmap"}`} />
+                          <span><strong>{theme}</strong><small>{theme === LIVE_THEME ? "Live research" : "Planned coverage"}</small></span>
+                          <ChevronRight size={15} />
+                        </button>
+                      ))}
+                    </div>
+                    <footer>
+                      <span><i className="coverage-dot live" /> Live coverage</span>
+                      <span><i className="coverage-dot roadmap" /> Planned coverage</span>
+                      <strong>Selected: {selectedTheme}</strong>
+                    </footer>
+                  </section>
                 </div>
               </div>
-              <div className="map-legend"><span><i className="coverage-dot live" /> Live coverage</span><span><i className="coverage-dot roadmap" /> Planned coverage</span><span className="selected-label">Selected: {selectedTheme}</span></div>
             </article>
 
             <article className="panel research-panel">
