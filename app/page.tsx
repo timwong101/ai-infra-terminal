@@ -21,12 +21,9 @@ import {
   MessageSquareText,
   Network,
   Newspaper,
-  PanelLeftClose,
   Plus,
-  Search,
   ShieldCheck,
   Sparkles,
-  Star,
   Target,
   X,
 } from "lucide-react";
@@ -56,12 +53,10 @@ import type {
   SecRefreshStatus,
 } from "@/lib/evidence/types";
 import { baseFilingForm, getFilingComparisonMode } from "@/lib/evidence/compare";
-import type { IrDocumentDetail, IrDocumentDetailResponse, IrEvidenceCache, IrEvidenceResponse, IrIngestionRun, IrIngestionSummary } from "@/lib/ir/types";
-import type { LiveEventCatalog } from "@/lib/events/types";
+import type { IrDocumentDetail, IrDocumentDetailResponse, IrEvidenceCache, IrEvidenceResponse } from "@/lib/ir/types";
 
 type Signal = EvidenceSignal;
 type SecUiStatus = SecRefreshStatus | "refreshing";
-type IrUiStatus = "fresh" | "cached" | "stale" | "refreshing";
 
 type Evidence = {
   source: string;
@@ -107,33 +102,68 @@ function formatFilingDate(value: string) {
   }).format(new Date(`${value}T00:00:00.000Z`));
 }
 
-function formatRefreshDate(value: string) {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "UTC",
-    timeZoneName: "short",
-  }).format(new Date(value));
-}
+const navigationSections = [
+  {
+    label: "Overview",
+    description: "Market map",
+    icon: Network,
+    path: "/home",
+    views: ["AI Infra Map", "Themes"],
+    tools: [],
+  },
+  {
+    label: "Monitor",
+    description: "Signals and alerts",
+    icon: Bell,
+    path: "/alerts",
+    views: ["Alerts", "Live Events"],
+    tools: [
+      { label: "Alerts", icon: Bell, path: "/alerts", view: "Alerts" },
+      { label: "Events", icon: Newspaper, path: "/events", view: "Live Events" },
+    ],
+  },
+  {
+    label: "Research",
+    description: "Evidence and claims",
+    icon: BookOpenText,
+    path: "/companies",
+    views: ["Companies", "Evidence Feed", "Theses", "Lineage"],
+    tools: [
+      { label: "Companies", icon: Building2, path: "/companies", view: "Companies" },
+      { label: "Evidence", icon: FileText, path: "/evidence", view: "Evidence Feed" },
+      { label: "Theses", icon: Target, path: "/theses", view: "Theses" },
+      { label: "Lineage", icon: GitBranch, path: "/lineage", view: "Lineage" },
+    ],
+  },
+  {
+    label: "Analysis",
+    description: "Ask and publish",
+    icon: Sparkles,
+    path: "/research-assistant",
+    views: ["Research Assistant", "Memos", "Research Replay"],
+    tools: [
+      { label: "Ask", icon: MessageSquareText, path: "/research-assistant", view: "Research Assistant" },
+      { label: "Memos", icon: Sparkles, path: "/memos", view: "Memos" },
+      { label: "Replay", icon: History, path: "/research-replay", view: "Research Replay" },
+    ],
+  },
+  {
+    label: "System",
+    description: "Pipeline and controls",
+    icon: Activity,
+    path: "/activity",
+    views: ["Activity", "Research Quality", "Audit Trail"],
+    tools: [
+      { label: "Activity", icon: Activity, path: "/activity", view: "Activity" },
+      { label: "Quality", icon: FlaskConical, path: "/research-quality", view: "Research Quality" },
+      { label: "Audit", icon: ClipboardList, path: "/audit", view: "Audit Trail" },
+    ],
+  },
+] as const;
 
-const navItems = [
-  { label: "AI Infra Map", icon: Network, path: "/home" },
-  { label: "Companies", icon: Building2, path: "/companies" },
-  { label: "Themes", icon: Layers3, path: "/themes/neoclouds" },
-  { label: "Evidence Feed", icon: FileText, path: "/evidence" },
-  { label: "Live Events", icon: Newspaper, path: "/events" },
-  { label: "Research Assistant", icon: MessageSquareText, path: "/research-assistant" },
-  { label: "Research Replay", icon: History, path: "/research-replay" },
-  { label: "Research Quality", icon: FlaskConical, path: "/research-quality" },
-  { label: "Theses", icon: Target, path: "/theses" },
-  { label: "Memos", icon: Sparkles, path: "/memos" },
-  { label: "Lineage", icon: GitBranch, path: "/lineage" },
-  { label: "Alerts", icon: Bell, path: "/alerts" },
-  { label: "Activity", icon: Activity, path: "/activity" },
-  { label: "Audit Trail", icon: ClipboardList, path: "/audit" },
-];
+function navigationSectionFor(view: string) {
+  return navigationSections.find((section) => (section.views as readonly string[]).includes(view)) ?? navigationSections[0];
+}
 
 const LIVE_THEME = "Neoclouds";
 const TRACKED_COMPANIES = [
@@ -341,17 +371,12 @@ export default function Home() {
 
 function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () => Promise<void> }) {
   const [selectedTheme, setSelectedTheme] = useState("Neoclouds");
-  const [activeTab, setActiveTab] = useState("Overview");
   const [activeNav, setActiveNav] = useState("AI Infra Map");
-  const [query, setQuery] = useState("");
-  const [sourceFilter, setSourceFilter] = useState("All sources");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [liveSecCache, setLiveSecCache] = useState(secEvidenceCache);
   const [liveIrCache, setLiveIrCache] = useState(irEvidenceCache);
   const [secRefreshStatus, setSecRefreshStatus] = useState<SecUiStatus>("refreshing");
-  const [irRefreshStatus, setIrRefreshStatus] = useState<IrUiStatus>("refreshing");
-  const [irIngestionSummary, setIrIngestionSummary] = useState<IrIngestionSummary | null>(null);
   const [selectedEvidence, setSelectedEvidence] = useState<Evidence | null>(null);
   const [filingDetail, setFilingDetail] = useState<SecFilingDetail | null>(null);
   const [irDocumentDetail, setIrDocumentDetail] = useState<IrDocumentDetail | null>(null);
@@ -362,7 +387,6 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
   const [detailError, setDetailError] = useState("");
   const [copiedPassage, setCopiedPassage] = useState<string | null>(null);
   const [unreadAlertCount, setUnreadAlertCount] = useState(0);
-  const [liveEventCatalog, setLiveEventCatalog] = useState<LiveEventCatalog | null>(null);
   const [routeCompanyId, setRouteCompanyId] = useState("");
   const [routeEvidenceCompanyId, setRouteEvidenceCompanyId] = useState("");
   const [routeMemoId, setRouteMemoId] = useState("");
@@ -380,8 +404,6 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
     setRouteResearchQualityRunId(route.researchQualityRunId ?? "");
     if (route.selectedTheme) {
       setSelectedTheme(route.selectedTheme);
-      setActiveTab("Overview");
-      setSourceFilter("All sources");
     }
   }, []);
 
@@ -434,21 +456,14 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
       })
       .then(async (result) => {
         setLiveIrCache(result.cache);
-        setIrRefreshStatus(result.refresh.status);
-        if (result.ingestion) setIrIngestionSummary(result.ingestion);
         try {
-          const queueResponse = await fetch("/api/ir-ingestion", { method: "POST", cache: "no-store", signal: controller.signal });
-          if (queueResponse.ok) {
-            const queueResult = await queueResponse.json() as IrIngestionRun;
-            setIrIngestionSummary(queueResult.summary);
-          }
+          await fetch("/api/ir-ingestion", { method: "POST", cache: "no-store", signal: controller.signal });
         } catch (error) {
           if (!(error instanceof DOMException && error.name === "AbortError")) return;
         }
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
-        setIrRefreshStatus("stale");
       });
     return () => controller.abort();
   }, []);
@@ -461,17 +476,6 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
       .then((response) => response.ok ? response.json() : null)
       .then((result) => {
         if (result?.summary) setUnreadAlertCount(result.summary.unread);
-      })
-      .catch(() => undefined);
-    return () => controller.abort();
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch("/api/events", { cache: "no-store", signal: controller.signal })
-      .then((response) => response.ok ? response.json() : null)
-      .then((result) => {
-        if (result?.events) setLiveEventCatalog(result as LiveEventCatalog);
       })
       .catch(() => undefined);
     return () => controller.abort();
@@ -513,45 +517,6 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
     },
   ], [liveIrCache, liveSecCache, neocloudResearchView.coveredCompanyCount, secRefreshStatus, unreadAlertCount]);
 
-  const ingestion = useMemo(() => [
-    {
-      name: "SEC Filings",
-      detail: `${liveSecCache.filings.length} filings`,
-      time: formatRefreshDate(liveSecCache.generatedAt),
-      status: secRefreshStatus === "refreshing"
-        ? "Refreshing"
-        : secRefreshStatus === "fresh"
-          ? "Live"
-          : secRefreshStatus === "cached"
-            ? "Cached"
-            : "Stale cache",
-      connected: secRefreshStatus === "fresh" || secRefreshStatus === "cached",
-    },
-    {
-      name: "IR Pages",
-      detail: irIngestionSummary
-        ? [
-            `${irIngestionSummary.completed} extracted`,
-            `${irIngestionSummary.pending} queued`,
-            irIngestionSummary.processing ? `${irIngestionSummary.processing} running` : null,
-            irIngestionSummary.failed ? `${irIngestionSummary.failed} failed` : null,
-          ].filter(Boolean).join(" · ")
-        : `${liveIrCache.documents.length} documents`,
-      time: formatRefreshDate(liveIrCache.generatedAt),
-      status: irRefreshStatus === "refreshing" ? "Refreshing" : irRefreshStatus === "fresh" ? "Live" : irRefreshStatus === "cached" ? "Cached" : "Stale cache",
-      connected: irRefreshStatus === "fresh" || irRefreshStatus === "cached",
-    },
-    {
-      name: "Event Intelligence",
-      detail: liveEventCatalog ? `${liveEventCatalog.summary.discovery} discovery · ${liveEventCatalog.summary.official} official` : "Loading event catalog",
-      time: liveEventCatalog?.refresh.lastSeenAt ? formatRefreshDate(liveEventCatalog.refresh.lastSeenAt) : "Awaiting first refresh",
-      status: liveEventCatalog ? "Live" : "Connecting",
-      connected: Boolean(liveEventCatalog),
-    },
-    { name: "EIA Power Data", detail: "Not connected", time: "Roadmap", status: "Planned", connected: false },
-    { name: "Manual Notes", detail: "Not configured", time: "Roadmap", status: "Planned", connected: false },
-  ], [irIngestionSummary, irRefreshStatus, liveEventCatalog, liveIrCache, liveSecCache, secRefreshStatus]);
-
   const liveStatusLabel = secRefreshStatus === "refreshing"
     ? "Refreshing SEC"
     : secRefreshStatus === "fresh"
@@ -560,25 +525,8 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
         ? "SEC cache current"
         : "Using cached SEC";
 
-  const filteredEvidence = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return researchView.evidence.filter((row) => {
-      const matchesQuery = !normalized || Object.values(row).join(" ").toLowerCase().includes(normalized);
-      const matchesSource = sourceFilter === "All sources" || row.source === sourceFilter;
-      return matchesQuery && matchesSource;
-    });
-  }, [query, researchView, sourceFilter]);
-
-  const sourceOptions = useMemo(
-    () => ["All sources", ...Array.from(new Set(researchView.evidence.map((row) => row.source)))],
-    [researchView],
-  );
-  const evidencePreview = filteredEvidence.slice(0, 8);
-
   const selectTheme = (theme: string) => {
     setSelectedTheme(theme);
-    setActiveTab("Overview");
-    setSourceFilter("All sources");
     setToast(`${theme} research view loaded`);
     window.setTimeout(() => setToast(null), 2200);
     navigate(`/themes/${slugify(theme)}`);
@@ -715,6 +663,9 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
   const documentDetail = filingDetail ?? irDocumentDetail;
   const documentDate = filingDetail?.filedAt ?? irDocumentDetail?.publishedAt;
   const documentType = filingDetail?.formType ?? irDocumentDetail?.documentType;
+  const activeSection = navigationSectionFor(activeNav);
+  const ActiveSectionIcon = activeSection.icon;
+  const activeToolLabel = activeSection.tools.find((tool) => tool.view === activeNav)?.label ?? activeSection.description;
 
   return (
     <main className="terminal-shell">
@@ -725,25 +676,21 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
           <button className="mobile-close" onClick={() => setSidebarOpen(false)} aria-label="Close navigation"><X size={18} /></button>
         </div>
         <nav aria-label="Primary navigation">
-          {navItems.map((item) => {
-            const Icon = item.icon;
+          {navigationSections.map((section) => {
+            const Icon = section.icon;
             return (
               <button
-                key={item.label}
-                className={`nav-item ${activeNav === item.label ? "active" : ""}`}
-                onClick={() => { navigate(item.path); setToast(`${item.label} selected`); window.setTimeout(() => setToast(null), 1800); }}
+                key={section.label}
+                className={`nav-item ${activeSection.label === section.label ? "active" : ""}`}
+                onClick={() => navigate(section.path)}
               >
                 <Icon size={17} strokeWidth={1.8} />
-                <span>{item.label}</span>
-                {item.label === "Alerts" && unreadAlertCount > 0 && <b>{unreadAlertCount > 99 ? "99+" : unreadAlertCount}</b>}
+                <span><strong>{section.label}</strong><small>{section.description}</small></span>
+                {section.label === "Monitor" && unreadAlertCount > 0 && <b>{unreadAlertCount > 99 ? "99+" : unreadAlertCount}</b>}
               </button>
             );
           })}
         </nav>
-        <button className="collapse-button" onClick={() => setSidebarOpen(false)}>
-          <PanelLeftClose size={17} />
-          <span>Collapse</span>
-        </button>
       </aside>
 
       {sidebarOpen && <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setSidebarOpen(false)} />}
@@ -751,17 +698,29 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
       <section className="workspace">
         <header className="topbar">
           <button className="menu-button" onClick={() => setSidebarOpen(true)} aria-label="Open navigation"><Menu size={19} /></button>
-          <label className="global-search">
-            <Search size={17} />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search companies, themes, claims, filings..." />
-            {query && <button onClick={() => setQuery("")} aria-label="Clear search"><X size={15} /></button>}
-          </label>
+          <div className="workspace-context"><ActiveSectionIcon size={17} /><span><small>{activeSection.label}</small><strong>{activeToolLabel}</strong></span></div>
           <div className="header-actions">
             <button className="command-button" onClick={() => navigate("/memos")}><Plus size={16} /> <span>New Memo</span></button>
-            <button className="command-button" onClick={() => navigate("/activity")}><Star size={16} /> <span>Watchlist</span></button>
             <UserMenu auth={auth} onAuthChange={onAuthChange} />
           </div>
         </header>
+
+        {activeSection.tools.length > 0 && (
+          <nav className="context-nav" aria-label={`${activeSection.label} tools`}>
+            <div className="context-nav-heading"><ActiveSectionIcon size={15} /><span>{activeSection.label}</span></div>
+            <div className="context-nav-tools">
+              {activeSection.tools.map((tool) => {
+                const ToolIcon = tool.icon;
+                return (
+                  <button key={tool.path} className={activeNav === tool.view ? "active" : ""} onClick={() => navigate(tool.path)}>
+                    <ToolIcon size={14} />
+                    <span>{tool.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+        )}
 
         {activeNav === "Alerts" ? (
           <AlertsWorkspace onOpenFiling={openAlertFiling} onUnreadChange={setUnreadAlertCount} />
@@ -863,10 +822,10 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
             <article className="panel research-panel">
               <div className="research-header">
                 <div><span className="section-kicker">Selected theme</span><h2>{selectedTheme}</h2></div>
-                <span className={`theme-badge ${researchView.isCovered ? "live" : "roadmap"}`}>{researchView.isCovered ? "Live coverage" : "Roadmap"}</span>
-              </div>
-              <div className="tabs" role="tablist" aria-label={`${selectedTheme} research sections`}>
-                {["Overview", "Evidence", "Companies", "Memos", "Questions"].map((tab) => <button key={tab} role="tab" aria-selected={activeTab === tab} className={activeTab === tab ? "active" : ""} disabled={!researchView.isCovered && tab !== "Overview"} onClick={() => setActiveTab(tab)}>{tab}</button>)}
+                <div className="research-header-actions">
+                  <span className={`theme-badge ${researchView.isCovered ? "live" : "roadmap"}`}>{researchView.isCovered ? "Live coverage" : "Roadmap"}</span>
+                  {researchView.isCovered && <button className="text-link" onClick={() => navigate("/companies")}>Open research <ChevronRight size={14} /></button>}
+                </div>
               </div>
               <div className="research-content">
                 {!researchView.isCovered ? (
@@ -876,7 +835,7 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
                     <p>No companies, evidence, scores, or generated conclusions are shown until this theme has configured official sources and passes the same provenance policy as Neoclouds.</p>
                     <button onClick={() => selectTheme(LIVE_THEME)}>Open live Neocloud coverage</button>
                   </div>
-                ) : activeTab === "Overview" ? (
+                ) : (
                   <>
                     <div className="recent-column">
                       <h3>Recent evidence</h3>
@@ -894,90 +853,12 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
                     </div>
                     <div className="scores-column"><ScoreGauge score={researchView.confidence} label="Coverage confidence" /><ScoreGauge score={researchView.quality} label="Source quality" /><button className="text-link" onClick={() => navigate("/evidence")}>Review inputs <ChevronRight size={14} /></button></div>
                   </>
-                ) : (
-                  <div className="tab-placeholder">
-                    <span className="tab-icon"><Layers3 size={22} /></span>
-                    <h3>{activeTab} for {selectedTheme}</h3>
-                    <p>Open the dedicated workspace to inspect the underlying records and complete this research workflow.</p>
-                    <button onClick={() => navigate(activeTab === "Companies" ? "/companies" : activeTab === "Memos" ? "/memos" : activeTab === "Evidence" ? "/evidence" : "/theses")}>Open {activeTab.toLowerCase()} workspace</button>
-                  </div>
                 )}
               </div>
             </article>
           </section>
-
-          <section className="secondary-grid">
-            <article className="panel evidence-panel">
-              <div className="panel-heading compact"><div className="heading-with-count"><h2>Evidence Feed</h2><span>{filteredEvidence.length}</span></div><div className="table-actions"><select aria-label="Filter evidence source" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}>{sourceOptions.map((source) => <option key={source}>{source}</option>)}</select><button className="text-link" onClick={() => navigate("/evidence")}>View all <ChevronRight size={14} /></button></div></div>
-              <div className="evidence-table-wrap">
-                <table className="evidence-table">
-                  <colgroup>
-                    <col className="source-column" />
-                    <col className="company-column" />
-                    <col className="claim-column" />
-                    <col className="recency-column" />
-                    <col className="score-column" />
-                  </colgroup>
-                  <thead><tr><th>Source</th><th>Company</th><th>Claim impacted</th><th>Recency</th><th>Evidence score</th></tr></thead>
-                  <tbody>
-                    {evidencePreview.map((row, index) => (
-                      <tr
-                        key={row.accessionNumber ?? `${row.company}-${index}`}
-                        className={row.canExtract ? "evidence-row actionable" : "evidence-row"}
-                        tabIndex={row.canExtract ? 0 : undefined}
-                        onClick={row.canExtract ? () => void openEvidenceDetail(row) : undefined}
-                        onKeyDown={(event) => {
-                          if (row.canExtract && (event.key === "Enter" || event.key === " ")) {
-                            event.preventDefault();
-                            void openEvidenceDetail(row);
-                          }
-                        }}
-                      >
-                        <td>
-                          <div className="source-cell">
-                            {row.sourceUrl ? (
-                              <a className="source-link" href={row.sourceUrl} target="_blank" rel="noreferrer" title={`Open ${row.source} source`} onClick={(event) => event.stopPropagation()}>
-                                <FileText size={14} />
-                                <span className="source-name">{row.source}</span>
-                                {row.isLive && <span className="live-source">Real</span>}
-                                <ExternalLink size={11} />
-                              </a>
-                            ) : <><FileText size={14} /><span className="source-name">{row.source}</span></>}
-                          </div>
-                        </td>
-                        <td title={row.company}>{row.company}</td>
-                        <td title={row.claim}>{row.claim}</td>
-                        <td>{row.age}</td>
-                        <td><div className="evidence-score"><strong>{row.score}</strong><span className="score-bar"><i className={row.signal} style={{ width: `${row.score}%` }} /></span></div></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {!evidencePreview.length && <div className="empty-state"><Search size={19} /><span>{researchView.isCovered ? "No evidence matches this search." : `${selectedTheme} evidence is not yet integrated.`}</span>{researchView.isCovered ? <button onClick={() => { setQuery(""); setSourceFilter("All sources"); }}>Clear filters</button> : <button onClick={() => selectTheme(LIVE_THEME)}>View Neocloud evidence</button>}</div>}
-              </div>
-              <button className="footer-link" onClick={() => navigate("/evidence")}>View all evidence feed <ChevronRight size={15} /></button>
-            </article>
-
-            <article className="panel memo-panel">
-              <div className="panel-heading compact"><div className="heading-with-count"><h2>Memo Workspace</h2><span>{researchView.isCovered ? "Grounded" : "Unavailable"}</span></div><button className="command-button small" disabled={!researchView.isCovered} onClick={() => navigate("/memos")}>Open in editor <ChevronRight size={14} /></button></div>
-              {researchView.isCovered ? <>
-                <div className="memo-title"><div><h3>{researchView.memoTitle}</h3><p>Built from accepted evidence in the research catalog</p></div><div><span>{researchView.coveredCompanyCount} companies</span><span>{researchView.evidence.length} source documents</span></div></div>
-                <div className="memo-readiness">
-                  <div className="memo-readiness-score"><Sparkles size={19} /><span><strong>{researchView.confidence}</strong><small>coverage confidence</small></span></div>
-                  <div><strong>Claim-to-evidence comparisons</strong><p>The memo builder retrieves accepted SEC and IR passages, verifies every citation, and preserves the exact source packet.</p></div>
-                  <button className="primary-button" onClick={() => navigate("/memos")}><Plus size={15} /> Build comparison</button>
-                </div>
-              </> : <div className="workspace-state memo-roadmap-state"><CircleHelp size={24} /><strong>No supported memo universe</strong><span>Memo creation is available only for themes with configured companies and reviewed evidence.</span><button className="command-button" onClick={() => selectTheme(LIVE_THEME)}>Return to Neoclouds</button></div>}
-            </article>
-          </section>
         </div>
         )}
-
-        <footer className="ingestion-bar">
-          <div className="ingestion-title"><strong>Ingestion Status</strong><CircleHelp size={14} /></div>
-          {ingestion.map((item) => <div className="ingestion-item" key={item.name}><div><strong>{item.name}</strong><span>Last run: {item.time}</span><span>{item.detail}</span></div><span className={item.connected ? "success-dot" : "success-dot status-pending"}>{item.connected ? <ShieldCheck size={15} /> : <CircleHelp size={15} />}{item.status}</span></div>)}
-          <button onClick={() => navigate("/activity")}>View Ingestion Dashboard <ChevronRight size={15} /></button>
-        </footer>
       </section>
 
       {toast && <div className="toast"><span><ShieldCheck size={16} /></span>{toast}</div>}

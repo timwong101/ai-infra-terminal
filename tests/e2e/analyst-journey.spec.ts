@@ -63,6 +63,29 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await expect(page.getByRole("heading", { name: "AI Infrastructure Map" })).toBeVisible();
   });
 
+  test("navigation groups tools around the analyst workflow", async ({ page }) => {
+    const primaryNavigation = page.getByRole("navigation", { name: "Primary navigation" });
+    await expect(primaryNavigation.getByRole("button")).toHaveCount(5);
+    await expect(primaryNavigation.getByRole("button", { name: "Overview Market map", exact: true })).toBeVisible();
+    await expect(primaryNavigation.getByRole("button", { name: /^Monitor Signals and alerts/ })).toBeVisible();
+    await expect(primaryNavigation.getByRole("button", { name: "Research Evidence and claims", exact: true })).toBeVisible();
+    await expect(primaryNavigation.getByRole("button", { name: "Analysis Ask and publish", exact: true })).toBeVisible();
+    await expect(primaryNavigation.getByRole("button", { name: "System Pipeline and controls", exact: true })).toBeVisible();
+
+    await primaryNavigation.getByRole("button", { name: "Research Evidence and claims", exact: true }).click();
+    await expect(page).toHaveURL(/\/companies$/);
+    const researchTools = page.getByRole("navigation", { name: "Research tools" });
+    await expect(researchTools.getByRole("button")).toHaveCount(4);
+    await researchTools.getByRole("button", { name: "Evidence", exact: true }).click();
+    await expect(page).toHaveURL(/\/evidence$/);
+    await expect(page.getByRole("heading", { name: "Evidence Review" })).toBeVisible();
+
+    await page.goto("/research-quality");
+    const systemTools = page.getByRole("navigation", { name: "System tools" });
+    await expect(systemTools.getByRole("button")).toHaveCount(3);
+    await expect(systemTools.getByRole("button", { name: "Quality", exact: true })).toHaveClass(/active/);
+  });
+
   test("theme and company deep links expose all four Neoclouds", async ({ page }) => {
     await page.goto("/themes/neoclouds");
     await expect(page.getByRole("heading", { name: "AI Infrastructure Map" })).toBeVisible();

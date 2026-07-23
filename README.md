@@ -5,7 +5,7 @@ A responsive, evidence-first research dashboard for exploring the AI infrastruct
 ## Included
 
 - Interactive AI infrastructure theme map
-- Research tabs and selected-theme state
+- Workflow-based navigation with contextual Monitor, Research, Analysis, and System tools
 - Unified SEC and IR evidence-review workspace
 - Persistent accept/reject review states and provenance records
 - Grounded company comparisons with inline citations and saved evidence packets
@@ -24,6 +24,10 @@ A responsive, evidence-first research dashboard for exploring the AI infrastruct
 - Date-aware domestic and foreign-private issuer reporting regimes
 - Official IR press release, presentation, earnings release, and shareholder-letter feeds
 - Page-numbered IR document extraction with topic-classified evidence passages
+
+## Workspace Organization
+
+The terminal keeps five stable primary destinations in the sidebar. **Overview** contains the infrastructure map and a concise Neocloud coverage summary. **Monitor** groups alerts and live events. **Research** groups companies, evidence review, theses, and lineage. **Analysis** groups grounded questions, comparison memos, and point-in-time replay. **System** groups research activity, quality benchmarks, and the attributed audit trail. Existing deep links remain valid, while each workflow exposes only its relevant local tools.
 
 ## Stack
 
@@ -204,7 +208,7 @@ pnpm build
 pnpm test
 ```
 
-GitHub Actions runs lint, the production build, all deterministic tests, and seven Chromium analyst journeys against an isolated pgvector/Postgres service. The browser coverage includes every Neocloud, evidence review and claim linking, thesis alerts, cited memo generation, Research Assistant persistence, quality benchmarks, live events, point-in-time replay, compliance lineage, workspace isolation, and attributed audit history.
+GitHub Actions runs lint, the production build, all deterministic tests, and eight Chromium analyst journeys against an isolated pgvector/Postgres service. The browser coverage includes workflow navigation, every Neocloud, evidence review and claim linking, thesis alerts, cited memo generation, Research Assistant persistence, quality benchmarks, live events, point-in-time replay, compliance lineage, workspace isolation, and attributed audit history.
 
 To run that journey locally, create a dedicated database once and pass it explicitly. The fixture command refuses to truncate any database whose name does not end in `_e2e` or `_test`.
 
