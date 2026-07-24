@@ -1,231 +1,315 @@
-# AI Infrastructure Terminal
+# AI Infrastructure Research Terminal
 
-A responsive, evidence-first research dashboard for exploring the AI infrastructure ecosystem. Its live Neocloud coverage combines real SEC filings, official investor-relations documents, durable analyst review, and grounded research workflows.
+[![CI](https://github.com/timwong101/ai-infra-terminal/actions/workflows/ci.yml/badge.svg)](https://github.com/timwong101/ai-infra-terminal/actions/workflows/ci.yml)
 
-## Included
+An evidence-grounded research workspace for investors tracking the AI infrastructure buildout. The terminal turns SEC filings and official investor-relations material into reviewable evidence, cited analysis, thesis history, and point-in-time research.
 
-- Interactive AI infrastructure theme map
-- Workflow-based navigation with contextual Monitor, Research, Analysis, and System tools
-- Accessible dense-dashboard type scale, high-contrast metadata, custom scrollbars, and responsive tablet/mobile layouts
-- Unified SEC and IR evidence-review workspace
-- Persistent accept/reject review states and provenance records
-- Grounded company comparisons with inline citations and saved evidence packets
-- Streaming research assistant with saved question history, source filters, claim checks, and inline citations
-- Durable Research Quality benchmarks with retrieval, citation, groundedness, refusal, latency, token, and cost diagnostics
-- Live event intelligence combining official issuer updates with GDELT discovery signals
-- Point-in-time research replay with strict availability policies and leakage checks
-- Interactive source-to-evidence-to-claim lineage with a compliance-only mode
-- Responsive desktop and mobile layouts
-- Live SEC and investor-relations ingestion health
-- Real SEC filing metadata with permanent EDGAR source links
-- On-demand SEC filing content extraction with citation-ready passages
-- Evidence Detail drawer with section provenance, copy controls, and original filing links
-- Evidence-backed thesis alerts with review, watch, and dismiss workflows
-- Claim impact scores and historical thesis-drift snapshots
-- Date-aware domestic and foreign-private issuer reporting regimes
-- Official IR press release, presentation, earnings release, and shareholder-letter feeds
-- Page-numbered IR document extraction with topic-classified evidence passages
+This is intentionally not a stock picker or price-prediction tool. The product is designed to help an analyst answer a more important question:
 
-## Workspace Organization
+> What does the available evidence support, where did it come from, and what remains uncertain?
 
-The terminal keeps five stable primary destinations in the sidebar. **Overview** contains the infrastructure map and a concise Neocloud coverage summary. **Monitor** groups alerts and live events. **Research** groups companies, evidence review, theses, and lineage. **Analysis** groups grounded questions, comparison memos, and point-in-time replay. **System** groups research activity, quality benchmarks, and the attributed audit trail. Existing deep links remain valid, while each workflow exposes only its relevant local tools.
+![AI Infrastructure Map](docs/ai-infrastructure-map.jpg)
 
-## Stack
+## Why This Project
 
-- React 19
-- TypeScript
-- Tailwind CSS 4
-- Next.js-compatible App Router via vinext
-- Lucide icons
-- PostgreSQL with Drizzle ORM
+AI infrastructure research crosses compute, data centers, power, cooling, networking, and financing. The relevant facts are spread across filings, presentations, press releases, and changing company disclosures. A generic chatbot can summarize those documents, but it usually cannot show whether each claim is supported, whether the evidence was available at the time, or whether an analyst later rejected the source.
 
-## Authentication And Workspaces
+The terminal treats provenance as a product feature:
 
-The terminal uses database-backed sessions with GitHub OAuth. Research artifacts are isolated by workspace, and each membership has a `viewer`, `analyst`, or `admin` role. Viewers can inspect research; analysts and admins can review evidence, update thesis state, run research workflows, and create memos. Generated artifacts and analyst decisions retain owner or reviewer attribution in the workspace audit trail.
+- Every factual research claim must cite saved evidence from the same company.
+- Only analyst-accepted evidence above a quality floor enters research retrieval.
+- Generated memos retain their exact evidence packet and become stale when that packet changes.
+- Discovery events cannot silently become trusted research.
+- Historical replay checks that future information did not leak across the selected cutoff.
+- Analyst decisions and generated artifacts remain attributable in an audit trail.
 
-Create a GitHub OAuth app whose callback URL is `http://localhost:3000/api/auth/github/callback`, then add these values to `.env.local`:
+The initial live coverage focuses on four Neocloud companies: **CoreWeave, Nebius, Applied Digital, and IREN**. The infrastructure map keeps the broader taxonomy visible while clearly distinguishing live research from planned coverage.
 
-```env
-GITHUB_CLIENT_ID=""
-GITHUB_CLIENT_SECRET=""
-AUTH_BASE_URL="http://localhost:3000"
-ENABLE_DEMO_AUTH="true"
-```
+## Two-Minute Demo
 
-`AUTH_BASE_URL` should be the public application origin in deployed environments. The seeded portfolio demo is enabled automatically during local development and end-to-end tests; production requires the explicit `ENABLE_DEMO_AUTH=true` opt-in.
+1. Start the app and choose **Open portfolio demo**.
+2. Open **Research → Evidence** to inspect real SEC and IR passages, quality signals, review state, and original sources.
+3. Open **Analysis → Ask** to review a saved four-company answer with claim checks and inline citations.
+4. Open **Analysis → Memos** for the cited CoreWeave vs. Nebius comparison and its frozen evidence packet.
+5. Open **Analysis → Replay** to compare what the evidence supported on February 1, 2026 with what is accepted today.
+6. Open **Research → Lineage** or **System → Audit** to trace generated claims back to sources and analyst actions.
 
-`Open portfolio demo` prepares an idempotent, evidence-grounded workspace before signing in. It includes a cited CoreWeave vs. Nebius memo, a saved four-company Research Assistant answer, a deterministic quality benchmark, point-in-time replay, lineage, and attributed audit history. It only accepts eligible passages from the real SEC and investor-relations ingestion tables; it does not insert synthetic research evidence.
-
-To prepare or repair the same workspace from the terminal:
+The demo seeder is idempotent. It repairs missing portfolio artifacts, removes accidental empty research sessions, and reuses completed artifacts instead of creating duplicates:
 
 ```bash
 pnpm demo:seed
 ```
 
+It does not insert synthetic research evidence. The seeded memo, answer, benchmark, and replay are produced by the same application services used in normal workflows.
+
+## What It Demonstrates
+
+| Product capability | Engineering signal |
+| --- | --- |
+| SEC and official IR ingestion | Source-specific normalization, retry policy, caching, and idempotent persistence |
+| Evidence review | Human-in-the-loop workflow with durable decisions and provenance |
+| Research Assistant | Grounded retrieval, structured generation, streaming UI, and citation verification |
+| Comparison memos | Saved generation metadata, frozen evidence packets, and stale-artifact detection |
+| Research Quality | Versioned evaluation suite with deterministic CI gates and model diagnostics |
+| Point-in-time replay | Temporal data modeling and explicit leakage checks |
+| Claim-to-evidence lineage | Relational provenance projected into an interactive graph |
+| Workspaces and roles | GitHub OAuth, database sessions, tenant isolation, and RBAC |
+| Research operations | Scheduled pipelines, trace IDs, stage status, briefings, and failure visibility |
+| Responsive terminal UI | Dense information design across desktop and mobile workflows |
+
+## Architecture
+
+```mermaid
+flowchart LR
+    SEC["SEC EDGAR"] --> INGEST["Ingest, normalize, extract"]
+    IR["Official investor relations"] --> INGEST
+    GDELT["GDELT discovery"] --> EVENTS["Discovery event pipeline"]
+
+    INGEST --> DOCS[("Postgres documents and passages")]
+    DOCS --> QUALITY["Evidence quality policy"]
+    QUALITY --> REVIEW["Analyst review"]
+    REVIEW --> SEARCH["Full-text and optional vector retrieval"]
+
+    SEARCH --> ASK["Research Assistant"]
+    SEARCH --> MEMO["Comparison memos"]
+    SEARCH --> BENCH["Quality benchmarks"]
+    SEARCH --> REPLAY["Point-in-time replay"]
+
+    REVIEW --> THESES["Claims, alerts, thesis history"]
+    EVENTS -. "proposal only" .-> THESES
+
+    ASK --> LINEAGE["Lineage and audit"]
+    MEMO --> LINEAGE
+    REPLAY --> LINEAGE
+    THESES --> LINEAGE
+```
+
+The application is a TypeScript monolith with clear service boundaries. React workspaces call App Router API handlers; domain services own retrieval, verification, replay, ingestion, and persistence; PostgreSQL stores both research data and operational history.
+
+### Claim-To-Evidence Model
+
+```mermaid
+erDiagram
+    COMPANY ||--o{ SOURCE_DOCUMENT : publishes
+    SOURCE_DOCUMENT ||--o{ EVIDENCE : contains
+    EVIDENCE }o--o{ CLAIM : supports
+    CLAIM }o--o{ MEMO : appears_in
+    WORKSPACE ||--o{ MEMO : owns
+    USER ||--o{ EVIDENCE : reviews
+    USER ||--o{ AUDIT_EVENT : performs
+    WORKSPACE ||--o{ RESEARCH_SESSION : owns
+    RESEARCH_SESSION ||--o{ RESEARCH_MESSAGE : contains
+```
+
+An evidence record retains the source document, exact excerpt, section, document date, original URL, optional PDF page, quality scores, review decision, reviewer, and timestamps. Generated outputs store evidence snapshots rather than relying on a future retrieval to reconstruct what the model saw.
+
+## Grounding And Hallucination Controls
+
+The same safety policy applies whether generation uses an OpenAI model or the deterministic local engine.
+
+1. **Retrieval gate:** Only accepted evidence above the quality threshold is eligible. Company, topic, source, and date filters are applied during retrieval.
+
+2. **Company-scoped citations:** A factual claim about CoreWeave cannot cite a Nebius passage. Unknown, missing, and cross-company citation IDs are rejected.
+
+3. **Unsupported-claim removal:** Verification runs before an answer or memo is saved. Open questions can remain uncited; factual claims cannot.
+
+4. **Frozen evidence packets:** Memos, answers, quality cases, and replay runs persist the exact passages used to produce the output.
+
+5. **Staleness propagation:** Rejecting or changing cited evidence marks affected research stale instead of silently leaving it current.
+
+6. **Source-policy separation:** GDELT articles are discovery signals. They cannot enter memo retrieval or change thesis scores until official evidence is extracted and accepted.
+
+7. **Temporal integrity:** Replay supports both publication-time reconstruction and the stricter system-known policy, then reports leakage diagnostics.
+
+## Core Workflows
+
+### Evidence To Thesis
+
+SEC filings and IR documents are normalized into citation-ready passages. Deterministic scoring measures materiality, specificity, AI-infrastructure relevance, and boilerplate risk. Analysts can accept, reject, or reassign proposed claim links; those decisions rebuild thesis state and may create evidence-backed alerts.
+
+### Evidence To Answer
+
+The Research Assistant retrieves across one or more companies and returns a cited answer, confidence score, evidence quality, source diversity, open questions, and claim-check status. Sessions have durable URLs and retain model, token, filter, and evidence metadata.
+
+### Evidence To Memo
+
+The comparison workflow analyzes two companies with accepted evidence only. It supports Postgres full-text search plus optional pgvector similarity. Each saved memo includes six balanced sections, inline citations, retrieval mode, generation engine, verification result, and a frozen source packet.
+
+### Evidence Through Time
+
+Point-in-time replay reconstructs the eligible packet at an earlier date and compares it with the current packet. This makes thesis drift inspectable without pretending that an omitted filing passage was necessarily retracted.
+
+### Pipeline To Analyst Inbox
+
+The scheduled research cycle runs SEC, IR, live-event, evidence, intelligence, embedding, thesis, and briefing stages. Each run records stage timing and failures under a trace ID. The Activity workspace converts the result into a research briefing rather than forcing the analyst to inspect raw ingestion logs.
+
+## Technology
+
+| Layer | Choice |
+| --- | --- |
+| Frontend | React 19, TypeScript, Tailwind CSS 4, Lucide |
+| Application | Next.js-compatible App Router via vinext |
+| Database | PostgreSQL 17, pgvector, Drizzle ORM |
+| AI | Vercel AI SDK with optional OpenAI generation |
+| Parsing | Cheerio for HTML, unpdf for page-aware PDF extraction |
+| Visualization | Cytoscape for interactive lineage |
+| Authentication | GitHub OAuth, database sessions, workspace RBAC |
+| Testing | Node test runner, Playwright, deterministic research quality gate |
+| Automation | GitHub Actions CI and six-hour ingestion workflow |
+
+The deterministic engine keeps the complete product usable without an API key. An OpenAI key enables structured model generation, but all model output still passes through the same citation verifier.
+
+## Engineering Decisions
+
+### Evidence quality is not analyst approval
+
+Scoring is a triage tool. It can prioritize specific, material passages and suppress boilerplate, but it does not replace analyst judgment. Review state is modeled separately and remains visible.
+
+### Event discovery is not evidence
+
+Fast news discovery is useful, but mixing it directly into trusted research would weaken provenance. Events can propose thesis impacts; official accepted passages are required to support them.
+
+### Deterministic behavior is a feature
+
+Local demos, tests, and CI should not depend on model availability or spend. Deterministic synthesis provides a reproducible baseline and makes AI-vs-baseline quality measurable.
+
+### Generated research is durable data
+
+Prompts, filters, evidence packets, model metadata, verification results, and ownership are persisted. A generated memo is an auditable artifact, not transient chat text.
+
+### Missing repetition is not a change
+
+Periodic filing comparisons are limited to recurring analytical sections. Event filings are treated as standalone disclosures, and language that simply does not reappear is not classified as a removal.
+
 ## Run Locally
 
-Node.js 22.13 or newer and pnpm are required.
+### Prerequisites
+
+- Node.js 22.13 or newer
+- pnpm
+- Docker Desktop
+
+### Setup
 
 ```bash
+git clone https://github.com/timwong101/ai-infra-terminal.git
+cd ai-infra-terminal
 pnpm install
+cp .env.example .env.local
+docker compose up -d
+pnpm db:setup
+pnpm demo:seed
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000). The root URL resolves to `/login`; the portfolio demo requires no OAuth configuration.
 
-The root URL resolves to `/login`. Successful authentication opens `/home`, while protected deep links preserve their destination through the login flow.
+SEC asks automated clients to identify themselves. Replace the example value in `.env.local` with a real application name and contact email:
 
-## SEC Filing Refresh
-
-The checked-in SEC cache keeps the dashboard usable without a backend. Add your identifying user agent to the ignored `.env.local` file:
-
-```bash
+```env
 SEC_USER_AGENT="AI Infra Terminal your-email@example.com"
+DATABASE_URL="postgresql://ai_infra:ai_infra@localhost:5432/ai_infra"
 ```
 
-The dashboard requests fresh SEC filing metadata whenever the page loads. The server keeps a successful result in memory for five minutes so repeated reloads do not create unnecessary EDGAR traffic. If a refresh fails, the UI continues using the last successful checked-in cache and marks it as stale.
+### Optional GitHub OAuth
 
-To update the checked-in fallback cache manually, run:
+Create a GitHub OAuth app with this callback URL:
 
-```bash
-pnpm ingest:sec
+```text
+http://localhost:3000/api/auth/github/callback
 ```
 
-Both refresh paths fetch the previous year of relevant filings for CoreWeave, Nebius, Applied Digital, and IREN. Per-company selection reserves capacity for recurring quarterly and annual reports before filling the remaining cache with event filings, so a busy 8-K or 6-K stream cannot remove the prior periods needed for temporal analysis. The manual command atomically updates `data/generated/sec-evidence.json`; failed company requests retain their previously cached records.
+Then configure:
 
-Form validation is date-aware. IREN is treated as a foreign private issuer through June 30, 2025 and a domestic issuer beginning July 1, 2025. Unexpected cross-regime forms are excluded and recorded as ingestion warnings.
-
-## Investor Relations Refresh
-
-The dashboard also refreshes official investor-relations pages on load through a separate cache and API. This source is isolated from SEC ingestion so a company-site outage cannot degrade filing evidence.
-
-To update the checked-in IR fallback cache manually, run:
-
-```bash
-pnpm ingest:ir
+```env
+GITHUB_CLIENT_ID=""
+GITHUB_CLIENT_SECRET=""
+AUTH_BASE_URL="http://localhost:3000"
 ```
 
-The crawler only follows configured official company and issuer-CDN domains. It requires publication dates, rejects SEC mirrors and navigation links, classifies documents by type, scores research relevance, and deduplicates repeated cards across news, reports, and presentation pages.
+Research artifacts are isolated by workspace. Membership roles are `viewer`, `analyst`, and `admin`; mutating research workflows require analyst access.
 
-Every refresh also upserts document metadata into Postgres. Unseen documents enter a durable extraction queue, and the browser starts one bounded extraction job after the metadata response so the dashboard is not blocked. Queue claims rotate across all configured companies before using spare capacity, preventing one publisher from starving the others. Jobs use `pending`, `processing`, `completed`, and `failed` states, recover interrupted work after 30 minutes, and retry transient failures up to three times with a one-hour delay. Stale unextracted catalog rows are removed while completed historical documents remain durable. The ingestion bar reports extracted and queued totals.
-
-## IR Document Evidence
-
-Select an official IR row in the Evidence Feed to open its document detail. PDF documents are extracted page by page and HTML releases are parsed deterministically. Passages are grouped into capacity, revenue, capital spending, power, customers, financing, guidance, and risk topics. PDF citations retain their source page and open the official document at that page. IREN's issuer CDN does not reliably permit automated document retrieval, so those records retain their unique original provenance but open as explicitly limited catalog-only details linked to the accessible official IREN page; the system never invents passages from catalog metadata.
-
-Backfill every configured company's checked-in IR catalog with:
-
-```bash
-pnpm db:backfill:ir
-```
-
-Add `--company=nebius` (or another configured company ID) to narrow the backfill, or add `--force` after changing IR extraction rules.
-
-Process one queued document manually with `pnpm db:process:ir`, or use `pnpm db:process:ir -- --all` to drain the current queue in fair company rotation. Newly discovered document details are resolved from the Postgres catalog, so they do not need to exist in the checked-in JSON file before their citations can be opened.
-
-## Filing Evidence Extraction
-
-Select any real SEC row in the Evidence Feed to open its filing detail. The server downloads the primary EDGAR document, removes non-content markup, identifies relevant filing sections, and returns bounded passages with exact source metadata. Extracted results are cached in server memory for 24 hours, while concurrent requests for the same filing share one upstream SEC request.
-
-Extraction is deterministic and does not generate or paraphrase claims. The original filing remains available from every detail view so passages can be verified at the source.
-
-## Evidence Review And Comparison Memos
-
-The **Evidence Review** workspace materializes extracted SEC and IR passages into one deduplicated Postgres catalog. Each record retains the company, topic, source type, document date, section, exact excerpt, original URL, optional PDF page, analyst review state, and a deterministic quality assessment. The quality engine scores materiality, specificity, AI-infrastructure relevance, and boilerplate risk, groups repeated passages, and explains each score so analysts can audit the policy instead of trusting an opaque rank.
-
-Quality scores are triage signals, not approval. The system proposes a company thesis claim and impact for relevant passages, but the link is not used in thesis scoring until an analyst explicitly accepts or reassigns it. Rejected suggestions remain visible for audit. Filters expose high-value passages, pending links, boilerplate, duplicates, and the complete catalog. To keep every configured company usable on first run, synchronization system-accepts a baseline of three quality-eligible official passages per company when fewer than three accepted records exist. These records carry a visible system-baseline note, prefer different documents and topics, and never override an analyst decision.
-
-Only accepted evidence above the memo quality floor is eligible for retrieval. The **Memos** workspace compares two companies using Postgres full-text search plus optional pgvector similarity. With `OPENAI_API_KEY`, the AI SDK creates a structured draft; without one, the deterministic grounded engine remains fully usable. Both paths reject unsupported or cross-company citations before saving. Confidence combines evidence quality, source diversity, company coverage, balance, and recency. Each memo stores the prompt, model, engine, token usage, verification result, and exact evidence snapshot. If cited evidence is rejected, falls below policy, changes content, or disappears, the saved memo is marked stale and offers regeneration instead of silently presenting outdated research.
-
-The **Theses** workspace is a durable claim ledger. Accepted evidence and material filing changes link to capacity, demand, funding, customer, and execution claims, with weighted impact scores and chronological history. Reviewing evidence immediately rebuilds the affected thesis state and creates alerts for meaningful new support or contradiction.
-
-The **Research Assistant** answers free-form questions across one or more Neocloud companies using only analyst-accepted evidence above the same quality floor as comparison memos. Company, topic, SEC/IR source, and date filters are applied during retrieval rather than after generation. Each factual claim must cite an evidence ID owned by the same company; invalid, missing, and cross-company citations are rejected before the verified markdown is streamed to the browser. Answers expose confidence, evidence quality, source diversity, claim-check status, and the exact source packet. Sessions and generation records are created before work begins, retain model and token metadata, and have durable `/research-assistant/:id` URLs. An analyst can turn a two-company question into a comparison memo or save a generated evidence gap as an open question in the thesis ledger.
-
-The **Research Quality** workspace runs a versioned 32-case benchmark against that same retrieval, generation, and verification pipeline. Cases cover all four Neoclouds, expected topic retrieval, every pairwise capacity comparison, IR-only source policy, multi-company synthesis, and deliberate future-date questions that must refuse to answer. Every run persists metric breakdowns, failure reasons, latency, token and estimated-cost metadata, verified claims, and the exact evidence packet under a durable `/research-quality/:id` URL. The deterministic engine establishes a free reproducible baseline; the configured AI model can be evaluated separately.
-
-Run the benchmark locally with `pnpm research:quality`. Add `-- --gate` to enforce the CI thresholds: at least 85 overall, at least 85% case pass rate, and 100% citation precision and groundedness. Optional `AI_QUALITY_INPUT_COST_PER_MILLION` and `AI_QUALITY_OUTPUT_COST_PER_MILLION` values enable model-cost estimates without hard-coding provider pricing.
-
-With `OPENAI_API_KEY`, the research assistant uses structured AI generation before claim verification. Without a key, its deterministic engine still retrieves, scores, cites, streams, and saves grounded answers, keeping local and portfolio demos functional without model spend.
-
-## Live Events, Replay, And Lineage
-
-The **Live Event Intelligence** workspace normalizes recent official investor-relations updates and GDELT DOC 2.0 discoveries into a single Neocloud timeline. Events retain their source domain, publication time, event type, materiality, credibility, and proposed thesis impact. Official issuer items are marked as official; GDELT articles remain discovery signals and cannot enter memo retrieval or alter thesis scores until an official passage is extracted and accepted. The GDELT integration uses one bounded multi-company query with rate-limit retry, preserves stored events when the upstream service is unavailable, and deduplicates normalized URLs with content fingerprints.
-
-Refresh events independently with:
-
-```bash
-pnpm research:events
-```
-
-The **Point-in-Time Research Replay** workspace freezes both historical and current evidence packets. `system-known` mode requires a passage to have been ingested and accepted by the selected cutoff. `publication-time` mode reconstructs material that had been published by that date using the current review policy. Every run rejects future-dated evidence, records leakage diagnostics, saves its grounded claims and citations, and explains which currently approved passages entered the packet later.
-
-The **Claim-to-Evidence Lineage** workspace projects the existing relational model into an interactive graph: company to source, source to passage, passage or event to claim, and generated claim to memo. Company and node filters keep large graphs navigable. Compliance mode removes discovery-only events, rejected passages, stale artifacts, and unsupported claim paths instead of presenting them as trusted research.
-
-The **Companies** workspace turns that source catalog into quarter-over-quarter company intelligence. Periodic SEC filings use their official period of report, while explicit IR labels such as `Q3 FY26` and nearby earnings materials are resolved into persisted earnings packages. Publication date remains separate, annual results never compare against quarterly figures, and ambiguous news is visibly retained as a lower-confidence calendar fallback. Each package records its resolution method, confidence, source documents, and extraction status. Deterministic extraction captures only stated metrics such as revenue, backlog, contract value, liquidity, debt, GPU count, and active or planned power capacity; every value and disclosure change retains its exact source excerpt and URL. Persisted earnings change briefs organize those comparisons into what changed, bull implications, bear implications, and open questions. Factual brief claims require same-company evidence IDs, while confidence combines period resolution, evidence quality, source diversity, and comparison coverage. Content-addressed versions survive intelligence rebuilds, preserving prior thesis-impact results whenever the underlying evidence changes.
-
-Rebuild reporting periods, earnings packages, normalized metrics, material comparisons, and cited change briefs from the durable evidence catalog with:
-
-```bash
-pnpm research:intelligence
-```
-
-The scheduled research cycle performs this step automatically after SEC, IR, and live-event synchronization, so opening the site reads persisted intelligence instead of refetching and recomputing every document.
-
-The **Activity & Briefings** workspace turns scheduled ingestion into an analyst inbox. Every research cycle records stage-level start, completion, duration, and failure events under a trace ID, then persists an immutable briefing covering evidence added since the previous successful run. Briefings summarize new SEC and IR documents, high-value passages, proposed thesis impacts, stale research, ingestion failures, and company-level source packets. The UI also retains briefing history, end-to-end company coverage, and the full pipeline timeline.
-
-Run the complete SEC, IR, event, evidence, intelligence, embedding, thesis, and briefing pipeline locally with `pnpm research:cycle`. Build a lightweight snapshot of the current 24-hour evidence window with `pnpm research:briefing`, or pass a custom window such as `pnpm research:briefing 48`. The included GitHub Actions workflow runs the complete cycle every six hours after `DATABASE_URL`, `SEC_USER_AGENT`, and optionally `OPENAI_API_KEY` are added as repository secrets. The database URL must point to a hosted Postgres instance reachable from GitHub Actions.
-
-AI settings are optional:
+### Optional AI Generation
 
 ```env
 OPENAI_API_KEY=""
 AI_MEMO_MODEL="gpt-5-mini"
 AI_RESEARCH_ASSISTANT_MODEL="gpt-5-mini"
 AI_EMBEDDING_MODEL="text-embedding-3-small"
-SCHEDULE_SECRET="replace-with-a-long-random-value"
+AI_QUALITY_INPUT_COST_PER_MILLION="0"
+AI_QUALITY_OUTPUT_COST_PER_MILLION="0"
 ```
 
-## PostgreSQL Evidence History
+Without `OPENAI_API_KEY`, memos and answers use the grounded deterministic engine.
 
-Postgres persistence is optional during UI development and required for durable filing history. Without `DATABASE_URL`, the app still extracts the current and prior filing on demand and keeps results in the server session cache.
+## Data Operations
 
-For a local database, install Docker and run:
+| Command | Purpose |
+| --- | --- |
+| `pnpm ingest:sec` | Refresh the checked-in SEC fallback cache and persist new filing metadata |
+| `pnpm ingest:ir` | Refresh configured official IR sources |
+| `pnpm db:backfill` | Extract and persist SEC filing evidence |
+| `pnpm db:backfill:ir` | Backfill official IR document passages |
+| `pnpm db:process:ir -- --all` | Drain the durable IR extraction queue |
+| `pnpm research:intelligence` | Rebuild periods, earnings packages, metrics, and change briefs |
+| `pnpm research:events` | Refresh official and GDELT event discovery |
+| `pnpm research:briefing` | Build a briefing from the current research window |
+| `pnpm research:cycle` | Run the complete research pipeline |
+| `pnpm research:quality -- --gate` | Run the versioned benchmark and enforce CI thresholds |
 
-```bash
-docker compose up -d
-pnpm db:setup
-```
+SEC refreshes preserve recurring quarterly and annual coverage before newer event filings. IR ingestion only follows configured official domains, requires publication dates, rejects SEC mirrors, deduplicates repeated cards, and queues unseen documents for bounded retries.
 
-`pnpm db:setup` applies the versioned schema and backfills SEC filings, historical changes, and Nebius IR document passages from the checked-in metadata caches. You can also point `DATABASE_URL` at any hosted Postgres database and run the same command.
+The six-hour GitHub Actions ingestion workflow requires repository secrets for `DATABASE_URL` and `SEC_USER_AGENT`; `OPENAI_API_KEY` is optional. The application keeps successful fallback data when an upstream source is unavailable.
 
-Future `pnpm ingest:sec` runs automatically persist newly discovered filing evidence when `DATABASE_URL` is configured. Ingestion is idempotent: existing filings are reused and only missing documents are downloaded.
-
-Use `pnpm db:refresh` after changing extraction rules to reprocess all cached filings and replace their persisted sections and comparisons.
-
-Alert generation runs automatically after SEC backfills and refreshes. Run `pnpm db:alerts` directly when changing claim or classification rules. Existing workflow states are preserved when passage-level changes are consolidated into refreshed section alerts.
-
-The Evidence Detail drawer uses form-aware policies: event filings become standalone event signals, periodic reports compare recurring analytical sections, and amendments compare against their base filings. Language that is merely not repeated remains neutral and does not affect thesis alerts.
-
-The **Alerts** workspace converts those changes into a review queue. Alerts can be filtered by company, category, significance, and workflow status, then opened directly into the filing comparison. Five tracked claims per company connect evidence to capacity growth, AI demand, funding risk, customer concentration, and execution risk. Claim scores are snapshotted by filing date so historical thesis drift remains visible instead of being overwritten.
-
-## Verify
+## Verification
 
 ```bash
 pnpm lint
 pnpm typecheck
-pnpm build
 pnpm test
 ```
 
-GitHub Actions runs lint, the production build, all deterministic tests, and eleven Chromium analyst journeys against an isolated pgvector/Postgres service. The browser coverage includes the curated portfolio demo, workflow navigation, responsive viewport containment, every Neocloud, evidence review and claim linking, thesis alerts, cited memo generation, Research Assistant persistence, quality benchmarks, live events, point-in-time replay, compliance lineage, workspace isolation, and attributed audit history.
+The current suite includes:
 
-To run that journey locally, create a dedicated database once and pass it explicitly. The fixture command refuses to truncate any database whose name does not end in `_e2e` or `_test`.
+- **79 deterministic tests** covering ingestion, normalization, extraction, evidence policy, citation verification, quality scoring, company intelligence, events, and replay.
+- **32 research-quality cases** covering four companies, topic retrieval, pairwise comparisons, source policy, synthesis, and refusal behavior.
+- **11 Chromium journeys** covering login, the curated demo, responsive layouts, all four Neoclouds, evidence review, memos, assistant persistence, benchmarks, replay, lineage, RBAC, workspace isolation, and audit history.
+
+The CI quality gate requires at least 85 overall, at least an 85% case pass rate, and 100% citation precision and groundedness.
+
+To run the browser suite against a dedicated local database:
 
 ```bash
 docker compose exec -T postgres createdb -U ai_infra ai_infra_e2e
 E2E_DATABASE_URL="postgresql://ai_infra:ai_infra@localhost:5432/ai_infra_e2e" pnpm test:e2e
 ```
 
-Company, theme, evidence-company, saved-memo, research-assistant session, replay, and lineage workspaces have durable URLs, so an analyst can reload or share a research view without losing its primary context.
+The E2E fixture refuses to truncate a database whose name does not end in `_e2e` or `_test`.
 
-There is intentionally no live market-price integration in this version. SEC and investor-relations evidence is real, while AI generation is optional and always constrained by the saved evidence packet. The infrastructure map labels Neoclouds as live coverage and treats every other theme as roadmap-only until official sources and company policies are integrated.
+## Project Structure
+
+```text
+app/                    React workspaces and API routes
+lib/auth/               Sessions, roles, workspaces, and audit events
+lib/sec/                SEC client, normalization, extraction, and persistence
+lib/ir/                 IR discovery, extraction, and queue processing
+lib/research/           Evidence retrieval, memo, assistant, and quality services
+lib/company-intelligence/
+                        Period resolution, metrics, comparisons, and change briefs
+lib/events/             Event normalization and discovery policy
+lib/replay/             Point-in-time reconstruction and leakage checks
+lib/lineage/            Claim-to-evidence graph projection
+lib/operations/         Research cycles, coverage, and briefings
+scripts/                Migrations, ingestion, backfills, benchmarks, and demo seed
+tests/                  Deterministic and Playwright coverage
+```
+
+## Current Scope
+
+- Live company coverage is limited to the Neocloud theme.
+- There is no live market-price feed or price prediction.
+- SEC and IR evidence is real; generated analysis is optional and always constrained by saved evidence.
+- GDELT can be rate-limited or unavailable, so it remains a non-blocking discovery source.
+- Other infrastructure themes remain visible as planned coverage until their source and evidence policies are implemented.
+
+These constraints are deliberate. The project optimizes for defensible research provenance and production-style engineering rather than breadth that cannot be verified.
