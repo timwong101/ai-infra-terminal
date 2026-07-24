@@ -1,9 +1,11 @@
 import { createSession, ensureDemoIdentity, isDemoAuthEnabled, sessionCookie } from "@/lib/auth/session";
+import { ensurePortfolioDemoWorkspace } from "@/lib/demo/portfolio-seed";
 
 export async function POST(request: Request) {
   if (!isDemoAuthEnabled()) return Response.json({ error: "Demo authentication is disabled." }, { status: 403 });
   try {
     const identity = await ensureDemoIdentity();
+    await ensurePortfolioDemoWorkspace(identity);
     const session = await createSession(identity.userId, identity.workspaceId);
     return Response.json({ authenticated: true }, { status: 201, headers: { "Set-Cookie": sessionCookie(session.token, request), "Cache-Control": "no-store" } });
   } catch (error) {

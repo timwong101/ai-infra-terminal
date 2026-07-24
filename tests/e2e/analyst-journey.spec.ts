@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { Client } from "pg";
+import { PORTFOLIO_ASSISTANT_QUESTION } from "@/lib/demo/portfolio-seed";
 
 const e2eDatabaseUrl = process.env.E2E_DATABASE_URL;
 if (!e2eDatabaseUrl) throw new Error("E2E_DATABASE_URL is required for analyst journey tests.");
@@ -95,6 +96,32 @@ test.describe.serial("evidence-grounded analyst journey", () => {
       const toolNavigation = page.getByRole("navigation", { name: `${section.label} tools` });
       await expect(toolNavigation.getByText(section.label, { exact: true })).toHaveCount(0);
     }
+  });
+
+  test("portfolio demo opens with a complete, evidence-grounded analyst story", async ({ page }) => {
+    await page.goto("/memos");
+    await expect(page.getByRole("heading", { name: "CoreWeave vs. Nebius" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Evidence packet" })).toBeVisible();
+
+    await page.goto("/research-assistant");
+    await expect(page).toHaveURL(/\/research-assistant\/.+/);
+    await expect(page.getByText(PORTFOLIO_ASSISTANT_QUESTION, { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Evidence-backed answer" })).toBeVisible();
+    await expect(page.getByText("Claim checks")).toBeVisible();
+    await expect(page.getByText("Pass", { exact: true })).toBeVisible();
+
+    await page.goto("/research-quality");
+    await expect(page).toHaveURL(/\/research-quality\/.+/);
+    await expect(page.getByLabel("Quality metrics").getByText("Citation precision", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Quality metrics").getByText("Groundedness", { exact: true })).toBeVisible();
+
+    await page.goto("/research-replay");
+    await expect(page.getByText("Leakage check passed", { exact: true })).toBeVisible();
+
+    await page.goto("/audit");
+    await expect(page.getByText("Created CoreWeave vs. Nebius comparison memo.", { exact: true })).toBeVisible();
+    await expect(page.getByText(/Completed neocloud-grounding-v1 with \d+\/100\./)).toBeVisible();
+    await expect(page.getByText("Replayed 2 companies as of 2026-02-01.", { exact: true })).toBeVisible();
   });
 
   test("core workspaces stay inside the mobile viewport", async ({ page }) => {
@@ -205,18 +232,19 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await page.getByRole("textbox", { name: "Research question" }).fill("Compare the selected Neoclouds on capacity, demand, and financing risk.");
     await page.getByRole("button", { name: "Send question" }).click();
 
-    const answerHeadings = page.getByRole("heading", { name: "Evidence-backed answer" });
-    await expect(answerHeadings).toHaveCount(1);
-    await expect(answerHeadings).toBeVisible();
-    await expect(page.getByText("Claim checks")).toBeVisible();
-    await expect(page.getByText("Pass", { exact: true })).toBeVisible();
-    await expect(page.getByText("Evidence packet")).toBeVisible();
+    const savedAnswer = page.locator(".saved-answer").filter({ hasText: "Compare the selected Neoclouds on capacity, demand, and financing risk." });
+    await expect(savedAnswer).toHaveCount(1);
+    await expect(savedAnswer.getByRole("heading", { name: "Evidence-backed answer" })).toBeVisible();
+    await expect(savedAnswer.getByText("Claim checks")).toBeVisible();
+    await expect(savedAnswer.getByText("Pass", { exact: true })).toBeVisible();
+    await expect(savedAnswer.getByText("Evidence packet")).toBeVisible();
 
     const sessionUrl = page.url();
     await page.reload();
     await expect(page).toHaveURL(sessionUrl);
-    await expect(page.locator(".saved-answer").getByText("Compare the selected Neoclouds on capacity, demand, and financing risk.", { exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Evidence-backed answer" })).toBeVisible();
+    const reloadedAnswer = page.locator(".saved-answer").filter({ hasText: "Compare the selected Neoclouds on capacity, demand, and financing risk." });
+    await expect(reloadedAnswer.getByText("Compare the selected Neoclouds on capacity, demand, and financing risk.", { exact: true })).toBeVisible();
+    await expect(reloadedAnswer.getByRole("heading", { name: "Evidence-backed answer" })).toBeVisible();
   });
 
   test("research quality runs a durable grounding benchmark and exposes case evidence", async ({ page }) => {
@@ -279,6 +307,6 @@ test.describe.serial("evidence-grounded analyst journey", () => {
 
     await page.goto("/audit");
     await expect(page.getByRole("heading", { name: "Audit Trail" })).toBeVisible();
-    await expect(page.getByText("Created CoreWeave vs. Nebius comparison memo.", { exact: true })).toBeVisible();
+    await expect(page.getByText("Created CoreWeave vs. Nebius comparison memo.", { exact: true }).first()).toBeVisible();
   });
 });

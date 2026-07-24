@@ -54,6 +54,14 @@ ENABLE_DEMO_AUTH="true"
 
 `AUTH_BASE_URL` should be the public application origin in deployed environments. The seeded portfolio demo is enabled automatically during local development and end-to-end tests; production requires the explicit `ENABLE_DEMO_AUTH=true` opt-in.
 
+`Open portfolio demo` prepares an idempotent, evidence-grounded workspace before signing in. It includes a cited CoreWeave vs. Nebius memo, a saved four-company Research Assistant answer, a deterministic quality benchmark, point-in-time replay, lineage, and attributed audit history. It only accepts eligible passages from the real SEC and investor-relations ingestion tables; it does not insert synthetic research evidence.
+
+To prepare or repair the same workspace from the terminal:
+
+```bash
+pnpm demo:seed
+```
+
 ## Run Locally
 
 Node.js 22.13 or newer and pnpm are required.
@@ -209,7 +217,7 @@ pnpm build
 pnpm test
 ```
 
-GitHub Actions runs lint, the production build, all deterministic tests, and nine Chromium analyst journeys against an isolated pgvector/Postgres service. The browser coverage includes workflow navigation, responsive viewport containment, every Neocloud, evidence review and claim linking, thesis alerts, cited memo generation, Research Assistant persistence, quality benchmarks, live events, point-in-time replay, compliance lineage, workspace isolation, and attributed audit history.
+GitHub Actions runs lint, the production build, all deterministic tests, and eleven Chromium analyst journeys against an isolated pgvector/Postgres service. The browser coverage includes the curated portfolio demo, workflow navigation, responsive viewport containment, every Neocloud, evidence review and claim linking, thesis alerts, cited memo generation, Research Assistant persistence, quality benchmarks, live events, point-in-time replay, compliance lineage, workspace isolation, and attributed audit history.
 
 To run that journey locally, create a dedicated database once and pass it explicitly. The fixture command refuses to truncate any database whose name does not end in `_e2e` or `_test`.
 

@@ -103,16 +103,21 @@ export function ResearchAssistantWorkspace({ initialSessionId = "", onSessionSel
         .then(([nextCatalog]) => {
           if (cancelled) return;
           if (!initialSessionId) {
-            const defaults = { ...EMPTY_FILTERS, companyIds: nextCatalog.companies.map((item) => item.id) };
-            setFilters(defaults);
-            void createSession(defaults);
+            const existing = nextCatalog.sessions[0];
+            if (existing) {
+              onSessionSelect(existing.id);
+            } else {
+              const defaults = { ...EMPTY_FILTERS, companyIds: nextCatalog.companies.map((item) => item.id) };
+              setFilters(defaults);
+              void createSession(defaults);
+            }
           }
           setLoadStatus("ready");
         })
         .catch((loadError) => { if (!cancelled) { setNotice(loadError instanceof Error ? loadError.message : "Unable to load the research assistant."); setLoadStatus("error"); } });
     });
     return () => { cancelled = true; };
-  }, [createSession, initialSessionId, loadCatalog, loadSession]);
+  }, [createSession, initialSessionId, loadCatalog, loadSession, onSessionSelect]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
