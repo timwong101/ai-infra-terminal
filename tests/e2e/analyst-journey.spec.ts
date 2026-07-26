@@ -124,6 +124,36 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await expect(page.getByText("Replayed 2 companies as of 2026-02-01.", { exact: true })).toBeVisible();
   });
 
+  test("publishes an immutable public report with compliance and export controls", async ({ context, page }) => {
+    await page.goto("/memos");
+    await expect(page.getByRole("heading", { name: "CoreWeave vs. Nebius" })).toBeVisible();
+    await page.getByRole("button", { name: "Publish report" }).click();
+
+    const publishDialog = page.getByRole("dialog", { name: "Publish research report" });
+    await expect(publishDialog).toBeVisible();
+    await expect(publishDialog.getByRole("checkbox")).toBeChecked();
+    await publishDialog.getByRole("button", { name: "Publish version 1" }).click();
+
+    await expect(page.getByText("Version 1 published", { exact: true })).toBeVisible();
+    const openReport = page.getByRole("link", { name: "Open report", exact: true });
+    const reportPath = await openReport.getAttribute("href");
+    expect(reportPath).toMatch(/^\/reports\/[a-f0-9]{64}$/);
+
+    await context.clearCookies();
+    await page.goto(reportPath!);
+    await expect(page).toHaveURL(/\/reports\/[a-f0-9]{64}$/);
+    await expect(page.getByRole("heading", { name: "CoreWeave vs. Nebius", exact: true })).toBeVisible();
+    await expect(page.getByText("Compliance mode", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Source appendix" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Print / Save PDF" })).toBeVisible();
+
+    const token = reportPath!.split("/").at(-1);
+    const markdown = await page.request.get(`/api/reports/${token}/markdown`);
+    expect(markdown.status()).toBe(200);
+    expect(markdown.headers()["content-type"]).toContain("text/markdown");
+    expect(await markdown.text()).toContain("# CoreWeave vs. Nebius");
+  });
+
   test("core workspaces stay inside the mobile viewport", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     for (const route of ["/home", "/evidence", "/alerts", "/research-assistant", "/lineage"]) {
@@ -184,6 +214,8 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     const response = await page.request.post("/api/comparison-memos", { data: { companyAId: "coreweave", companyBId: "nebius", topic: "All topics", question: "Viewer mutation check" } });
     expect(response.status()).toBe(403);
     await expect(response.json()).resolves.toEqual({ error: "The analyst role is required for this action." });
+    const publishResponse = await page.request.post("/api/published-reports", { data: { memoId: "memo:not-allowed", complianceMode: true } });
+    expect(publishResponse.status()).toBe(403);
   });
 
   test("reviewed evidence updates research and generates a reloadable cited memo", async ({ page }) => {

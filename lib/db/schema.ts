@@ -608,6 +608,35 @@ export const memoGenerations = pgTable("memo_generations", {
   index("memo_generations_pair_idx").on(table.companyAId, table.companyBId),
 ]);
 
+export const publishedReports = pgTable("published_reports", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  memoId: text("memo_id").notNull().references(() => comparisonMemos.id, { onDelete: "restrict" }),
+  publishedByUserId: text("published_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  publicToken: text("public_token").notNull(),
+  version: integer("version").notNull(),
+  title: text("title").notNull(),
+  question: text("question").notNull(),
+  topic: text("topic").notNull(),
+  asOfDate: date("as_of_date").notNull(),
+  companySnapshot: jsonb("company_snapshot").notNull(),
+  confidenceScore: integer("confidence_score").notNull(),
+  evidenceQualityScore: integer("evidence_quality_score").notNull(),
+  sourceDiversityScore: integer("source_diversity_score").notNull(),
+  sectionsSnapshot: jsonb("sections_snapshot").notNull(),
+  evidenceSnapshot: jsonb("evidence_snapshot").notNull(),
+  generationSnapshot: jsonb("generation_snapshot"),
+  complianceMode: boolean("compliance_mode").default(true).notNull(),
+  complianceSnapshot: jsonb("compliance_snapshot").notNull(),
+  publisherSnapshot: jsonb("publisher_snapshot").notNull(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("published_reports_public_token_unique").on(table.publicToken),
+  uniqueIndex("published_reports_memo_version_unique").on(table.memoId, table.version),
+  index("published_reports_workspace_created_idx").on(table.workspaceId, table.createdAt),
+]);
+
 export const researchAssistantSessions = pgTable("research_assistant_sessions", {
   id: text("id").primaryKey(),
   workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),

@@ -13,15 +13,14 @@ async function render() {
   );
 }
 
-test("server-renders the authenticated terminal shell", async () => {
+test("server-renders a route-safe loading shell", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
   assert.match(html, /<title>AI Infrastructure Terminal<\/title>/i);
-  assert.match(html, /Opening analyst workspace/);
-  assert.match(html, /Validating your session and active workspace/);
+  assert.match(html, /Opening research workspace/);
   assert.doesNotMatch(html, /AI Infrastructure Map|CoreWeave \(CRWV\)/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });

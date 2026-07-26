@@ -50,6 +50,7 @@ It does not insert synthetic research evidence. The seeded memo, answer, benchma
 | Evidence review | Human-in-the-loop workflow with durable decisions and provenance |
 | Research Assistant | Grounded retrieval, structured generation, streaming UI, and citation verification |
 | Comparison memos | Saved generation metadata, frozen evidence packets, and stale-artifact detection |
+| Published research reports | Immutable versions, public token URLs, compliance filtering, revocation, and export |
 | Research Quality | Versioned evaluation suite with deterministic CI gates and model diagnostics |
 | Point-in-time replay | Temporal data modeling and explicit leakage checks |
 | Claim-to-evidence lineage | Relational provenance projected into an interactive graph |
@@ -72,6 +73,7 @@ flowchart LR
 
     SEARCH --> ASK["Research Assistant"]
     SEARCH --> MEMO["Comparison memos"]
+    MEMO --> REPORT["Published reports"]
     SEARCH --> BENCH["Quality benchmarks"]
     SEARCH --> REPLAY["Point-in-time replay"]
 
@@ -80,6 +82,7 @@ flowchart LR
 
     ASK --> LINEAGE["Lineage and audit"]
     MEMO --> LINEAGE
+    REPORT --> LINEAGE
     REPLAY --> LINEAGE
     THESES --> LINEAGE
 ```
@@ -134,6 +137,10 @@ The Research Assistant retrieves across one or more companies and returns a cite
 ### Evidence To Memo
 
 The comparison workflow analyzes two companies with accepted evidence only. It supports Postgres full-text search plus optional pgvector similarity. Each saved memo includes six balanced sections, inline citations, retrieval mode, generation engine, verification result, and a frozen source packet.
+
+### Memo To Published Report
+
+An analyst can publish any saved comparison memo as an immutable, versioned report at a tokenized public URL. Compliance mode removes unsupported, cross-company, and stale factual claims before publication while preserving explicit research questions. Every report includes its evidence-as-of date, quality scores, frozen source appendix, publisher identity, and audit history. Published versions can be copied, exported to Markdown, printed to PDF, or revoked without rewriting prior snapshots.
 
 ### Evidence Through Time
 
@@ -271,9 +278,9 @@ pnpm test
 
 The current suite includes:
 
-- **79 deterministic tests** covering ingestion, normalization, extraction, evidence policy, citation verification, quality scoring, company intelligence, events, and replay.
+- **82 deterministic tests** covering ingestion, normalization, extraction, evidence policy, citation verification, report publishing, quality scoring, company intelligence, events, and replay.
 - **32 research-quality cases** covering four companies, topic retrieval, pairwise comparisons, source policy, synthesis, and refusal behavior.
-- **11 Chromium journeys** covering login, the curated demo, responsive layouts, all four Neoclouds, evidence review, memos, assistant persistence, benchmarks, replay, lineage, RBAC, workspace isolation, and audit history.
+- **12 Chromium journeys** covering login, the curated demo, responsive layouts, all four Neoclouds, evidence review, public report publishing and export, memos, assistant persistence, benchmarks, replay, lineage, RBAC, workspace isolation, and audit history.
 
 The CI quality gate requires at least 85 overall, at least an 85% case pass rate, and 100% citation precision and groundedness.
 

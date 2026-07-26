@@ -46,6 +46,7 @@ import { ThesisWorkspace } from "@/app/components/thesis-workspace";
 import { EventIntelligenceWorkspace } from "@/app/components/event-intelligence-workspace";
 import { ResearchReplayWorkspace } from "@/app/components/research-replay-workspace";
 import { LineageWorkspace } from "@/app/components/lineage-workspace";
+import { PublishedReportWorkspace } from "@/app/components/published-report-workspace";
 import secEvidenceCacheJson from "@/data/generated/sec-evidence.json";
 import irEvidenceCacheJson from "@/data/generated/ir-evidence.json";
 import type {
@@ -358,6 +359,7 @@ function AppLogo() {
 
 export default function Home() {
   const [auth, setAuth] = useState<AuthSession | PublicAuthState | null>(null);
+  const [publicReportToken, setPublicReportToken] = useState<string | null>(null);
 
   const loadAuth = useCallback(async () => {
     const response = await fetch("/api/auth/session", { cache: "no-store" });
@@ -367,8 +369,17 @@ export default function Home() {
     setAuth(result);
   }, []);
 
-  useEffect(() => { queueMicrotask(() => void loadAuth()); }, [loadAuth]);
+  useEffect(() => {
+    queueMicrotask(() => {
+      const parts = window.location.pathname.split("/").filter(Boolean);
+      const token = parts.length === 2 && parts[0] === "reports" && /^[a-f0-9]{64}$/.test(parts[1]) ? parts[1] : "";
+      setPublicReportToken(token);
+      if (!token) void loadAuth();
+    });
+  }, [loadAuth]);
 
+  if (publicReportToken === null) return <div className="workspace-state full-page"><LoaderCircle className="drawer-spinner" size={25} /><strong>Opening research workspace</strong></div>;
+  if (publicReportToken) return <PublishedReportWorkspace token={publicReportToken} />;
   if (!auth) return <div className="workspace-state full-page"><LoaderCircle className="drawer-spinner" size={25} /><strong>Opening analyst workspace</strong><span>Validating your session and active workspace.</span></div>;
   if (!auth.authenticated) return <SignInScreen state={auth} onSignedIn={loadAuth} />;
   return <Terminal auth={auth} onAuthChange={loadAuth} />;

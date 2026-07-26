@@ -1,12 +1,13 @@
 "use client";
 
-import { Activity, Clock3, FileCheck2, LoaderCircle, MessageSquareText, Search, ShieldCheck, Sparkles, Target } from "lucide-react";
+import { Activity, Clock3, FileCheck2, Globe2, LoaderCircle, MessageSquareText, Search, ShieldCheck, Sparkles, Target } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { AuditEventItem } from "@/lib/auth/types";
 
 function eventIcon(type: string) {
   if (type === "research_evidence") return FileCheck2;
   if (type === "comparison_memo") return Sparkles;
+  if (type === "published_report") return Globe2;
   if (type.includes("assistant")) return MessageSquareText;
   if (type === "research_claim") return Target;
   return Activity;
@@ -38,7 +39,7 @@ export function AuditWorkspace() {
 
   return <div className="research-workspace audit-workspace">
     <header className="workspace-title-row"><div><p className="breadcrumb">Workspace governance / Provenance</p><h1>Audit Trail</h1><p className="workspace-subtitle">Immutable analyst decisions and generated research activity for the active workspace.</p></div><span className="audit-policy"><ShieldCheck size={14} /> Attributed actions</span></header>
-    <section className="audit-summary"><article><Activity size={16} /><span>Recorded actions</span><strong>{events.length}</strong></article><article><FileCheck2 size={16} /><span>Evidence decisions</span><strong>{events.filter((item) => item.entityType === "research_evidence").length}</strong></article><article><Sparkles size={16} /><span>Generated research</span><strong>{events.filter((item) => item.action.endsWith(".created") || item.action.endsWith(".completed")).length}</strong></article></section>
+    <section className="audit-summary"><article><Activity size={16} /><span>Recorded actions</span><strong>{events.length}</strong></article><article><FileCheck2 size={16} /><span>Evidence decisions</span><strong>{events.filter((item) => item.entityType === "research_evidence").length}</strong></article><article><Sparkles size={16} /><span>Generated research</span><strong>{events.filter((item) => item.action.endsWith(".created") || item.action.endsWith(".completed") || item.action === "report.published").length}</strong></article></section>
     <label className="workspace-search audit-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search actors, decisions, and research artifacts..." /></label>
     <section className="audit-timeline panel"><div className="catalog-heading"><div><h2>Workspace activity</h2><span>{filtered.length} attributable events</span></div><Clock3 size={16} /></div>
       {status === "loading" && <div className="workspace-state"><LoaderCircle className="drawer-spinner" size={23} /><strong>Loading audit history</strong></div>}
