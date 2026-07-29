@@ -1,4 +1,4 @@
-import { boolean, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, vector } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, vector, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 export const companies = pgTable("companies", {
   id: text("id").primaryKey(),
@@ -807,14 +807,26 @@ export const researchReplayRuns = pgTable("research_replay_runs", {
 export const researchCycleRuns = pgTable("research_cycle_runs", {
   id: text("id").primaryKey(),
   trigger: text("trigger").notNull(),
-  status: text("status").default("running").notNull(),
+  status: text("status").default("queued").notNull(),
   stage: text("stage").default("starting").notNull(),
+  queueJobId: text("queue_job_id"),
+  traceId: text("trace_id"),
+  requestedByUserId: text("requested_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  workerId: text("worker_id"),
+  retryOfRunId: text("retry_of_run_id").references((): AnyPgColumn => researchCycleRuns.id, { onDelete: "set null" }),
+  progress: integer("progress").default(0).notNull(),
+  context: jsonb("context").default({}).notNull(),
   metrics: jsonb("metrics").default({}).notNull(),
   error: text("error"),
+  cancelRequestedAt: timestamp("cancel_requested_at", { withTimezone: true }),
+  lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),
   startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [index("research_cycle_runs_status_idx").on(table.status, table.startedAt)]);
+}, (table) => [
+  index("research_cycle_runs_status_idx").on(table.status, table.startedAt),
+  index("research_cycle_runs_trace_idx").on(table.traceId),
+]);
 
 export const researchCycleEvents = pgTable("research_cycle_events", {
   id: text("id").primaryKey(),
@@ -822,12 +834,26 @@ export const researchCycleEvents = pgTable("research_cycle_events", {
   stage: text("stage").notNull(),
   status: text("status").default("running").notNull(),
   attempt: integer("attempt").default(1).notNull(),
+  jobId: text("job_id"),
+  maxAttempts: integer("max_attempts").default(3).notNull(),
   message: text("message"),
   metrics: jsonb("metrics").default({}).notNull(),
+  nextRetryAt: timestamp("next_retry_at", { withTimezone: true }),
   startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [index("research_cycle_events_run_stage_idx").on(table.runId, table.stage, table.startedAt)]);
+
+export const researchWorkers = pgTable("research_workers", {
+  id: text("id").primaryKey(),
+  queueName: text("queue_name").notNull(),
+  status: text("status").default("online").notNull(),
+  currentRunId: text("current_run_id").references(() => researchCycleRuns.id, { onDelete: "set null" }),
+  concurrency: integer("concurrency").default(1).notNull(),
+  metadata: jsonb("metadata").default({}).notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+  lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("research_workers_heartbeat_idx").on(table.status, table.lastHeartbeatAt)]);
 
 export const researchBriefings = pgTable("research_briefings", {
   id: text("id").primaryKey(),

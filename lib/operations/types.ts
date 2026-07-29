@@ -57,8 +57,85 @@ export type ResearchCycleEventItem = {
   stage: string;
   status: string;
   attempt: number;
+  jobId: string | null;
+  maxAttempts: number;
   message: string | null;
   metrics: Record<string, unknown>;
+  nextRetryAt: string | null;
   startedAt: string;
   completedAt: string | null;
+};
+
+export const RESEARCH_STAGE_NAMES = [
+  "ingesting-sec",
+  "ingesting-ir",
+  "refreshing-events",
+  "syncing-evidence",
+  "updating-company-intelligence",
+  "embedding-evidence",
+  "updating-theses",
+  "building-briefing",
+] as const;
+
+export type ResearchStageName = typeof RESEARCH_STAGE_NAMES[number];
+
+export type ResearchCycleJobData = {
+  runId: string;
+  trigger: string;
+  traceId: string;
+  windowStartedAt: string;
+};
+
+export type ResearchStageJobData = ResearchCycleJobData & {
+  stage: ResearchStageName;
+};
+
+export type ResearchCycleRunItem = {
+  id: string;
+  trigger: string;
+  status: string;
+  stage: string;
+  queueJobId: string | null;
+  traceId: string | null;
+  workerId: string | null;
+  retryOfRunId: string | null;
+  progress: number;
+  metrics: Record<string, unknown>;
+  error: string | null;
+  cancelRequestedAt: string | null;
+  lastHeartbeatAt: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  createdAt: string;
+};
+
+export type ResearchWorkerItem = {
+  id: string;
+  queueName: string;
+  status: string;
+  currentRunId: string | null;
+  concurrency: number;
+  metadata: Record<string, unknown>;
+  startedAt: string;
+  lastHeartbeatAt: string;
+  online: boolean;
+};
+
+export type ResearchQueueStatus = {
+  available: boolean;
+  waiting: number;
+  active: number;
+  delayed: number;
+  failed: number;
+  completed: number;
+  deadLetters: number;
+  error: string | null;
+};
+
+export type ResearchRuntimeSnapshot = {
+  runs: ResearchCycleRunItem[];
+  events: ResearchCycleEventItem[];
+  workers: ResearchWorkerItem[];
+  queue: ResearchQueueStatus;
+  generatedAt: string;
 };

@@ -176,11 +176,11 @@ test.describe.serial("evidence-grounded analyst journey", () => {
 
   test("core workspaces stay inside the mobile viewport", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    for (const route of ["/home", "/evidence", "/alerts", "/research-assistant", "/lineage"]) {
+    for (const route of ["/home", "/evidence", "/alerts", "/research-assistant", "/lineage", "/activity"]) {
       await page.goto(route);
       await expect.poll(async () => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     }
-    await expect(page.getByRole("navigation", { name: "Research tools" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "System tools" })).toBeVisible();
   });
 
   test("the theme browser stays readable and stacked on wide screens", async ({ page }) => {
@@ -223,6 +223,25 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await page.goto("/activity");
     await expect(page).toHaveURL(/\/activity$/);
     await expect(page.getByRole("heading", { name: "Activity & Briefings" })).toBeVisible();
+  });
+
+  test("durable research jobs retry, stream progress, and replay from the control plane", async ({ page }) => {
+    await page.goto("/activity");
+    await expect(page.getByText("Redis connected", { exact: true })).toBeVisible();
+    await expect(page.locator(".worker-state.online")).toHaveCount(2);
+
+    await page.getByRole("button", { name: "Run cycle" }).click();
+    const latestRun = page.locator(".run-history > button").first();
+    await expect(latestRun).toContainText("dashboard");
+    await expect(latestRun.getByText("completed", { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("100%", { exact: true })).toBeVisible();
+    await expect(page.getByText("Attempt 2 of 3", { exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "Replay" }).click();
+    const replayedRun = page.locator(".run-history > button").first();
+    await expect(replayedRun).toContainText("replay:cycle");
+    await expect(replayedRun.getByText("completed", { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("100%", { exact: true })).toBeVisible();
   });
 
   test("viewer sessions can inspect research but cannot mutate it", async ({ context, page }) => {

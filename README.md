@@ -63,7 +63,10 @@ It does not insert synthetic research evidence. The seeded memo, answer, benchma
 
 ```mermaid
 flowchart LR
-    SEC["SEC EDGAR"] --> INGEST["Ingest, normalize, extract"]
+    SCHEDULE["API and scheduled triggers"] --> REDIS[("Redis / BullMQ")]
+    REDIS --> WORKER["Durable research workers"]
+    WORKER --> INGEST["Parallel ingest and processing stages"]
+    SEC["SEC EDGAR"] --> INGEST
     IR["Official investor relations"] --> INGEST
     GDELT["GDELT discovery"] --> EVENTS["Discovery event pipeline"]
 
@@ -86,6 +89,8 @@ flowchart LR
     REPORT --> LINEAGE
     REPLAY --> LINEAGE
     THESES --> LINEAGE
+    WORKER --> OPS["Live operations control plane"]
+    WORKER -. "OpenTelemetry spans" .-> OTEL["OTLP collector (optional)"]
 ```
 
 The application is a TypeScript monolith with clear service boundaries. React workspaces call App Router API handlers; domain services own retrieval, verification, replay, ingestion, and persistence; PostgreSQL stores both research data and operational history.
@@ -164,6 +169,8 @@ The scheduled research cycle runs SEC, IR, live-event, evidence, intelligence, e
 | Parsing | Cheerio for HTML, unpdf for page-aware PDF extraction |
 | Visualization | Cytoscape for interactive lineage |
 | Authentication | GitHub OAuth, database sessions, workspace RBAC |
+| Jobs | Redis 7, BullMQ workers, bounded retries, dead-letter queue |
+| Observability | Server-sent events, trace IDs, worker heartbeats, optional OpenTelemetry export |
 | Testing | Node test runner, Playwright, deterministic research quality gate |
 | Automation | GitHub Actions CI and six-hour ingestion workflow |
 
@@ -209,16 +216,23 @@ cp .env.example .env.local
 docker compose up -d
 pnpm db:setup
 pnpm demo:seed
+pnpm worker:research
+```
+
+In a second terminal, start the web application:
+
+```bash
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The root URL resolves to `/login`; the portfolio demo requires no OAuth configuration.
+Open [http://localhost:3000](http://localhost:3000). The root URL resolves to `/login`; the portfolio demo requires no OAuth configuration. Docker Compose starts both PostgreSQL and Redis. The web process accepts research jobs while the independent worker executes them, so queued work survives web-server restarts.
 
 SEC asks automated clients to identify themselves. Replace the example value in `.env.local` with a real application name and contact email:
 
 ```env
 SEC_USER_AGENT="AI Infra Terminal your-email@example.com"
 DATABASE_URL="postgresql://ai_infra:ai_infra@localhost:5432/ai_infra"
+REDIS_URL="redis://localhost:6379"
 ```
 
 ### Optional GitHub OAuth
@@ -265,6 +279,7 @@ Without `OPENAI_API_KEY`, memos and answers use the grounded deterministic engin
 | `pnpm research:events` | Refresh official and GDELT event discovery |
 | `pnpm research:briefing` | Build a briefing from the current research window |
 | `pnpm research:cycle` | Run the complete research pipeline |
+| `pnpm worker:research` | Run the durable BullMQ cycle and stage workers |
 | `pnpm research:quality -- --gate` | Run the versioned benchmark and enforce CI thresholds |
 
 SEC refreshes preserve recurring quarterly and annual coverage before newer event filings. IR ingestion only follows configured official domains, requires publication dates, rejects SEC mirrors, deduplicates repeated cards, and queues unseen documents for bounded retries.
@@ -281,9 +296,9 @@ pnpm test
 
 The current suite includes:
 
-- **94 deterministic tests** covering ingestion, normalization, extraction, evidence policy, claim synthesis, numeric fidelity, content-bound review approval, citation verification, report publishing, quality scoring, company intelligence, events, and replay.
+- **100 deterministic tests** covering ingestion, normalization, extraction, evidence policy, claim synthesis, numeric fidelity, content-bound review approval, citation verification, report publishing, quality scoring, company intelligence, events, replay, and durable queue contracts.
 - **32 research-quality cases** covering four companies, topic retrieval, pairwise comparisons, source policy, synthesis, and refusal behavior.
-- **14 Chromium journeys** covering login, the curated demo, responsive layouts, all four Neoclouds, evidence review, two-user memo approval, team roles, public report publishing and export, assistant persistence, benchmarks, replay, lineage, workspace isolation, and audit history.
+- **15 Chromium journeys** covering login, the curated demo, responsive layouts, all four Neoclouds, evidence review, two-user memo approval, team roles, public report publishing and export, assistant persistence, durable job retries and replay, benchmarks, lineage, workspace isolation, and audit history.
 
 The CI quality gate requires at least 85 overall, at least an 85% case pass rate, and 100% citation precision and groundedness.
 
@@ -291,7 +306,7 @@ To run the browser suite against a dedicated local database:
 
 ```bash
 docker compose exec -T postgres createdb -U ai_infra ai_infra_e2e
-E2E_DATABASE_URL="postgresql://ai_infra:ai_infra@localhost:5432/ai_infra_e2e" pnpm test:e2e
+E2E_DATABASE_URL="postgresql://ai_infra:ai_infra@localhost:5432/ai_infra_e2e" E2E_REDIS_URL="redis://localhost:6379/1" pnpm test:e2e
 ```
 
 The E2E fixture refuses to truncate a database whose name does not end in `_e2e` or `_test`.
@@ -309,7 +324,7 @@ lib/company-intelligence/
 lib/events/             Event normalization and discovery policy
 lib/replay/             Point-in-time reconstruction and leakage checks
 lib/lineage/            Claim-to-evidence graph projection
-lib/operations/         Research cycles, coverage, and briefings
+lib/operations/         Durable queues, workers, tracing, coverage, and briefings
 scripts/                Migrations, ingestion, backfills, benchmarks, and demo seed
 tests/                  Deterministic and Playwright coverage
 ```
