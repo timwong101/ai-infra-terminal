@@ -55,6 +55,7 @@ It does not insert synthetic research evidence. The seeded memo, answer, benchma
 | Point-in-time replay | Temporal data modeling and explicit leakage checks |
 | Claim-to-evidence lineage | Relational provenance projected into an interactive graph |
 | Workspaces and roles | GitHub OAuth, database sessions, tenant isolation, and RBAC |
+| Collaborative review | Workspace invitations, claim-level comments, independent approval, and publish gates |
 | Research operations | Scheduled pipelines, trace IDs, stage status, briefings, and failure visibility |
 | Responsive terminal UI | Dense information design across desktop and mobile workflows |
 
@@ -142,7 +143,7 @@ The comparison workflow analyzes two companies with accepted evidence only. It s
 
 ### Memo To Published Report
 
-An analyst can publish any saved comparison memo as an immutable, versioned report at a tokenized public URL. Compliance mode removes unsupported, cross-company, and stale factual claims before publication while preserving explicit research questions. Every report includes its evidence-as-of date, quality scores, frozen source appendix, publisher identity, and audit history. Published versions can be copied, exported to Markdown, printed to PDF, or revoked without rewriting prior snapshots.
+An analyst submits a memo to another workspace analyst or admin for independent review. Review comments can target the memo or a specific claim, unresolved comments block approval, and each decision is bound to a hash of the exact memo and evidence packet. Only an approved, non-stale snapshot can be published as an immutable, versioned report at a tokenized public URL. Every report includes reviewer sign-off, its evidence-as-of date, quality scores, frozen source appendix, publisher identity, and audit history. Published versions can be copied, exported to Markdown, printed to PDF, or revoked without rewriting prior snapshots.
 
 ### Evidence Through Time
 
@@ -280,9 +281,9 @@ pnpm test
 
 The current suite includes:
 
-- **91 deterministic tests** covering ingestion, normalization, extraction, evidence policy, claim synthesis, numeric fidelity, citation verification, report publishing, quality scoring, company intelligence, events, and replay.
+- **94 deterministic tests** covering ingestion, normalization, extraction, evidence policy, claim synthesis, numeric fidelity, content-bound review approval, citation verification, report publishing, quality scoring, company intelligence, events, and replay.
 - **32 research-quality cases** covering four companies, topic retrieval, pairwise comparisons, source policy, synthesis, and refusal behavior.
-- **12 Chromium journeys** covering login, the curated demo, responsive layouts, all four Neoclouds, evidence review, public report publishing and export, memos, assistant persistence, benchmarks, replay, lineage, RBAC, workspace isolation, and audit history.
+- **14 Chromium journeys** covering login, the curated demo, responsive layouts, all four Neoclouds, evidence review, two-user memo approval, team roles, public report publishing and export, assistant persistence, benchmarks, replay, lineage, workspace isolation, and audit history.
 
 The CI quality gate requires at least 85 overall, at least an 85% case pass rate, and 100% citation precision and groundedness.
 

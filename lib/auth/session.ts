@@ -129,8 +129,10 @@ export function isDemoAuthEnabled() {
 export async function ensureDemoIdentity() {
   const result = await withDatabase(async (db) => {
     await db.insert(users).values({ id: "user:demo", email: "demo@ai-infra.local", name: "Demo Analyst", provider: "demo", providerAccountId: "demo" }).onConflictDoNothing();
+    await db.insert(users).values({ id: "user:demo-reviewer", email: "reviewer@ai-infra.local", name: "Demo Reviewer", provider: "demo", providerAccountId: "demo-reviewer" }).onConflictDoNothing();
     await db.insert(workspaces).values({ id: "workspace:demo", name: "Neocloud Research", slug: "neocloud-research", createdByUserId: "user:demo" }).onConflictDoNothing();
     await db.insert(workspaceMembers).values({ id: "membership:demo", workspaceId: "workspace:demo", userId: "user:demo", role: "admin" }).onConflictDoNothing();
+    await db.insert(workspaceMembers).values({ id: "membership:demo-reviewer", workspaceId: "workspace:demo", userId: "user:demo-reviewer", role: "analyst" }).onConflictDoNothing();
     return true;
   });
   if (!result) throw new Error("Postgres is required for demo authentication.");

@@ -1,7 +1,8 @@
 "use client";
 
-import { Check, ChevronDown, Code2, LoaderCircle, LogOut, Plus, ShieldCheck, Users } from "lucide-react";
+import { Check, ChevronDown, Code2, LoaderCircle, LogOut, Plus, ShieldCheck, UserRoundCog, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { TeamManagementDialog } from "@/app/components/team-management-dialog";
 import type { AuthContext } from "@/lib/auth/types";
 
 export type AuthSession = AuthContext & { authenticated: true; demoAvailable: boolean; githubAvailable: boolean };
@@ -49,6 +50,7 @@ export function UserMenu({ auth, onAuthChange }: { auth: AuthSession; onAuthChan
   const [creating, setCreating] = useState(false);
   const [workspaceName, setWorkspaceName] = useState("");
   const [error, setError] = useState("");
+  const [teamOpen, setTeamOpen] = useState(false);
 
   useEffect(() => {
     const close = (event: MouseEvent) => { if (!container.current?.contains(event.target as Node)) setOpen(false); };
@@ -81,7 +83,7 @@ export function UserMenu({ auth, onAuthChange }: { auth: AuthSession; onAuthChan
     await onAuthChange();
   };
 
-  return <div className="user-menu" ref={container}>
+  return <><div className="user-menu" ref={container}>
     <button className="user-menu-trigger" aria-label="Open profile and workspace menu" aria-expanded={open} onClick={() => setOpen((current) => !current)}><span className="avatar">{initials(auth.user.name)}</span><span className="user-menu-label"><strong>{auth.workspace.name}</strong><small>{auth.workspace.role}</small></span><ChevronDown size={14} /></button>
     {open && <div className="user-menu-popover">
       <header><span className="profile-avatar">{initials(auth.user.name)}</span><span><strong>{auth.user.name}</strong><small>{auth.user.email}</small></span></header>
@@ -89,7 +91,8 @@ export function UserMenu({ auth, onAuthChange }: { auth: AuthSession; onAuthChan
       <div className="workspace-menu-list">{auth.workspaces.map((workspace) => <button key={workspace.id} onClick={() => void switchTo(workspace.id)}><span><strong>{workspace.name}</strong><small>{workspace.role}</small></span>{workspace.id === auth.workspace.id && <Check size={13} />}</button>)}</div>
       {creating && <form className="workspace-create" onSubmit={(event) => { event.preventDefault(); void create(); }}><input aria-label="Workspace name" value={workspaceName} onChange={(event) => setWorkspaceName(event.target.value)} placeholder="Workspace name" maxLength={80} /><button type="submit" aria-label="Save workspace"><Check size={13} /></button></form>}
       {error && <p className="user-menu-error">{error}</p>}
+      <button className="manage-team-button" onClick={() => { setOpen(false); setTeamOpen(true); }}><UserRoundCog size={14} /> Manage team</button>
       <button className="sign-out-button" onClick={() => void signOut()}><LogOut size={14} /> Sign out</button>
     </div>}
-  </div>;
+  </div>{teamOpen && <TeamManagementDialog auth={auth} onClose={() => setTeamOpen(false)} />}</>;
 }

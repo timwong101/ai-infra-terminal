@@ -117,3 +117,22 @@ test("Markdown export includes report metadata, verified claims, and source appe
   assert.match(markdown, /https:\/\/example\.com\/coreweave/);
   assert.doesNotMatch(markdown, /Cross-company citation/);
 });
+
+test("published snapshots retain independent reviewer sign-off", () => {
+  const snapshot = buildPublishedReportSnapshot({
+    memo: memo({ status: "approved" }),
+    complianceMode: true,
+    generation,
+    publisher: { name: "Publishing Analyst", workspaceName: "Research" },
+    review: {
+      reviewId: "review:test",
+      approvedBy: "Senior Reviewer",
+      approvedByEmail: "reviewer@example.com",
+      approvedAt: "2026-02-21T12:00:00.000Z",
+      decisionNote: "Evidence and attribution reviewed.",
+      memoHash: "approved-hash",
+    },
+  });
+  assert.equal(snapshot.review?.approvedBy, "Senior Reviewer");
+  assert.equal(snapshot.review?.memoHash, "approved-hash");
+});

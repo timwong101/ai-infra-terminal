@@ -1656,3 +1656,104 @@ input::placeholder, textarea::placeholder { color: #758791; opacity: 1; }
   .lineage-metrics article { border-bottom: 1px solid var(--border-soft); }
   .lineage-canvas-wrap, .lineage-canvas { min-height: 500px; }
 }
+
+/* Collaboration and approval workflow */
+.manage-team-button { width: 100%; min-height: 39px; padding: 0 11px; border: 0; border-top: 1px solid var(--border-soft); background: transparent; color: #a7bac2; display: flex; align-items: center; gap: 7px; font-size: 10px; cursor: pointer; }
+.manage-team-button:hover { background: #0d222d; color: #d9e5e9; }
+.team-management-modal { width: min(680px, 100%); max-height: min(760px, calc(100dvh - 36px)); overflow-y: auto; }
+.team-invite-form { padding: 12px; border: 1px solid #274755; background: #071820; display: grid; gap: 10px; }
+.team-invite-form > div:first-child { display: flex; align-items: center; gap: 8px; }
+.team-invite-form > div:first-child svg { color: #65c8f4; }
+.team-invite-form strong, .team-invite-form small { display: block; }
+.team-invite-form strong { color: #cbd9de; font-size: 11px; }
+.team-invite-form small { margin-top: 2px; color: #6c828c; font-size: 9px; }
+.team-invite-form > div:last-child { display: grid; grid-template-columns: minmax(0, 1fr) 110px auto; gap: 6px; }
+.team-invite-form input, .team-invite-form select, .team-list select { min-width: 0; height: 32px; border: 1px solid #304b58; border-radius: 3px; background: #051018; color: #c6d3d8; padding: 0 8px; font-size: 10px; }
+.invitation-link-result { margin-top: 8px; padding: 9px 10px; border: 1px solid #2d6547; background: #092319; display: grid; grid-template-columns: minmax(0, 1fr) 30px; align-items: center; gap: 8px; }
+.invitation-link-result strong, .invitation-link-result small { display: block; }
+.invitation-link-result strong { color: #80dda1; font-size: 10px; }
+.invitation-link-result small { margin-top: 3px; overflow: hidden; color: #6fa184; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.team-list { margin-top: 12px; border: 1px solid var(--border-soft); }
+.team-list > header { min-height: 34px; padding: 0 10px; border-bottom: 1px solid var(--border-soft); color: #708791; display: flex; align-items: center; justify-content: space-between; font-size: 9px; text-transform: uppercase; }
+.team-list > article { min-height: 54px; padding: 7px 9px; border-bottom: 1px solid var(--border-soft); display: grid; grid-template-columns: 30px minmax(0, 1fr) 105px 30px; align-items: center; gap: 8px; }
+.team-list > article:last-child { border-bottom: 0; }
+.team-list .profile-avatar.small { width: 28px; height: 28px; font-size: 9px; }
+.team-list article > span:nth-child(2) strong, .team-list article > span:nth-child(2) small { display: block; }
+.team-list article > span:nth-child(2) strong { color: #c7d5da; font-size: 10px; }
+.team-list article > span:nth-child(2) small { margin-top: 3px; color: #6c818a; font-size: 9px; }
+.team-list article > em { color: #7c939d; font-size: 9px; font-style: normal; text-transform: capitalize; }
+.team-list .icon-button.danger { color: #a86d69; }
+.team-list .icon-button.danger:hover { border-color: #71413e; background: #251516; color: #ee8179; }
+.pending-invitations > article { grid-template-columns: 30px minmax(0, 1fr) 30px; }
+.team-error { margin-top: 10px; border: 1px solid #583a38; }
+
+.invitation-shell { min-height: 100dvh; padding: 20px; background: #040c12; display: grid; place-items: center; }
+.invitation-panel { width: min(470px, 100%); padding: 30px; border: 1px solid #294451; border-radius: 6px; background: #07151e; box-shadow: 0 24px 70px rgba(0,0,0,.42); display: grid; justify-items: start; }
+.invitation-icon { width: 44px; height: 44px; margin-bottom: 18px; border: 1px solid #387493; border-radius: 5px; background: #0b2634; color: #68c8f4; display: grid; place-items: center; }
+.invitation-panel h1 { margin: 6px 0 10px; font-size: 24px; }
+.invitation-panel > p { margin: 0; color: #8da0a8; font-size: 11px; line-height: 1.65; }
+.invitation-identity { width: 100%; margin-top: 18px; padding: 10px 11px; border: 1px solid var(--border-soft); background: #061018; }
+.invitation-identity span, .invitation-identity strong { display: block; }
+.invitation-identity span { color: #647b85; font-size: 9px; text-transform: uppercase; }
+.invitation-identity strong { margin-top: 4px; color: #c9d6db; font-size: 11px; }
+.invitation-actions { width: 100%; margin-top: 20px; display: flex; justify-content: flex-end; gap: 7px; }
+
+.memo-document.status-draft .publish-report-button,
+.memo-document.status-in_review .publish-report-button,
+.memo-document.status-changes_requested .publish-report-button { display: none; }
+.memo-review-workflow { min-height: 58px; padding: 9px 14px; border-bottom: 1px solid var(--border-soft); background: #081720; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.memo-review-summary { min-width: 0; display: flex; align-items: center; gap: 9px; }
+.memo-review-icon { width: 29px; height: 29px; border: 1px solid #3e5965; border-radius: 3px; color: #86a3af; display: grid; place-items: center; }
+.memo-review-summary > span:nth-child(2) { min-width: 0; }
+.memo-review-summary strong, .memo-review-summary small { display: block; }
+.memo-review-summary strong { color: #cfdbdf; font-size: 10px; }
+.memo-review-summary small { margin-top: 3px; overflow: hidden; color: #718790; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.memo-review-summary em { padding: 3px 6px; border: 1px solid #67562e; border-radius: 3px; color: #dbb75a; font-size: 8px; font-style: normal; white-space: nowrap; }
+.status-approved .memo-review-icon, .status-published .memo-review-icon { border-color: #34704e; background: #09261a; color: #77d59a; }
+.status-changes_requested .memo-review-icon { border-color: #79504a; background: #2a1716; color: #e48177; }
+.status-in_review .memo-review-icon { border-color: #3a7088; background: #092333; color: #70c8f2; }
+.review-approved-by { color: #77d59a; display: inline-flex; align-items: center; gap: 5px; font-size: 9px; }
+.memo-review-detail { padding: 10px 14px; border-bottom: 1px solid var(--border-soft); background: #06131b; }
+.review-notes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.review-notes p { margin: 0; padding: 8px 9px; border-left: 2px solid #375d70; background: #081a23; color: #8da0a8; font-size: 9px; line-height: 1.5; }
+.review-notes strong { margin-bottom: 3px; color: #6e8995; display: block; font-size: 8px; text-transform: uppercase; }
+.review-comments { margin-top: 9px; border-top: 1px solid var(--border-soft); }
+.review-comments article { min-height: 54px; padding: 8px 0; border-bottom: 1px solid var(--border-soft); display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 7px; }
+.review-comments article > svg { margin-top: 2px; color: #64bfe9; }
+.review-comments strong, .review-comments small { display: block; }
+.review-comments strong { color: #bfcdd2; font-size: 9px; }
+.review-comments small { margin-top: 2px; color: #607985; font-size: 8px; }
+.review-comments p { margin: 5px 0 0; color: #95a7af; font-size: 10px; line-height: 1.45; }
+.review-comments article.resolved { opacity: .58; }
+.review-comments article > em { color: #6bbf88; display: inline-flex; align-items: center; gap: 3px; font-size: 8px; font-style: normal; }
+.review-comment-composer { margin-top: 10px; padding: 9px; border: 1px solid #294956; background: #071820; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+.review-comment-composer > div, .review-comment-composer > strong, .review-comment-composer > select, .review-comment-composer > textarea { grid-column: 1 / -1; }
+.review-comment-composer > div { color: #6c828c; display: flex; justify-content: space-between; font-size: 8px; text-transform: uppercase; }
+.review-comment-composer > div button { border: 0; background: transparent; color: #7ba9bd; display: inline-flex; align-items: center; gap: 3px; font-size: 8px; cursor: pointer; }
+.review-comment-composer > strong { overflow: hidden; color: #79c8ed; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.review-comment-composer select, .review-comment-composer textarea, .review-decision-controls textarea, .review-submit-modal select, .review-submit-modal textarea { width: 100%; border: 1px solid #304b58; border-radius: 3px; outline: 0; background: #051018; color: #c5d2d7; padding: 7px 8px; font-size: 10px; resize: vertical; }
+.review-comment-composer select, .review-submit-modal select { height: 31px; padding-top: 0; padding-bottom: 0; }
+.review-comment-composer > .command-button { grid-column: 2; }
+.review-decision-controls { margin-top: 10px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: end; gap: 6px; }
+.review-workflow-error { margin: 8px 0 0; padding: 7px 8px; border: 1px solid #643d39; background: #241415; color: #e27d74; font-size: 9px; }
+.review-submit-modal { width: min(500px, 100%); }
+.review-submit-modal > label { margin-top: 10px; color: #6e8490; display: grid; gap: 5px; font-size: 9px; text-transform: uppercase; }
+
+.published-review-signoff { min-height: 54px; padding: 10px 15px; border-bottom: 1px solid #2b5540; background: #081c15; color: #74d199; display: flex; align-items: center; gap: 10px; }
+.published-review-signoff span { color: #759789; font-size: 9px; line-height: 1.5; }
+.published-review-signoff strong { margin-bottom: 2px; color: #bfe4ce; display: block; font-size: 10px; }
+.published-report-footer span small { margin-top: 5px; color: #6abf88; display: block; font-size: 8px; }
+
+@media (max-width: 640px) {
+  .team-management-modal { max-height: calc(100dvh - 16px); padding: 14px; }
+  .team-invite-form > div:last-child { grid-template-columns: 1fr 100px; }
+  .team-invite-form .primary-button { grid-column: 1 / -1; }
+  .team-list > article { grid-template-columns: 28px minmax(0, 1fr) 88px 28px; }
+  .pending-invitations > article { grid-template-columns: 28px minmax(0, 1fr) 28px; }
+  .invitation-panel { padding: 24px 18px; }
+  .memo-review-workflow { align-items: flex-start; flex-direction: column; }
+  .memo-review-summary { width: 100%; }
+  .review-notes { grid-template-columns: 1fr; }
+  .review-decision-controls { grid-template-columns: 1fr 1fr; }
+  .review-decision-controls textarea { grid-column: 1 / -1; }
+}

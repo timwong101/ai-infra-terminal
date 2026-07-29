@@ -3,6 +3,7 @@ import type { AuthContext } from "@/lib/auth/types";
 import { withDatabase } from "@/lib/db/client";
 import {
   comparisonMemos,
+  memoReviews,
   researchAssistantMessages,
   researchAssistantSessions,
   researchEvidence,
@@ -10,6 +11,7 @@ import {
   researchReplayRuns,
 } from "@/lib/db/schema";
 import { generateComparisonMemo } from "@/lib/research/memos";
+import { decideMemoReview, submitMemoForReview } from "@/lib/reviews/service";
 import { answerResearchAssistantQuestion, createResearchAssistantSession } from "@/lib/research/research-assistant";
 import { RESEARCH_QUALITY_SUITE_VERSION, runResearchQualitySuite } from "@/lib/research/research-quality";
 import { createResearchReplay } from "@/lib/replay/service";
@@ -72,6 +74,16 @@ function demoAuth(identity: { userId: string; workspaceId: string }): AuthContex
   return {
     sessionId: "portfolio-demo-seed",
     user: { id: identity.userId, email: "demo@ai-infra.local", name: "Demo Analyst", avatarUrl: null },
+    workspace,
+    workspaces: [workspace],
+  };
+}
+
+function demoReviewerAuth(identity: { workspaceId: string }): AuthContext {
+  const workspace = { id: identity.workspaceId, name: "Neocloud Research", slug: "neocloud-research", role: "analyst" as const };
+  return {
+    sessionId: "portfolio-demo-reviewer",
+    user: { id: "user:demo-reviewer", email: "reviewer@ai-infra.local", name: "Demo Reviewer", avatarUrl: null },
     workspace,
     workspaces: [workspace],
   };
@@ -152,6 +164,18 @@ async function ensureMemo(auth: AuthContext) {
   return memo.id;
 }
 
+async function ensureMemoApproval(memoId: string, author: AuthContext) {
+  const memo = await withDatabase(async (db) => (await db.select().from(comparisonMemos).where(eq(comparisonMemos.id, memoId)).limit(1))[0] ?? null);
+  if (!memo || memo.status === "approved" || memo.status === "published") return;
+  const reviewer = demoReviewerAuth({ workspaceId: author.workspace.id });
+  const existingReview = await withDatabase(async (db) => (await db.select().from(memoReviews).where(and(
+    eq(memoReviews.memoId, memoId),
+    eq(memoReviews.status, "in_review"),
+  )).orderBy(desc(memoReviews.submittedAt)).limit(1))[0] ?? null);
+  const reviewId = existingReview?.id ?? (await submitMemoForReview(memoId, reviewer.user.id, "Portfolio demo: independent review of the frozen evidence packet.", author)).id;
+  await decideMemoReview(reviewId, "approved", "Evidence packet, claim checks, and source attribution reviewed for the portfolio demo.", reviewer);
+}
+
 async function ensureAssistant(auth: AuthContext) {
   const existing = await withDatabase(async (db) => (await db
     .select({ sessionId: researchAssistantMessages.sessionId })
@@ -222,6 +246,7 @@ export async function ensurePortfolioDemoWorkspace(identity: { userId: string; w
     const acceptedEvidenceCount = await ensureEvidenceCoverage(identity);
     const removedEmptySessions = await removeEmptyAssistantSessions(identity.workspaceId);
     const memoId = await ensureMemo(auth);
+    await ensureMemoApproval(memoId, auth);
     const assistantSessionId = await ensureAssistant(auth);
     const qualityRunId = await ensureQualityRun(auth);
     const replayRunId = await ensureReplay(auth);

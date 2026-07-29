@@ -88,6 +88,7 @@ export function PublishedReportWorkspace({ token }: { token: string }) {
           <div><span>Source diversity</span><strong>{report.sourceDiversityScore}</strong><small>/100</small></div>
           <div><span>Published claims</span><strong>{report.compliance.publishedClaims}</strong><small>{report.compliance.withheldClaims ? `${report.compliance.withheldClaims} withheld` : "all verified"}</small></div>
         </section>
+        {report.review && <section className="published-review-signoff" aria-label="Independent review sign-off"><ShieldCheck size={18} /><span><strong>Independently reviewed</strong>Approved by {report.review.approvedBy} on {formatDate(report.review.approvedAt)}{report.review.decisionNote ? ` · ${report.review.decisionNote}` : ""}</span></section>}
 
         <article className="published-report-document">
           {report.sections.map((section) => (
@@ -113,7 +114,7 @@ export function PublishedReportWorkspace({ token }: { token: string }) {
         </article>
 
         <footer className="published-report-footer">
-          <span><strong>{report.publisher.name}</strong>{report.publisher.workspaceName}</span>
+          <span><strong>{report.publisher.name}</strong>{report.publisher.workspaceName}{report.review && <small>Approved by {report.review.approvedBy}</small>}</span>
           <p>Research only. This report is an immutable evidence snapshot, not investment advice. Verify original sources before making a decision.</p>
           <a href={`/api/reports/${encodeURIComponent(token)}/markdown`}><FileDown size={14} /> Download source packet</a>
         </footer>

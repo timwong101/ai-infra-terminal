@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Ban, BookOpenText, Check, ChevronRight, Copy, ExternalLink, FileText, Globe2, LoaderCircle, Scale, Share2, ShieldCheck, Sparkles, X } from "lucide-react";
+import { MemoReviewWorkflow, type ClaimCommentTarget } from "@/app/components/memo-review-workflow";
 import type { ComparisonMemo, EvidenceWorkspaceResponse } from "@/lib/research/types";
 import type { PublishedReport, PublishedReportSummary } from "@/lib/reports/types";
+import type { MemoReview, MemoReviewWorkspace } from "@/lib/reviews/types";
 
 type Props = {
   initialMemoId?: string;
@@ -30,6 +32,8 @@ export function ComparisonWorkspace({ initialMemoId = "", onMemoSelect, onReview
   const [publishStatus, setPublishStatus] = useState<"idle" | "publishing" | "revoking">("idle");
   const [publishNotice, setPublishNotice] = useState("");
   const [copiedReportId, setCopiedReportId] = useState("");
+  const [reviewWorkspace, setReviewWorkspace] = useState<MemoReviewWorkspace | null>(null);
+  const [commentTarget, setCommentTarget] = useState<ClaimCommentTarget>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -56,16 +60,30 @@ export function ComparisonWorkspace({ initialMemoId = "", onMemoSelect, onReview
   }, []);
 
   useEffect(() => {
+    if (!initialMemoId || selectedMemo?.id === initialMemoId) return;
+    const routedMemo = memos.find((memo) => memo.id === initialMemoId);
+    if (!routedMemo) return;
+    let active = true;
+    queueMicrotask(() => { if (active) setSelectedMemo(routedMemo); });
+    return () => { active = false; };
+  }, [initialMemoId, memos, selectedMemo?.id]);
+
+  useEffect(() => {
     if (!selectedMemo) return;
     const controller = new AbortController();
-    fetch(`/api/published-reports?memoId=${encodeURIComponent(selectedMemo.id)}`, { cache: "no-store", signal: controller.signal })
-      .then(async (response) => {
-        const result = await response.json() as { reports?: PublishedReportSummary[]; error?: string };
-        if (!response.ok) throw new Error(result.error || "Unable to load published versions.");
-        setReports(result.reports ?? []);
-      })
+    Promise.all([
+      fetch(`/api/published-reports?memoId=${encodeURIComponent(selectedMemo.id)}`, { cache: "no-store", signal: controller.signal }),
+      fetch(`/api/memo-reviews?memoId=${encodeURIComponent(selectedMemo.id)}`, { cache: "no-store", signal: controller.signal }),
+    ]).then(async ([reportsResponse, reviewResponse]) => {
+      const reportsResult = await reportsResponse.json() as { reports?: PublishedReportSummary[]; error?: string };
+      const reviewResult = await reviewResponse.json() as MemoReviewWorkspace & { error?: string };
+      if (!reportsResponse.ok) throw new Error(reportsResult.error || "Unable to load published versions.");
+      if (!reviewResponse.ok) throw new Error(reviewResult.error || "Unable to load memo review.");
+      setReports(reportsResult.reports ?? []);
+      setReviewWorkspace(reviewResult);
+    })
       .catch((cause) => {
-        if (!(cause instanceof DOMException && cause.name === "AbortError")) setPublishNotice(cause instanceof Error ? cause.message : "Unable to load published versions.");
+        if (!(cause instanceof DOMException && cause.name === "AbortError")) setPublishNotice(cause instanceof Error ? cause.message : "Unable to load memo workflow.");
       });
     return () => controller.abort();
   }, [selectedMemo]);
@@ -95,6 +113,13 @@ export function ComparisonWorkspace({ initialMemoId = "", onMemoSelect, onReview
   const activeReports = reports.filter((report) => !report.revokedAt);
   const latestReport = activeReports[0] ?? null;
 
+  const reviewChanged = (review: MemoReview, nextStatus?: ComparisonMemo["status"]) => {
+    setReviewWorkspace((current) => current ? { ...current, review } : current);
+    if (!nextStatus) return;
+    setSelectedMemo((current) => current ? { ...current, status: nextStatus } : current);
+    setMemos((current) => current.map((memo) => memo.id === selectedMemo?.id ? { ...memo, status: nextStatus } : memo));
+  };
+
   const publish = async () => {
     if (!selectedMemo) return;
     setPublishStatus("publishing");
@@ -108,6 +133,7 @@ export function ComparisonWorkspace({ initialMemoId = "", onMemoSelect, onReview
       const result = await response.json() as { report?: PublishedReport; error?: string };
       if (!response.ok || !result.report) throw new Error(result.error || "Unable to publish this report.");
       setReports((current) => [result.report!, ...current]);
+      setSelectedMemo((current) => current ? { ...current, status: "published" } : current);
       setPublishNotice(`Version ${result.report.version} is live.`);
       setPublishOpen(false);
     } catch (cause) {
@@ -159,9 +185,16 @@ export function ComparisonWorkspace({ initialMemoId = "", onMemoSelect, onReview
           <div className="saved-memos"><div className="saved-heading"><h3>Research history</h3><span>{memos.length}</span></div>{memos.map((memo) => <button className={`${selectedMemo?.id === memo.id ? "active" : ""} ${memo.isStale ? "stale" : ""}`} data-memo-id={memo.id} onClick={() => { setSelectedMemo(memo); onMemoSelect?.(memo.id); }} key={memo.id}>{memo.isStale ? <AlertTriangle size={15} /> : <FileText size={15} />}<span><strong>{memo.title}</strong><small>{memo.isStale ? "Evidence changed · regeneration needed" : `${memo.topic} · ${memo.citations.length} citations`}</small></span><ChevronRight size={14} /></button>)}{!memos.length && <p>No saved comparison memos yet.</p>}</div>
         </aside>
 
-        <section className="memo-document panel">
+        <section className={`memo-document panel ${selectedMemo ? `status-${selectedMemo.status}` : ""}`}>
           {selectedMemo ? <>{selectedMemo.isStale && <div className="stale-research-banner memo-stale-banner"><AlertTriangle size={15} /><div><strong>Saved evidence is stale</strong><span>{selectedMemo.staleReason}</span></div><button className="command-button small" disabled={status === "generating"} onClick={() => void generate(selectedMemo)}>{status === "generating" ? <LoaderCircle className="drawer-spinner" size={14} /> : <Sparkles size={14} />} Regenerate</button></div>}
-            <header className="memo-document-header"><div><span className="section-kicker">Saved evidence snapshot</span><h2>{selectedMemo.title}</h2><p>{selectedMemo.question}</p></div><div className="memo-header-actions"><div className="memo-run-badges"><span className="draft-badge">Draft</span>{selectedMemo.generation && <><span className="draft-badge">{selectedMemo.generation.engine.replaceAll("-", " ")}</span><span className="draft-badge">{selectedMemo.generation.retrievalMode}</span><span className={`draft-badge claim-check-badge ${selectedMemo.generation.verification.synthesisFallbackClaims ? "fallback" : ""}`}>{selectedMemo.generation.verification.synthesisFallbackClaims ? `${selectedMemo.generation.verification.synthesisFallbackClaims} source fallback${selectedMemo.generation.verification.synthesisFallbackClaims === 1 ? "" : "s"}` : "Claim checks passed"}</span></>}</div><button className="primary-button publish-report-button" onClick={() => { setPublishOpen(true); setPublishNotice(""); }}><Share2 size={15} />Publish report</button></div></header>
+            <header className="memo-document-header"><div><span className="section-kicker">Saved evidence snapshot</span><h2>{selectedMemo.title}</h2><p>{selectedMemo.question}</p></div><div className="memo-header-actions"><div className="memo-run-badges"><span className="draft-badge">{selectedMemo.status.replaceAll("_", " ")}</span>{selectedMemo.generation && <><span className="draft-badge">{selectedMemo.generation.engine.replaceAll("-", " ")}</span><span className="draft-badge">{selectedMemo.generation.retrievalMode}</span><span className={`draft-badge claim-check-badge ${selectedMemo.generation.verification.synthesisFallbackClaims ? "fallback" : ""}`}>{selectedMemo.generation.verification.synthesisFallbackClaims ? `${selectedMemo.generation.verification.synthesisFallbackClaims} source fallback${selectedMemo.generation.verification.synthesisFallbackClaims === 1 ? "" : "s"}` : "Claim checks passed"}</span></>}</div><button className="primary-button publish-report-button" onClick={() => { setPublishOpen(true); setPublishNotice(""); }}><Share2 size={15} />Publish report</button></div></header>
+            <MemoReviewWorkflow
+              memo={selectedMemo}
+              workspace={reviewWorkspace}
+              commentTarget={commentTarget}
+              onCommentTarget={setCommentTarget}
+              onReviewChange={reviewChanged}
+            />
             {(latestReport || publishNotice) && <section className="published-version-bar">
               <div><Globe2 size={15} /><span><strong>{latestReport ? `Version ${latestReport.version} published` : "Publishing update"}</strong><small>{publishNotice || (latestReport ? `${latestReport.complianceMode ? "Compliance mode" : "Standard"} · Evidence as of ${latestReport.asOfDate}` : "")}</small></span></div>
               {latestReport && <div><button className="icon-button" onClick={() => void copyReportLink(latestReport)} aria-label="Copy published report link" title="Copy published report link">{copiedReportId === latestReport.id ? <Check size={14} /> : <Copy size={14} />}</button><a className="command-button small" href={latestReport.path} target="_blank" rel="noreferrer"><ExternalLink size={14} />Open report</a></div>}

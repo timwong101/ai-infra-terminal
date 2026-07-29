@@ -23,6 +23,15 @@ export type PublishedReportGeneration = {
   verification: MemoVerification | null;
 };
 
+export type PublishedReportReview = {
+  reviewId: string;
+  approvedBy: string;
+  approvedByEmail: string;
+  approvedAt: string;
+  decisionNote: string | null;
+  memoHash: string;
+};
+
 export type PublishedReport = {
   id: string;
   memoId: string;
@@ -47,6 +56,7 @@ export type PublishedReport = {
     name: string;
     workspaceName: string;
   };
+  review: PublishedReportReview | null;
   revokedAt: string | null;
   publishedAt: string;
 };

@@ -401,7 +401,7 @@ export async function updateEvidenceReview(ids: string[], status: EvidenceReview
     for (const memo of memos) {
       const snapshot = memo.evidenceSnapshot as Array<{ id?: string }>;
       if (!snapshot.some((item) => item.id && idSet.has(item.id))) continue;
-      await db.update(comparisonMemos).set({ isStale: true, staleReason: "A cited evidence passage was re-reviewed. Regenerate to use the current approved packet.", staleAt: new Date(), updatedAt: new Date() }).where(eq(comparisonMemos.id, memo.id));
+      await db.update(comparisonMemos).set({ status: "changes_requested", isStale: true, staleReason: "A cited evidence passage was re-reviewed. Regenerate to use the current approved packet.", staleAt: new Date(), updatedAt: new Date() }).where(eq(comparisonMemos.id, memo.id));
       staleMemos += 1;
     }
     return { updated: rows.length, staleMemos, staleClaims: affectedClaimIds.size };

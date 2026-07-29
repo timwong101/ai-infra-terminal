@@ -46,6 +46,22 @@ async function createViewerSession() {
   return token;
 }
 
+async function createReviewerSession() {
+  const token = randomBytes(32).toString("hex");
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const client = new Client({ connectionString: e2eDatabaseUrl });
+  await client.connect();
+  try {
+    await client.query(
+      "INSERT INTO auth_sessions (id, token_hash, user_id, active_workspace_id, expires_at) VALUES ($1, $2, 'user:demo-reviewer', 'workspace:demo', now() + interval '1 hour')",
+      [`session:${randomUUID()}`, tokenHash],
+    );
+  } finally {
+    await client.end();
+  }
+  return token;
+}
+
 const companies = [
   { id: "coreweave", name: "CoreWeave" },
   { id: "nebius", name: "Nebius" },
@@ -146,6 +162,7 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await expect(page).toHaveURL(/\/reports\/[a-f0-9]{64}$/);
     await expect(page.getByRole("heading", { name: "CoreWeave vs. Nebius", exact: true })).toBeVisible();
     await expect(page.getByText("Compliance mode", { exact: true })).toBeVisible();
+    await expect(page.getByText("Independently reviewed", { exact: true })).toBeVisible();
     await expect(page.getByText("Why it matters", { exact: true }).first()).toBeVisible();
     await expect(page.getByRole("heading", { name: "Source appendix" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Print / Save PDF" })).toBeVisible();
@@ -261,6 +278,51 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await expect(page.getByRole("heading", { name: "CoreWeave vs. Nebius" })).toBeVisible();
   });
 
+  test("routes a memo through claim comments, independent approval, and publish readiness", async ({ browser, page }) => {
+    await page.goto("/memos");
+    await page.getByLabel("Company A").selectOption("applied-digital");
+    await page.getByLabel("Company B").selectOption("iren");
+    await page.getByLabel("Research question").fill("Compare Applied Digital and IREN with an independent review gate.");
+    await page.getByRole("button", { name: "Generate grounded memo" }).click();
+    await page.getByRole("button", { name: "Submit for review" }).click();
+
+    const submitDialog = page.getByRole("dialog", { name: "Submit memo for review" });
+    await expect(submitDialog.getByLabel("Memo reviewer")).toContainText("Demo Reviewer");
+    await submitDialog.getByLabel("Review submission note").fill("Check the financing comparison and source attribution.");
+    await submitDialog.getByRole("button", { name: "Submit", exact: true }).click();
+    await expect(page.getByText("In review", { exact: true })).toBeVisible();
+
+    await page.getByLabel("Review comment target").selectOption({ index: 1 });
+    await page.getByLabel("Review comment", { exact: true }).fill("Confirm that this claim remains within the cited issuer disclosure.");
+    await page.getByRole("button", { name: "Add comment" }).click();
+    await expect(page.getByText("Confirm that this claim remains within the cited issuer disclosure.", { exact: true })).toBeVisible();
+
+    const reviewerToken = await createReviewerSession();
+    const reviewerContext = await browser.newContext();
+    await reviewerContext.addCookies([{ name: "ai_infra_session", value: reviewerToken, domain: "localhost", path: "/", httpOnly: true, sameSite: "Lax" }]);
+    const reviewerPage = await reviewerContext.newPage();
+    await reviewerPage.goto(page.url());
+    await expect(reviewerPage.getByText("In review", { exact: true })).toBeVisible();
+    await reviewerPage.getByRole("button", { name: "Resolve review comment" }).click();
+    await reviewerPage.getByLabel("Review decision note").fill("Evidence packet and company attribution verified.");
+    await reviewerPage.getByRole("button", { name: "Approve memo" }).click();
+    await expect(reviewerPage.getByText("Approved", { exact: true })).toBeVisible();
+    await reviewerContext.close();
+
+    await page.reload();
+    await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Publish report" })).toBeVisible();
+  });
+
+  test("workspace menu exposes real team membership and role management", async ({ page }) => {
+    await page.getByRole("button", { name: "Open profile and workspace menu" }).click();
+    await page.getByRole("button", { name: "Manage team" }).click();
+    const dialog = page.getByRole("dialog", { name: "Workspace team" });
+    await expect(dialog.getByText("Demo Analyst (you)", { exact: true })).toBeVisible();
+    await expect(dialog.getByText("Demo Reviewer", { exact: true })).toBeVisible();
+    await expect(dialog.getByLabel("Role for Demo Reviewer")).toHaveValue("analyst");
+  });
+
   test("research assistant streams, verifies, and persists a cited research answer", async ({ page }) => {
     await page.goto("/research-assistant");
     await expect(page).toHaveURL(/\/research-assistant\/.+/);
@@ -340,6 +402,7 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await page.getByRole("button", { name: /Neocloud Research/ }).click();
     await expect(page.getByRole("heading", { name: "AI Infrastructure Map" })).toBeVisible();
     await page.goto("/memos");
+    await page.getByRole("button", { name: /CoreWeave vs\. Nebius/ }).first().click();
     await expect(page.getByRole("heading", { name: "CoreWeave vs. Nebius" })).toBeVisible();
 
     await page.goto("/audit");

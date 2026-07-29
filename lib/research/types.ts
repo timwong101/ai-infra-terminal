@@ -194,7 +194,7 @@ export type ComparisonMemo = {
   confidenceScore: number;
   evidenceQualityScore: number;
   sourceDiversityScore: number;
-  status: "draft" | "final";
+  status: "draft" | "in_review" | "changes_requested" | "approved" | "published";
   isStale: boolean;
   staleReason: string | null;
   staleAt: string | null;

@@ -202,7 +202,7 @@ export async function listComparisonMemos(workspaceId: string) {
       if (row.isStale) continue;
       const snapshot = row.evidenceSnapshot as Array<{ id?: string; contentHash?: string }>;
       const staleReason = memoEvidenceStaleReason(snapshot, currentById);
-      if (staleReason) await db.update(comparisonMemos).set({ isStale: true, staleReason, staleAt: new Date(), updatedAt: new Date() }).where(eq(comparisonMemos.id, row.id));
+      if (staleReason) await db.update(comparisonMemos).set({ status: "changes_requested", isStale: true, staleReason, staleAt: new Date(), updatedAt: new Date() }).where(eq(comparisonMemos.id, row.id));
     }
     const rows = await db.select().from(comparisonMemos).where(eq(comparisonMemos.workspaceId, workspaceId)).orderBy(desc(comparisonMemos.updatedAt)).limit(20);
     const allCompanies = await db.select().from(companies);

@@ -43,6 +43,24 @@ export const workspaceMembers = pgTable("workspace_members", {
   index("workspace_members_user_idx").on(table.userId),
 ]);
 
+export const workspaceInvitations = pgTable("workspace_invitations", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  role: text("role").default("analyst").notNull(),
+  tokenHash: text("token_hash").notNull(),
+  invitedByUserId: text("invited_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  acceptedByUserId: text("accepted_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  status: text("status").default("pending").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("workspace_invitations_token_hash_unique").on(table.tokenHash),
+  index("workspace_invitations_workspace_status_idx").on(table.workspaceId, table.status, table.createdAt),
+  index("workspace_invitations_email_idx").on(table.email),
+]);
+
 export const authSessions = pgTable("auth_sessions", {
   id: text("id").primaryKey(),
   tokenHash: text("token_hash").notNull(),
@@ -579,6 +597,40 @@ export const comparisonMemos = pgTable("comparison_memos", {
   index("comparison_memos_updated_idx").on(table.updatedAt),
 ]);
 
+export const memoReviews = pgTable("memo_reviews", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  memoId: text("memo_id").notNull().references(() => comparisonMemos.id, { onDelete: "cascade" }),
+  submittedByUserId: text("submitted_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  reviewerUserId: text("reviewer_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  status: text("status").default("in_review").notNull(),
+  memoHash: text("memo_hash").notNull(),
+  submissionNote: text("submission_note"),
+  decisionNote: text("decision_note"),
+  submittedAt: timestamp("submitted_at", { withTimezone: true }).defaultNow().notNull(),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("memo_reviews_memo_submitted_idx").on(table.memoId, table.submittedAt),
+  index("memo_reviews_reviewer_status_idx").on(table.workspaceId, table.reviewerUserId, table.status),
+]);
+
+export const memoReviewComments = pgTable("memo_review_comments", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  memoId: text("memo_id").notNull().references(() => comparisonMemos.id, { onDelete: "cascade" }),
+  reviewId: text("review_id").notNull().references(() => memoReviews.id, { onDelete: "cascade" }),
+  authorUserId: text("author_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  claimKey: text("claim_key"),
+  body: text("body").notNull(),
+  resolvedByUserId: text("resolved_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("memo_review_comments_review_created_idx").on(table.reviewId, table.createdAt),
+  index("memo_review_comments_claim_idx").on(table.memoId, table.claimKey),
+]);
+
 export const memoGenerations = pgTable("memo_generations", {
   id: text("id").primaryKey(),
   workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
@@ -629,6 +681,7 @@ export const publishedReports = pgTable("published_reports", {
   complianceMode: boolean("compliance_mode").default(true).notNull(),
   complianceSnapshot: jsonb("compliance_snapshot").notNull(),
   publisherSnapshot: jsonb("publisher_snapshot").notNull(),
+  reviewSnapshot: jsonb("review_snapshot"),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [

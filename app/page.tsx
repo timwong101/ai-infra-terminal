@@ -40,6 +40,7 @@ import { ResearchAssistantWorkspace } from "@/app/components/research-assistant-
 import { ResearchQualityWorkspace } from "@/app/components/research-quality-workspace";
 import { AuditWorkspace } from "@/app/components/audit-workspace";
 import { SignInScreen, UserMenu, type AuthSession, type PublicAuthState } from "@/app/components/auth-controls";
+import { InvitationAcceptance } from "@/app/components/invitation-acceptance";
 import { EvidenceWorkspace } from "@/app/components/evidence-workspace";
 import { OperationsWorkspace } from "@/app/components/operations-workspace";
 import { ThesisWorkspace } from "@/app/components/thesis-workspace";
@@ -382,6 +383,10 @@ export default function Home() {
   if (publicReportToken) return <PublishedReportWorkspace token={publicReportToken} />;
   if (!auth) return <div className="workspace-state full-page"><LoaderCircle className="drawer-spinner" size={25} /><strong>Opening analyst workspace</strong><span>Validating your session and active workspace.</span></div>;
   if (!auth.authenticated) return <SignInScreen state={auth} onSignedIn={loadAuth} />;
+  const invitationParts = window.location.pathname.split("/").filter(Boolean);
+  if (invitationParts.length === 2 && invitationParts[0] === "invite") {
+    return <InvitationAcceptance token={invitationParts[1]} auth={auth} onAccepted={loadAuth} />;
+  }
   return <Terminal auth={auth} onAuthChange={loadAuth} />;
 }
 
@@ -754,7 +759,6 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
           />
         ) : activeNav === "Memos" ? (
           <ComparisonWorkspace
-            key={routeMemoId || "memo-index"}
             initialMemoId={routeMemoId}
             onReviewEvidence={() => navigate("/evidence")}
             onMemoSelect={(memoId) => navigate(`/memos/${encodeURIComponent(memoId)}`)}

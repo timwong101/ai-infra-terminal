@@ -10,14 +10,17 @@ import type {
   PublishedReportCompany,
   PublishedReportCompliance,
   PublishedReportGeneration,
+  PublishedReportReview,
   PublishedReportSummary,
 } from "@/lib/reports/types";
+import { approvedReviewSnapshot } from "@/lib/reviews/service";
 
 type ReportSnapshotInput = {
   memo: ComparisonMemo;
   complianceMode: boolean;
   generation: PublishedReportGeneration | null;
   publisher: { name: string; workspaceName: string };
+  review?: PublishedReportReview | null;
 };
 
 function randomPublicToken() {
@@ -81,6 +84,7 @@ export function buildPublishedReportSnapshot(input: ReportSnapshotInput) {
     generation: input.generation,
     compliance,
     publisher: input.publisher,
+    review: input.review ?? null,
   };
 }
 
@@ -107,6 +111,7 @@ function rowToReport(row: typeof publishedReports.$inferSelect): PublishedReport
     complianceMode: row.complianceMode,
     compliance: row.complianceSnapshot as PublishedReportCompliance,
     publisher: row.publisherSnapshot as PublishedReport["publisher"],
+    review: row.reviewSnapshot as PublishedReportReview | null,
     revokedAt: row.revokedAt?.toISOString() ?? null,
     publishedAt: row.createdAt.toISOString(),
   };
@@ -163,11 +168,14 @@ export async function publishComparisonMemo(memoId: string, complianceMode: bool
   });
   if (!source) throw new Error("Memo not found in this workspace.");
 
+  const review = await approvedReviewSnapshot(source.memo, auth.workspace.id);
+
   const snapshot = buildPublishedReportSnapshot({
     memo: source.memo,
     complianceMode,
     generation: source.generation,
     publisher: { name: auth.user.name, workspaceName: auth.workspace.name },
+    review,
   });
   const id = `report:${crypto.randomUUID()}`;
   const publicToken = randomPublicToken();
@@ -178,7 +186,7 @@ export async function publishComparisonMemo(memoId: string, complianceMode: bool
       .orderBy(desc(publishedReports.version))
       .limit(1))[0];
     const version = (latest?.version ?? 0) + 1;
-    return (await tx.insert(publishedReports).values({
+    const report = (await tx.insert(publishedReports).values({
       id,
       workspaceId: auth.workspace.id,
       memoId,
@@ -199,7 +207,10 @@ export async function publishComparisonMemo(memoId: string, complianceMode: bool
       complianceMode,
       complianceSnapshot: snapshot.compliance,
       publisherSnapshot: snapshot.publisher,
+      reviewSnapshot: snapshot.review,
     }).returning())[0];
+    await tx.update(comparisonMemos).set({ status: "published" }).where(eq(comparisonMemos.id, memoId));
+    return report;
   }));
   if (!stored) throw new Error("Postgres is required to publish research reports.");
   await recordAuditEvent(auth, {
@@ -207,7 +218,7 @@ export async function publishComparisonMemo(memoId: string, complianceMode: bool
     entityType: "published_report",
     entityId: stored.id,
     summary: `Published ${stored.title} report version ${stored.version}.`,
-    metadata: { memoId, version: stored.version, complianceMode, publicPath: `/reports/${stored.publicToken}` },
+    metadata: { memoId, version: stored.version, complianceMode, reviewId: review.reviewId, approvedBy: review.approvedBy, publicPath: `/reports/${stored.publicToken}` },
   });
   return rowToReport(stored);
 }
@@ -263,6 +274,7 @@ export function publishedReportToMarkdown(report: PublishedReport) {
     `**Topic:** ${report.topic}  `,
     `**Evidence as of:** ${report.asOfDate}  `,
     `**Published:** ${report.publishedAt.slice(0, 10)} · Version ${report.version}`,
+    ...(report.review ? [`**Approved by:** ${report.review.approvedBy} · ${report.review.approvedAt.slice(0, 10)}`] : []),
     "",
     `**Confidence:** ${report.confidenceScore}/100 · **Evidence quality:** ${report.evidenceQualityScore}/100 · **Source diversity:** ${report.sourceDiversityScore}/100`,
     "",
