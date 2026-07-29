@@ -159,6 +159,23 @@ export type MemoClaim = {
   companyId: string;
   text: string;
   citationIds: string[];
+  representation?: "quote" | "paraphrase" | "question";
+  synthesisStatus?: "verified" | "source-fallback" | "not-applicable";
+  whyItMatters?: string;
+  qualityScore?: number;
+};
+
+export type MemoVerification = {
+  passed: boolean;
+  rejectedClaims: number;
+  checkedClaims: number;
+  allowedCitations: number;
+  synthesisFallbackClaims?: number;
+  duplicateClaims?: number;
+  numericFidelityFailures?: number;
+  quoteFidelityFailures?: number;
+  semanticSupportFailures?: number;
+  malformedClaims?: number;
 };
 
 export type ComparisonMemoSection = {
@@ -186,7 +203,7 @@ export type ComparisonMemo = {
   generation?: {
     engine: string;
     retrievalMode: string;
-    verification: { passed: boolean; rejectedClaims: number; checkedClaims: number; allowedCitations: number };
+    verification: MemoVerification;
   };
   createdAt: string;
   updatedAt: string;

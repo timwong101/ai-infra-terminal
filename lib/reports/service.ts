@@ -279,6 +279,10 @@ export function publishedReportToMarkdown(report: PublishedReport) {
       const company = claim.companyId === report.companyA.id ? report.companyA : report.companyB;
       const citations = claim.citationIds.map((id) => citationIndex.get(id)).filter(Boolean).map((index) => `[${index}]`).join("");
       lines.push(`- **${company.name}:** ${markdownEscape(claim.text)}${citations ? ` ${citations}` : ""}`);
+      if (claim.whyItMatters) lines.push(`  - *Why it matters:* ${markdownEscape(claim.whyItMatters)}`);
+      if (claim.representation && claim.representation !== "question") {
+        lines.push(`  - *Claim form:* ${claim.synthesisStatus === "source-fallback" ? "Source fallback" : claim.representation === "quote" ? "Source quote" : "Verified paraphrase"}`);
+      }
     }
     lines.push("");
   }

@@ -49,7 +49,7 @@ It does not insert synthetic research evidence. The seeded memo, answer, benchma
 | SEC and official IR ingestion | Source-specific normalization, retry policy, caching, and idempotent persistence |
 | Evidence review | Human-in-the-loop workflow with durable decisions and provenance |
 | Research Assistant | Grounded retrieval, structured generation, streaming UI, and citation verification |
-| Comparison memos | Saved generation metadata, frozen evidence packets, and stale-artifact detection |
+| Comparison memos | Analyst-grade claim synthesis, numeric fidelity, frozen evidence packets, and stale-artifact detection |
 | Published research reports | Immutable versions, public token URLs, compliance filtering, revocation, and export |
 | Research Quality | Versioned evaluation suite with deterministic CI gates and model diagnostics |
 | Point-in-time replay | Temporal data modeling and explicit leakage checks |
@@ -116,13 +116,15 @@ The same safety policy applies whether generation uses an OpenAI model or the de
 
 3. **Unsupported-claim removal:** Verification runs before an answer or memo is saved. Open questions can remain uncited; factual claims cannot.
 
-4. **Frozen evidence packets:** Memos, answers, quality cases, and replay runs persist the exact passages used to produce the output.
+4. **Claim-quality gate:** Memo claims must preserve disclosed numeric facts, retain meaningful lexical support, and label exact quotations correctly. Failed synthesis falls back to an exact source passage.
 
-5. **Staleness propagation:** Rejecting or changing cited evidence marks affected research stale instead of silently leaving it current.
+5. **Frozen evidence packets:** Memos, answers, quality cases, and replay runs persist the exact passages used to produce the output.
 
-6. **Source-policy separation:** GDELT articles are discovery signals. They cannot enter memo retrieval or change thesis scores until official evidence is extracted and accepted.
+6. **Staleness propagation:** Rejecting or changing cited evidence marks affected research stale instead of silently leaving it current.
 
-7. **Temporal integrity:** Replay supports both publication-time reconstruction and the stricter system-known policy, then reports leakage diagnostics.
+7. **Source-policy separation:** GDELT articles are discovery signals. They cannot enter memo retrieval or change thesis scores until official evidence is extracted and accepted.
+
+8. **Temporal integrity:** Replay supports both publication-time reconstruction and the stricter system-known policy, then reports leakage diagnostics.
 
 ## Core Workflows
 
@@ -136,7 +138,7 @@ The Research Assistant retrieves across one or more companies and returns a cite
 
 ### Evidence To Memo
 
-The comparison workflow analyzes two companies with accepted evidence only. It supports Postgres full-text search plus optional pgvector similarity. Each saved memo includes six balanced sections, inline citations, retrieval mode, generation engine, verification result, and a frozen source packet.
+The comparison workflow analyzes two companies with accepted evidence only. It supports Postgres full-text search plus optional pgvector similarity. A claim-quality layer removes repetition, rejects malformed source text, verifies numeric and quote fidelity, and measures lexical support. Failed synthesis uses a labeled exact-source fallback instead of presenting an unverified paraphrase. Each saved memo includes six balanced sections, inline citations, “why it matters” context, retrieval mode, generation engine, verification diagnostics, and a frozen source packet.
 
 ### Memo To Published Report
 
@@ -278,7 +280,7 @@ pnpm test
 
 The current suite includes:
 
-- **82 deterministic tests** covering ingestion, normalization, extraction, evidence policy, citation verification, report publishing, quality scoring, company intelligence, events, and replay.
+- **91 deterministic tests** covering ingestion, normalization, extraction, evidence policy, claim synthesis, numeric fidelity, citation verification, report publishing, quality scoring, company intelligence, events, and replay.
 - **32 research-quality cases** covering four companies, topic retrieval, pairwise comparisons, source policy, synthesis, and refusal behavior.
 - **12 Chromium journeys** covering login, the curated demo, responsive layouts, all four Neoclouds, evidence review, public report publishing and export, memos, assistant persistence, benchmarks, replay, lineage, RBAC, workspace isolation, and audit history.
 

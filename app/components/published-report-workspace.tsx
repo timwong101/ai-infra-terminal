@@ -95,7 +95,7 @@ export function PublishedReportWorkspace({ token }: { token: string }) {
               <header><span>{section.key.replaceAll("-", " ")}</span><h2>{section.title}</h2></header>
               {section.claims.length ? <div className="published-report-claims">{section.claims.map((claim, index) => {
                 const company = claim.companyId === report.companyA.id ? report.companyA : report.companyB;
-                return <div key={`${section.key}-${claim.companyId}-${index}`}><strong>{company.name}</strong><p>{claim.text} {claim.citationIds.map((id) => <a href={`#report-citation-${citationIndex.get(id)}`} key={id}>[{citationIndex.get(id)}]</a>)}</p></div>;
+                return <div key={`${section.key}-${claim.companyId}-${index}`}><header><strong>{company.name}</strong>{claim.representation && claim.representation !== "question" && <em className={claim.synthesisStatus === "source-fallback" ? "fallback" : ""}>{claim.synthesisStatus === "source-fallback" ? "Source fallback" : claim.representation === "quote" ? "Source quote" : "Verified paraphrase"}</em>}</header><p>{claim.text} {claim.citationIds.map((id) => <a href={`#report-citation-${citationIndex.get(id)}`} key={id}>[{citationIndex.get(id)}]</a>)}</p>{claim.whyItMatters && <aside><strong>Why it matters</strong><span>{claim.whyItMatters}</span></aside>}</div>;
               })}</div> : <p className="published-report-gap">No publishable claims in this section.</p>}
             </section>
           ))}

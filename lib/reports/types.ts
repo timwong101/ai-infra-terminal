@@ -1,4 +1,4 @@
-import type { ComparisonMemoSection, ResearchEvidenceItem } from "@/lib/research/types";
+import type { ComparisonMemoSection, MemoVerification, ResearchEvidenceItem } from "@/lib/research/types";
 
 export type PublishedReportCompany = {
   id: string;
@@ -20,12 +20,7 @@ export type PublishedReportGeneration = {
   engine: string;
   model: string;
   retrievalMode: string;
-  verification: {
-    passed: boolean;
-    rejectedClaims: number;
-    checkedClaims: number;
-    allowedCitations: number;
-  } | null;
+  verification: MemoVerification | null;
 };
 
 export type PublishedReport = {

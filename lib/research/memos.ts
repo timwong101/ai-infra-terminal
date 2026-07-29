@@ -6,9 +6,13 @@ import { searchAcceptedEvidence } from "@/lib/research/search";
 import type { ComparisonMemo, ComparisonMemoSection, MemoClaim, ResearchEvidenceItem } from "@/lib/research/types";
 import type { AuthContext } from "@/lib/auth/types";
 import { recordAuditEvent } from "@/lib/auth/session";
+import { createDeterministicMemoClaim, isMalformedClaimText, synthesizeMemoSections, verifySynthesizedClaim } from "@/lib/research/claim-synthesis";
 
 const RISK_PATTERN = /risk|depend|concentrat|debt|liquidity|cost|competition|delay|uncertain|adverse/i;
 const CATALYST_PATTERN = /growth|expand|capacity|contract|demand|launch|deploy|delivery|availability|pipeline/i;
+const RISK_DIRECTION_PATTERN = /\b(adverse|borrow|capital intensive|concentrat|constraint|cost|credit facility|debt|delay|depend|financ|loss|risk|uncertain)\b/i;
+const CATALYST_DIRECTION_PATTERN = /\b(capacity|contract|demand|deploy|delivery|energiz|expand|growth|increase|launch|pipeline|secured|signed)\b/i;
+const NEGATIVE_CATALYST_PATTERN = /\b(constraint|credit facility|debt|delay|loss|mature|reduces?|risk|uncertain)\b/i;
 const SECTION_KEYS = ["summary", "exposure", "advantages", "risks", "catalysts", "questions"] as const;
 
 export function memoEvidenceStaleReason(
@@ -30,18 +34,31 @@ const memoOutputSchema = z.object({
   sections: z.array(z.object({
     key: z.enum(SECTION_KEYS),
     title: z.string(),
-    claims: z.array(z.object({ companyId: z.string(), text: z.string(), citationIds: z.array(z.string()) })),
+    claims: z.array(z.object({
+      companyId: z.string(),
+      text: z.string(),
+      citationIds: z.array(z.string()),
+      representation: z.enum(["quote", "paraphrase"]),
+      whyItMatters: z.string(),
+    })),
   })),
 });
 
-function conciseClaim(item: ResearchEvidenceItem) {
-  const sentence = item.excerpt.split(/(?<=[.!?])\s+/)[0]?.trim() || item.excerpt.trim();
-  return sentence.length > 320 ? `${sentence.slice(0, 317).trim()}...` : sentence;
-}
-
-function claims(items: ResearchEvidenceItem[], pattern?: RegExp, limit = 3): MemoClaim[] {
+function claims(items: ResearchEvidenceItem[], key: ComparisonMemoSection["key"], pattern?: RegExp, limit = 3): MemoClaim[] {
   const matches = pattern ? items.filter((item) => pattern.test(`${item.topic} ${item.sectionTitle} ${item.excerpt}`)) : items;
-  return matches.slice(0, limit).map((item) => ({ companyId: item.companyId, text: conciseClaim(item), citationIds: [item.id] }));
+  return matches
+    .map((item) => createDeterministicMemoClaim(item, key))
+    .filter((claim) =>
+      !isMalformedClaimText(claim.text)
+      && (!pattern || pattern.test(claim.text))
+      && (key !== "risks" || RISK_DIRECTION_PATTERN.test(claim.text))
+      && (key !== "catalysts" || CATALYST_DIRECTION_PATTERN.test(claim.text) && !NEGATIVE_CATALYST_PATTERN.test(claim.text))
+    )
+    .sort((left, right) =>
+      Number(right.synthesisStatus === "verified") - Number(left.synthesisStatus === "verified")
+      || (right.qualityScore ?? 0) - (left.qualityScore ?? 0)
+    )
+    .slice(0, limit);
 }
 
 function scoreMemo(items: ResearchEvidenceItem[], companyIds: string[]) {
@@ -57,19 +74,21 @@ function scoreMemo(items: ResearchEvidenceItem[], companyIds: string[]) {
 function deterministicSections(items: ResearchEvidenceItem[], companyIds: string[]): ComparisonMemoSection[] {
   const byCompany = new Map(companyIds.map((id) => [id, items.filter((item) => item.companyId === id)]));
   const paired = (builder: (companyItems: ResearchEvidenceItem[]) => MemoClaim[]) => companyIds.flatMap((id) => builder(byCompany.get(id) ?? []));
-  const covered = new Set(items.map((item) => item.topic));
   const questions: MemoClaim[] = [];
   for (const companyId of companyIds) {
+    const covered = new Set((byCompany.get(companyId) ?? []).map((item) => item.topic));
+    const before = questions.length;
     if (!covered.has("Financing & liquidity")) questions.push({ companyId, text: "What funding sources and cost of capital will support the next phase of capacity expansion?", citationIds: [] });
     if (!covered.has("Customers & demand")) questions.push({ companyId, text: "How concentrated is contracted demand, and what portion is take-or-pay?", citationIds: [] });
     if (!covered.has("Power & capacity")) questions.push({ companyId, text: "How much power is energized today versus merely planned or contracted?", citationIds: [] });
+    if (questions.length === before) questions.push({ companyId, text: "Which disclosed milestone would most clearly confirm or weaken this infrastructure thesis next quarter?", citationIds: [] });
   }
   return [
-    { key: "summary", title: "Evidence-based summary", claims: paired((items) => claims(items, undefined, 1)) },
-    { key: "exposure", title: "AI infrastructure exposure", claims: paired((items) => claims(items, /gpu|compute|capacity|data cent|power|network/i, 3)) },
-    { key: "advantages", title: "Potential advantages", claims: paired((items) => claims(items, CATALYST_PATTERN, 3)) },
-    { key: "risks", title: "Risks and constraints", claims: paired((items) => claims(items, RISK_PATTERN, 3)) },
-    { key: "catalysts", title: "Catalysts to monitor", claims: paired((items) => claims(items, CATALYST_PATTERN, 2)) },
+    { key: "summary", title: "Evidence-based summary", claims: paired((items) => claims(items, "summary", undefined, 1)) },
+    { key: "exposure", title: "AI infrastructure exposure", claims: paired((items) => claims(items, "exposure", /gpu|compute|capacity|data cent|power|network/i, 3)) },
+    { key: "advantages", title: "Potential advantages", claims: paired((items) => claims(items, "advantages", CATALYST_PATTERN, 3)) },
+    { key: "risks", title: "Risks and constraints", claims: paired((items) => claims(items, "risks", RISK_PATTERN, 3)) },
+    { key: "catalysts", title: "Catalysts to monitor", claims: paired((items) => claims(items, "catalysts", CATALYST_PATTERN, 2)) },
     { key: "questions", title: "Open questions", claims: questions.slice(0, 6) },
   ];
 }
@@ -82,7 +101,10 @@ export function verifyMemoSections(sections: ComparisonMemoSection[], evidence: 
     const claims = (generated?.claims ?? []).filter((claim) => {
       if (!companyIds.includes(claim.companyId) || !claim.text.trim()) { rejectedClaims += 1; return false; }
       if (key === "questions") return true;
-      const valid = claim.citationIds.length > 0 && claim.citationIds.every((id) => evidenceById.get(id)?.companyId === claim.companyId);
+      const cited = claim.citationIds.map((id) => evidenceById.get(id)).filter((item): item is ResearchEvidenceItem => Boolean(item));
+      const grounded = claim.citationIds.length > 0 && cited.length === claim.citationIds.length && cited.every((item) => item.companyId === claim.companyId);
+      const synthesized = !claim.representation || verifySynthesizedClaim(claim, cited).passed;
+      const valid = grounded && synthesized;
       if (!valid) rejectedClaims += 1;
       return valid;
     }).map((claim) => ({ ...claim, citationIds: [...new Set(claim.citationIds)] }));
@@ -93,7 +115,22 @@ export function verifyMemoSections(sections: ComparisonMemoSection[], evidence: 
 
 function buildPrompt(question: string, companyNames: Map<string, string>, evidence: ResearchEvidenceItem[]) {
   const packet = evidence.map((item) => `[${item.id}] ${companyNames.get(item.companyId)} | ${item.sourceType} | ${item.documentDate} | ${item.topic}\n${item.excerpt}`).join("\n\n");
-  return `Research question: ${question}\n\nWrite a balanced investment-research comparison. Use only the evidence packet below. Every factual claim must cite one or more exact evidence IDs from the same company. Do not infer current market prices, forecasts, or facts absent from the packet. Put unresolved gaps in questions. Return all six section keys: ${SECTION_KEYS.join(", ")}.\n\nEVIDENCE PACKET\n${packet}`;
+  return `Research question: ${question}\n\nWrite a balanced investment-research comparison using only the evidence packet below.
+
+Claim rules:
+- Every factual claim must cite one or more exact evidence IDs from the same company.
+- Write concise analyst-grade claims, not raw filing tables or copied slide text.
+- Preserve every amount, percentage, date, duration, and capacity unit exactly as disclosed.
+- Set representation to "quote" only when the claim text is an exact source quotation; otherwise use "paraphrase".
+- Add one short whyItMatters sentence that explains the claim's investment relevance without adding new facts.
+- Do not repeat substantially similar claims across sections.
+- Do not infer current prices, forecasts, causality, or facts absent from the packet.
+- Put unresolved gaps in questions.
+
+Return all six section keys: ${SECTION_KEYS.join(", ")}.
+
+EVIDENCE PACKET
+${packet}`;
 }
 
 export async function generateComparisonMemo(input: { companyAId: string; companyBId: string; topic: string; question: string }, auth: AuthContext) {
@@ -113,7 +150,7 @@ export async function generateComparisonMemo(input: { companyAId: string; compan
   const generationId = `generation:${crypto.randomUUID()}`;
   const names = new Map([[companyA.id, companyA.name], [companyB.id, companyB.name]]);
   const prompt = buildPrompt(question, names, selected);
-  await withDatabase((db) => db.insert(memoGenerations).values({ id: generationId, workspaceId: auth.workspace.id, ownerUserId: auth.user.id, companyAId: companyA.id, companyBId: companyB.id, topic: input.topic, question, prompt, model: hasAi ? model : "deterministic-v1", engine: hasAi ? "ai" : "deterministic", retrievalMode: retrieval.mode, evidenceSnapshot: selected }));
+  await withDatabase((db) => db.insert(memoGenerations).values({ id: generationId, workspaceId: auth.workspace.id, ownerUserId: auth.user.id, companyAId: companyA.id, companyBId: companyB.id, topic: input.topic, question, prompt, model: hasAi ? model : "deterministic-v2", engine: hasAi ? "ai" : "deterministic", retrievalMode: retrieval.mode, evidenceSnapshot: selected }));
 
   let rawSections = deterministicSections(selected, companyIds);
   let engine = hasAi ? "ai" : "deterministic";
@@ -130,7 +167,16 @@ export async function generateComparisonMemo(input: { companyAId: string; compan
       generationError = error instanceof Error ? error.message : "AI generation failed; deterministic fallback used.";
     }
   }
-  const { sections, verification } = verifyMemoSections(rawSections, selected, companyIds);
+  const synthesized = synthesizeMemoSections(rawSections, selected, companyIds);
+  const verified = verifyMemoSections(synthesized.sections, selected, companyIds);
+  const rejectedClaims = verified.verification.rejectedClaims + synthesized.rejectedClaims;
+  const verification = {
+    ...verified.verification,
+    ...synthesized.diagnostics,
+    rejectedClaims,
+    passed: rejectedClaims === 0,
+  };
+  const sections = verified.sections;
   const scores = scoreMemo(selected, companyIds);
   const id = `memo:${crypto.randomUUID()}`;
   const stored = await withDatabase(async (db) => {

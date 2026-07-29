@@ -546,6 +546,8 @@ input::placeholder, textarea::placeholder { color: #758791; opacity: 1; }
 .memo-header-actions { flex: 0 0 auto; display: grid; justify-items: end; align-content: start; gap: 9px; }
 .publish-report-button { min-height: 31px; padding: 0 10px; }
 .draft-badge { align-self: flex-start; padding: 4px 7px; border: 1px solid #3d5968; border-radius: 3px; color: #9cb0ba; font-size: 9px; text-transform: uppercase; }
+.claim-check-badge { border-color: #2f6549; color: #7bcf9c; }
+.claim-check-badge.fallback { border-color: #65552d; color: #d0ad56; }
 .memo-score-strip { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--border-soft); }
 .memo-score-strip div { min-height: 63px; padding: 11px 15px; border-right: 1px solid var(--border-soft); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .memo-score-strip div:last-child { border-right: 0; }
@@ -559,9 +561,15 @@ input::placeholder, textarea::placeholder { color: #758791; opacity: 1; }
 .grounded-section h3, .memo-citations h3 { margin: 0 0 10px; font-size: 13px; }
 .grounded-claims { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .grounded-claims article { min-height: 70px; padding: 10px; border: 1px solid #263d4a; border-radius: 4px; background: #091a24; }
-.grounded-claims article > span { color: #65c4fa; font-size: 10px; font-weight: 600; }
+.grounded-claims article > header { min-height: 18px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.grounded-claims article > header > span { color: #65c4fa; font-size: 10px; font-weight: 600; }
+.grounded-claims article > header > em, .published-report-claims header > em { padding: 3px 5px; border: 1px solid #345968; border-radius: 3px; color: #82a9ba; font-size: 8px; font-style: normal; text-transform: uppercase; white-space: nowrap; }
+.grounded-claims article > header > em.fallback, .published-report-claims header > em.fallback { border-color: #65552d; color: #d0ad56; }
 .grounded-claims p { margin: 5px 0 0; color: #b8c5cb; font-size: 11px; line-height: 1.5; }
 .grounded-claims a { color: #70cafa; text-decoration: none; font-weight: 650; }
+.claim-rationale { margin-top: 9px; padding-top: 8px; border-top: 1px solid #1d3541; display: grid; gap: 3px; }
+.claim-rationale strong { color: #6f838d; font-size: 8px; font-weight: 600; text-transform: uppercase; }
+.claim-rationale span { color: #91a4ad; font-size: 9px; line-height: 1.45; }
 .missing-evidence { margin: 0; padding: 9px; border: 1px dashed #40535e; color: #81949e; font-size: 11px; }
 .memo-citations { padding-top: 18px; }
 .memo-citations article { padding: 10px 0; border-top: 1px solid var(--border-soft); display: grid; grid-template-columns: 24px minmax(0, 1fr) 20px; gap: 9px; }
@@ -1408,9 +1416,13 @@ input::placeholder, textarea::placeholder { color: #758791; opacity: 1; }
 .published-report-section > header h2, .published-report-sources > header h2 { margin: 6px 0 0; color: #e6edef; font-size: 17px; line-height: 1.35; }
 .published-report-claims { display: grid; gap: 10px; }
 .published-report-claims > div { padding: 2px 0 2px 13px; border-left: 2px solid #315d72; }
+.published-report-claims header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .published-report-claims strong { color: #6fc7f0; font-size: 10px; }
 .published-report-claims p { margin: 5px 0 0; color: #bcc9ce; font-size: 12px; line-height: 1.65; }
 .published-report-claims a { color: #75c9f1; text-decoration: none; font-weight: 650; }
+.published-report-claims aside { margin-top: 8px; padding-top: 8px; border-top: 1px solid #1d323c; display: grid; gap: 3px; }
+.published-report-claims aside strong { color: #718995; font-size: 8px; text-transform: uppercase; }
+.published-report-claims aside span { color: #8499a2; font-size: 10px; line-height: 1.5; }
 .published-report-gap { margin: 0; padding: 11px 13px; border-left: 2px solid #685c34; background: #1d1b12; color: #9e936e; font-size: 10px; }
 .published-report-sources { padding-top: 42px; }
 .published-report-sources > header { padding-bottom: 14px; border-bottom: 1px solid #314650; display: grid; grid-template-columns: minmax(0, 1fr) auto; }
@@ -1466,6 +1478,9 @@ input::placeholder, textarea::placeholder { color: #758791; opacity: 1; }
   .published-report-section, .published-report-sources article { break-inside: avoid; }
   .published-report-claims > div { border-color: #56839a; }
   .published-report-claims strong, .published-report-claims a, .published-report-sources article > a { color: #17678e; }
+  .published-report-claims header > em { border-color: #9eacb2; color: #53656d; }
+  .published-report-claims aside { border-color: #d8dfe2; }
+  .published-report-claims aside strong, .published-report-claims aside span { color: #52636b; }
   .published-report-gap { background: #f6f3e8; color: #685f40; }
   .published-report-footer a { display: none; }
 }

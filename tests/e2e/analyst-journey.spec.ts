@@ -102,6 +102,8 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await page.goto("/memos");
     await expect(page.getByRole("heading", { name: "CoreWeave vs. Nebius" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Evidence packet" })).toBeVisible();
+    await expect(page.getByText("Claim checks passed", { exact: true })).toBeVisible();
+    await expect(page.getByText("Why it matters", { exact: true }).first()).toBeVisible();
 
     await page.goto("/research-assistant");
     await expect(page).toHaveURL(/\/research-assistant\/.+/);
@@ -144,6 +146,7 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await expect(page).toHaveURL(/\/reports\/[a-f0-9]{64}$/);
     await expect(page.getByRole("heading", { name: "CoreWeave vs. Nebius", exact: true })).toBeVisible();
     await expect(page.getByText("Compliance mode", { exact: true })).toBeVisible();
+    await expect(page.getByText("Why it matters", { exact: true }).first()).toBeVisible();
     await expect(page.getByRole("heading", { name: "Source appendix" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Print / Save PDF" })).toBeVisible();
 
@@ -247,6 +250,8 @@ test.describe.serial("evidence-grounded analyst journey", () => {
 
     await expect(page).toHaveURL(/\/memos\//);
     await expect(page.getByRole("heading", { name: "CoreWeave vs. Nebius" })).toBeVisible();
+    await expect(page.getByText("Claim checks passed", { exact: true })).toBeVisible();
+    await expect(page.getByText("Why it matters", { exact: true }).first()).toBeVisible();
     await expect(page.getByRole("heading", { name: "Evidence packet" })).toBeVisible();
     await expect(page.getByLabel("Open citation 1")).toBeVisible();
 
