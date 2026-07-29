@@ -7,6 +7,7 @@ import type { ComparisonMemo, ComparisonMemoSection, MemoClaim, ResearchEvidence
 import type { AuthContext } from "@/lib/auth/types";
 import { recordAuditEvent } from "@/lib/auth/session";
 import { createDeterministicMemoClaim, isMalformedClaimText, synthesizeMemoSections, verifySynthesizedClaim } from "@/lib/research/claim-synthesis";
+import { getAcceptedMetricSnapshot } from "@/lib/company-intelligence/metric-ledger";
 
 const RISK_PATTERN = /risk|depend|concentrat|debt|liquidity|cost|competition|delay|uncertain|adverse/i;
 const CATALYST_PATTERN = /growth|expand|capacity|contract|demand|launch|deploy|delivery|availability|pipeline/i;
@@ -144,13 +145,14 @@ export async function generateComparisonMemo(input: { companyAId: string; compan
   const retrieval = await searchAcceptedEvidence({ companyIds, topic: input.topic, query: question, limit: 30 });
   const selected = companyIds.flatMap((id) => retrieval.items.filter((item) => item.companyId === id).slice(0, 10));
   if (companyIds.some((id) => !selected.some((item) => item.companyId === id))) throw new Error("Accept at least one matching evidence passage for each company before generating a comparison.");
+  const metricSnapshot = await getAcceptedMetricSnapshot(companyIds);
 
   const model = process.env.AI_MEMO_MODEL?.trim() || "gpt-5-mini";
   const hasAi = Boolean(process.env.OPENAI_API_KEY?.trim());
   const generationId = `generation:${crypto.randomUUID()}`;
   const names = new Map([[companyA.id, companyA.name], [companyB.id, companyB.name]]);
   const prompt = buildPrompt(question, names, selected);
-  await withDatabase((db) => db.insert(memoGenerations).values({ id: generationId, workspaceId: auth.workspace.id, ownerUserId: auth.user.id, companyAId: companyA.id, companyBId: companyB.id, topic: input.topic, question, prompt, model: hasAi ? model : "deterministic-v2", engine: hasAi ? "ai" : "deterministic", retrievalMode: retrieval.mode, evidenceSnapshot: selected }));
+  await withDatabase((db) => db.insert(memoGenerations).values({ id: generationId, workspaceId: auth.workspace.id, ownerUserId: auth.user.id, companyAId: companyA.id, companyBId: companyB.id, topic: input.topic, question, prompt, model: hasAi ? model : "deterministic-v2", engine: hasAi ? "ai" : "deterministic", retrievalMode: retrieval.mode, evidenceSnapshot: selected, metricSnapshot }));
 
   let rawSections = deterministicSections(selected, companyIds);
   let engine = hasAi ? "ai" : "deterministic";
@@ -180,7 +182,7 @@ export async function generateComparisonMemo(input: { companyAId: string; compan
   const scores = scoreMemo(selected, companyIds);
   const id = `memo:${crypto.randomUUID()}`;
   const stored = await withDatabase(async (db) => {
-    const rows = await db.insert(comparisonMemos).values({ id, workspaceId: auth.workspace.id, ownerUserId: auth.user.id, title: `${companyA.name} vs. ${companyB.name}`, question, companyAId: companyA.id, companyBId: companyB.id, topic: input.topic, confidenceScore: Math.max(0, scores.confidence - verification.rejectedClaims * 4), evidenceQualityScore: scores.quality, sourceDiversityScore: scores.diversity, sections, evidenceSnapshot: selected }).returning();
+    const rows = await db.insert(comparisonMemos).values({ id, workspaceId: auth.workspace.id, ownerUserId: auth.user.id, title: `${companyA.name} vs. ${companyB.name}`, question, companyAId: companyA.id, companyBId: companyB.id, topic: input.topic, confidenceScore: Math.max(0, scores.confidence - verification.rejectedClaims * 4), evidenceQualityScore: scores.quality, sourceDiversityScore: scores.diversity, sections, evidenceSnapshot: selected, metricSnapshot }).returning();
     await db.update(memoGenerations).set({ memoId: id, engine, status: "completed", output: { sections }, verification, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, totalTokens: usage.totalTokens, error: generationError, completedAt: new Date() }).where(eq(memoGenerations.id, generationId));
     return rows[0];
   });
@@ -190,7 +192,7 @@ export async function generateComparisonMemo(input: { companyAId: string; compan
 }
 
 function rowToMemo(row: typeof comparisonMemos.$inferSelect, companyA: typeof companies.$inferSelect, companyB: typeof companies.$inferSelect, metadata?: ComparisonMemo["generation"]) : ComparisonMemo {
-  return { id: row.id, title: row.title, question: row.question, companyA: { id: companyA.id, name: companyA.name, ticker: companyA.ticker }, companyB: { id: companyB.id, name: companyB.name, ticker: companyB.ticker }, topic: row.topic, confidenceScore: row.confidenceScore, evidenceQualityScore: row.evidenceQualityScore, sourceDiversityScore: row.sourceDiversityScore, status: row.status as ComparisonMemo["status"], isStale: row.isStale, staleReason: row.staleReason, staleAt: row.staleAt?.toISOString() ?? null, sections: row.sections as ComparisonMemoSection[], citations: row.evidenceSnapshot as ResearchEvidenceItem[], generation: metadata, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+  return { id: row.id, title: row.title, question: row.question, companyA: { id: companyA.id, name: companyA.name, ticker: companyA.ticker }, companyB: { id: companyB.id, name: companyB.name, ticker: companyB.ticker }, topic: row.topic, confidenceScore: row.confidenceScore, evidenceQualityScore: row.evidenceQualityScore, sourceDiversityScore: row.sourceDiversityScore, status: row.status as ComparisonMemo["status"], isStale: row.isStale, staleReason: row.staleReason, staleAt: row.staleAt?.toISOString() ?? null, sections: row.sections as ComparisonMemoSection[], citations: row.evidenceSnapshot as ResearchEvidenceItem[], metricSnapshot: row.metricSnapshot as ComparisonMemo["metricSnapshot"], generation: metadata, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 
 export async function listComparisonMemos(workspaceId: string) {

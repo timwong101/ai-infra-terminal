@@ -27,12 +27,12 @@ export function EvidenceWorkspace({ initialCompanyId = "", onBuildComparison, on
   const [topic, setTopic] = useState("");
   const [source, setSource] = useState("");
   const [review, setReview] = useState("");
-  const [triage, setTriage] = useState("review");
+  const [triage, setTriage] = useState("decision-ready");
   const [selected, setSelected] = useState<ResearchEvidenceItem | null>(null);
   const [claimId, setClaimId] = useState("");
   const [claimImpact, setClaimImpact] = useState<"supports" | "weakens" | "watch">("watch");
   const [updating, setUpdating] = useState(false);
-  const [visibleLimit, setVisibleLimit] = useState(100);
+  const [visibleLimit, setVisibleLimit] = useState(50);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setStatus("loading");
@@ -63,6 +63,10 @@ export function EvidenceWorkspace({ initialCompanyId = "", onBuildComparison, on
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
+    const canonicalDuplicates = new Set<string>();
+    const duplicateGroups = new Map<string, ResearchEvidenceItem[]>();
+    for (const item of data.items) if (item.duplicateGroupId) duplicateGroups.set(item.duplicateGroupId, [...(duplicateGroups.get(item.duplicateGroupId) ?? []), item]);
+    for (const group of duplicateGroups.values()) canonicalDuplicates.add([...group].sort((left, right) => right.evidenceQualityScore - left.evidenceQualityScore || right.documentDate.localeCompare(left.documentDate))[0].id);
     return data.items.filter((item) =>
       (!normalized || [item.companyName, item.ticker, item.documentTitle, item.sectionTitle, item.topic, item.excerpt].join(" ").toLowerCase().includes(normalized)) &&
       (!initialCompanyId || item.companyId === initialCompanyId) &&
@@ -70,6 +74,7 @@ export function EvidenceWorkspace({ initialCompanyId = "", onBuildComparison, on
       (!source || item.sourceKind === source) &&
       (!review || item.reviewStatus === review) &&
       (triage === "all" ||
+        (triage === "decision-ready" && item.reviewStatus === "unreviewed" && item.evidenceQualityScore >= 60 && item.boilerplateRisk < 60 && (!item.duplicateGroupId || canonicalDuplicates.has(item.id))) ||
         (triage === "review" && (item.reviewStatus === "unreviewed" || Boolean(item.suggestedClaimId && item.suggestionStatus === "pending"))) ||
         (triage === "high-value" && item.evidenceQualityScore >= 70 && item.boilerplateRisk < 40) ||
         (triage === "boilerplate" && item.boilerplateRisk >= 60) ||
@@ -98,7 +103,7 @@ export function EvidenceWorkspace({ initialCompanyId = "", onBuildComparison, on
     }
   };
 
-  const resetFilters = () => { setQuery(""); onCompanyChange?.(""); setTopic(""); setSource(""); setReview(""); setTriage("review"); setVisibleLimit(100); };
+  const resetFilters = () => { setQuery(""); onCompanyChange?.(""); setTopic(""); setSource(""); setReview(""); setTriage("decision-ready"); setVisibleLimit(50); };
 
   return (
     <div className="research-workspace evidence-workspace-page">
@@ -116,7 +121,7 @@ export function EvidenceWorkspace({ initialCompanyId = "", onBuildComparison, on
 
       <section className="evidence-toolbar" aria-label="Evidence filters">
         <label className="workspace-search"><Search size={15} /><input value={query} onChange={(event) => { setQuery(event.target.value); setVisibleLimit(100); }} placeholder="Search passages, topics, companies..." />{query && <button onClick={() => { setQuery(""); setVisibleLimit(100); }} aria-label="Clear search"><X size={14} /></button>}</label>
-        <select aria-label="Filter evidence triage" value={triage} onChange={(event) => { setTriage(event.target.value); setVisibleLimit(100); }}><option value="review">Analyst review queue</option><option value="high-value">High-value evidence</option><option value="boilerplate">Boilerplate risk</option><option value="duplicates">Duplicate groups</option><option value="all">All evidence</option></select>
+        <select aria-label="Filter evidence triage" value={triage} onChange={(event) => { setTriage(event.target.value); setVisibleLimit(50); }}><option value="decision-ready">Decision-ready inbox</option><option value="review">Full analyst queue</option><option value="high-value">High-value evidence</option><option value="boilerplate">Boilerplate risk</option><option value="duplicates">Duplicate groups</option><option value="all">All evidence</option></select>
         <select aria-label="Filter by company" value={initialCompanyId} onChange={(event) => { onCompanyChange?.(event.target.value); setVisibleLimit(100); }}><option value="">All companies</option>{data.companies.map((item) => <option value={item.id} key={item.id}>{item.name} ({item.ticker}) · {item.evidenceCount}</option>)}</select>
         <select aria-label="Filter by topic" value={topic} onChange={(event) => { setTopic(event.target.value); setVisibleLimit(100); }}><option value="">All topics</option>{data.topics.map((item) => <option value={item.name} key={item.name}>{item.name} · {item.evidenceCount}</option>)}</select>
         <select aria-label="Filter by source" value={source} onChange={(event) => { setSource(event.target.value); setVisibleLimit(100); }}><option value="">SEC + IR</option><option value="sec">SEC filings</option><option value="ir">Investor relations</option></select>
@@ -126,7 +131,7 @@ export function EvidenceWorkspace({ initialCompanyId = "", onBuildComparison, on
 
       <div className="evidence-review-layout">
         <section className="evidence-catalog panel">
-          <div className="catalog-heading"><div><h2>Analyst review inbox</h2><span>{visibleItems.length} of {filtered.length} prioritized</span></div><span className="quality-engine-label"><Sparkles size={13} /> Deterministic quality v1</span></div>
+          <div className="catalog-heading"><div><h2>{triage === "decision-ready" ? "Decision-ready inbox" : "Analyst review inbox"}</h2><span>{visibleItems.length} of {filtered.length} prioritized</span></div><span className="quality-engine-label"><Sparkles size={13} /> Deterministic quality v1</span></div>
           {status === "loading" && <div className="workspace-state"><LoaderCircle className="drawer-spinner" size={24} /><strong>Building unified evidence catalog</strong><span>Normalizing SEC and IR passages with source provenance.</span></div>}
           {status === "error" && <div className="workspace-state error"><strong>Evidence workspace unavailable</strong><span>{error}</span><button className="command-button" onClick={() => void load()}>Try again</button></div>}
           {status === "ready" && <div className="evidence-catalog-list">

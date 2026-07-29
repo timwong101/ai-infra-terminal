@@ -4,6 +4,8 @@ import { buildEarningsChangeBrief } from "@/lib/company-intelligence/brief-build
 import { compareDisclosureTone, compareMetricValues, extractMetricsFromText } from "@/lib/company-intelligence/extract";
 import { resolveDocumentPeriods, type PeriodDocument } from "@/lib/company-intelligence/period-resolver";
 import { periodForDate } from "@/lib/company-intelligence/service";
+import { extractCompanyFactObservations } from "@/lib/company-intelligence/company-facts";
+import { choosePreferredObservation, hasMetricConflict } from "@/lib/company-intelligence/metric-ledger";
 
 test("extracts explicit infrastructure and financial metrics with normalized units", () => {
   const metrics = extractMetricsFromText("The company reported $1.2 billion of backlog. Energized data center power capacity reached 250 MW. The fleet includes 12,500 NVIDIA GPUs.");
@@ -119,4 +121,45 @@ test("withholds unsupported factual claims from change briefs", () => {
   assert.equal(brief.changeCount, 0);
   assert.equal(brief.thesisImpact, "unchanged");
   assert.equal(brief.claims.filter((claim) => claim.section !== "question").length, 0);
+});
+
+test("normalizes SEC Company Facts into source-linked USD observations", () => {
+  const observations = extractCompanyFactObservations({
+    cik: 123456,
+    facts: { "us-gaap": { RevenueFromContractWithCustomerExcludingAssessedTax: {
+      label: "Revenue from contracts with customers",
+      units: { USD: [{ start: "2026-01-01", end: "2026-03-31", val: 1_250_000_000, accn: "0000123456-26-000010", form: "10-Q", filed: "2026-05-06", fy: 2026, fp: "Q1" }] },
+    } } },
+  });
+  assert.equal(observations.length, 1);
+  assert.equal(observations[0].metricKey, "revenue");
+  assert.equal(observations[0].normalizedValue, 1250);
+  assert.equal(observations[0].displayValue, "$1.3B");
+  assert.equal(observations[0].measurementType, "duration");
+  assert.match(observations[0].sourceUrl, /000012345626000010/);
+});
+
+test("ignores unsupported forms and non-financial Company Facts units", () => {
+  const observations = extractCompanyFactObservations({
+    cik: 123456,
+    facts: { "us-gaap": { Revenues: { units: {
+      USD: [{ end: "2026-03-31", val: 100, accn: "a", form: "8-K", filed: "2026-04-01" }],
+      shares: [{ end: "2026-03-31", val: 100, accn: "b", form: "10-Q", filed: "2026-04-01" }],
+    } } } },
+  });
+  assert.equal(observations.length, 0);
+});
+
+test("detects material source disagreement with a two percent tolerance", () => {
+  assert.equal(hasMetricConflict([100, 101.9]), false);
+  assert.equal(hasMetricConflict([100, 103]), true);
+  assert.equal(hasMetricConflict([100]), false);
+});
+
+test("prefers analyst-accepted observations over newer proposed values", () => {
+  const preferred = choosePreferredObservation([
+    { reviewStatus: "proposed" as const, periodEnd: "2026-06-30", confidence: 98, documentDate: "2026-07-20", sourceKind: "xbrl", value: 200 },
+    { reviewStatus: "accepted" as const, periodEnd: "2026-03-31", confidence: 85, documentDate: "2026-05-01", sourceKind: "text", value: 180 },
+  ]);
+  assert.equal(preferred?.value, 180);
 });

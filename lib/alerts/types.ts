@@ -10,7 +10,7 @@ export type ResearchAlert = {
   formType: string;
   filedAt: string;
   sourceUrl: string | null;
-  alertType: "filing_change" | "claim_impact" | "external_event";
+  alertType: "filing_change" | "claim_impact" | "external_event" | "metric_change";
   category: string;
   significance: "high" | "medium" | "low";
   impact: AlertImpact;

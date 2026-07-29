@@ -63,12 +63,24 @@ export async function listResearchAlerts(filters: AlertFilters = {}, auth: AuthC
       createdAt: alert.createdAt.toISOString(),
     }));
 
+    const priorityIds = new Set<string>();
+    const prioritySignatures = new Set<string>();
+    for (const alert of allAlerts) {
+      if (alert.status !== "unread" || (alert.significance !== "high" && (alert.relevanceScore ?? 0) < 80)) continue;
+      const signature = `${alert.companyId}:${alert.category}:${alert.title.toLowerCase().replace(/\d+/g, "#")}`;
+      if (prioritySignatures.has(signature)) continue;
+      prioritySignatures.add(signature);
+      priorityIds.add(alert.id);
+    }
+    const significanceRank = { high: 3, medium: 2, low: 1 } as const;
     const alerts = allAlerts.filter((alert) =>
-      (!filters.status || filters.status === "all" || alert.status === filters.status) &&
+      (!filters.status || filters.status === "all" || (filters.status === "priority" ? priorityIds.has(alert.id) : alert.status === filters.status)) &&
       (!filters.company || filters.company === "all" || alert.companyId === filters.company) &&
       (!filters.category || filters.category === "all" || alert.category === filters.category) &&
       (!filters.significance || filters.significance === "all" || alert.significance === filters.significance),
-    );
+    ).sort((left, right) => significanceRank[right.significance] - significanceRank[left.significance]
+      || (right.relevanceScore ?? 0) - (left.relevanceScore ?? 0)
+      || right.createdAt.localeCompare(left.createdAt));
 
     const claimRows = await db
       .select({ claim: researchClaims, company: companies })

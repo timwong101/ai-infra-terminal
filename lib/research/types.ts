@@ -17,6 +17,24 @@ export type ResearchAssistantClaim = {
   confidenceScore: number;
 };
 
+export type ResearchMetricSnapshot = {
+  id: string;
+  companyId: string;
+  companyName: string;
+  ticker: string;
+  periodLabel: string;
+  periodEnd: string;
+  metricKey: string;
+  label: string;
+  displayValue: string;
+  normalizedValue: number;
+  unit: string;
+  sourceKind: string;
+  sourceLabel: string;
+  sourceUrl: string | null;
+  documentDate: string;
+};
+
 export type ResearchAssistantMessage = {
   id: string;
   question: string;
@@ -32,6 +50,7 @@ export type ResearchAssistantMessage = {
   status: "running" | "completed" | "error";
   filters: ResearchAssistantFilters;
   citations: ResearchEvidenceItem[];
+  metricSnapshot: ResearchMetricSnapshot[];
   verification: { passed: boolean; rejectedClaims: number; checkedClaims: number; allowedCitations: number } | null;
   error: string | null;
   createdAt: string;
@@ -200,6 +219,7 @@ export type ComparisonMemo = {
   staleAt: string | null;
   sections: ComparisonMemoSection[];
   citations: ResearchEvidenceItem[];
+  metricSnapshot?: ResearchMetricSnapshot[];
   generation?: {
     engine: string;
     retrievalMode: string;

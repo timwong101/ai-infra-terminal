@@ -2,7 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
-import { BookOpenText, Check, ChevronRight, ExternalLink, FileQuestion, History, LoaderCircle, MessageSquareText, Plus, Send, ShieldCheck, Sparkles } from "lucide-react";
+import { BookOpenText, Check, ChevronRight, ExternalLink, FileCheck2, FileQuestion, History, LoaderCircle, MessageSquareText, Plus, Send, ShieldCheck, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { MessageResponse } from "@/app/components/ai-elements/message";
 import type { ResearchAssistantFilters, ResearchAssistantMessage, ResearchAssistantSession } from "@/lib/research/types";
@@ -200,6 +200,7 @@ function SavedAnswer({ message, catalog }: { message: ResearchAssistantMessage; 
       <div className="answer-heading"><Sparkles size={16} /><strong>Grounded answer</strong><span>{message.engine.replaceAll("-", " ")}</span></div>
       {message.answerMarkdown ? <MessageResponse>{message.answerMarkdown}</MessageResponse> : <p className="answer-error">{message.error ?? "This answer did not complete."}</p>}
       <div className="research-assistant-scores"><div className={scoreTone(message.confidenceScore)}><span>Confidence</span><strong>{message.confidenceScore ?? 0}</strong></div><div className={scoreTone(message.evidenceQualityScore)}><span>Evidence quality</span><strong>{message.evidenceQualityScore ?? 0}</strong></div><div className={scoreTone(message.sourceDiversityScore)}><span>Source diversity</span><strong>{message.sourceDiversityScore ?? 0}</strong></div><div className={message.verification?.passed ? "high" : "low"}><span>Claim checks</span><strong>{message.verification?.passed ? "Pass" : "Review"}</strong></div></div>
+      {!!message.metricSnapshot.length && <details className="research-assistant-sources metric-snapshot"><summary><FileCheck2 size={14} /> Verified KPI snapshot <span>{message.metricSnapshot.length} observations</span><ChevronRight size={13} /></summary><div>{message.metricSnapshot.map((metric) => <a key={metric.id} href={metric.sourceUrl ?? undefined} target={metric.sourceUrl ? "_blank" : undefined} rel="noreferrer"><b>{metric.ticker}</b><span><strong>{metric.label} · {metric.displayValue}</strong><small>{metric.periodLabel} · {metric.sourceLabel}</small></span>{metric.sourceUrl && <ExternalLink size={13} />}</a>)}</div></details>}
       {!!message.citations.length && <details className="research-assistant-sources"><summary><BookOpenText size={14} /> Evidence packet <span>{message.citations.length} passages</span><ChevronRight size={13} /></summary><div>{message.citations.map((item, index) => <a key={item.id} href={item.sourceUrl} target="_blank" rel="noreferrer"><b>{index + 1}</b><span><strong>{catalog?.companies.find((company) => company.id === item.companyId)?.name ?? item.companyName} · {item.sourceType}</strong><small>{item.documentDate} · {item.topic} · Quality {item.evidenceQualityScore}</small><em>{item.excerpt}</em></span><ExternalLink size={13} /></a>)}</div></details>}
     </div>
   </article>;

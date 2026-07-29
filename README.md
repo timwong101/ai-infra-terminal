@@ -48,6 +48,7 @@ It does not insert synthetic research evidence. The seeded memo, answer, benchma
 | --- | --- |
 | SEC and official IR ingestion | Source-specific normalization, retry policy, caching, and idempotent persistence |
 | Evidence review | Human-in-the-loop workflow with durable decisions and provenance |
+| KPI ledger and peer benchmark | SEC XBRL normalization, source conflict resolution, review state, and comparable time series |
 | Research Assistant | Grounded retrieval, structured generation, streaming UI, and citation verification |
 | Comparison memos | Analyst-grade claim synthesis, numeric fidelity, frozen evidence packets, and stale-artifact detection |
 | Published research reports | Immutable versions, public token URLs, compliance filtering, revocation, and export |
@@ -67,6 +68,7 @@ flowchart LR
     REDIS --> WORKER["Durable research workers"]
     WORKER --> INGEST["Parallel ingest and processing stages"]
     SEC["SEC EDGAR"] --> INGEST
+    XBRL["SEC Company Facts / XBRL"] --> METRICS["Normalized KPI ledger"]
     IR["Official investor relations"] --> INGEST
     GDELT["GDELT discovery"] --> EVENTS["Discovery event pipeline"]
 
@@ -74,6 +76,8 @@ flowchart LR
     DOCS --> QUALITY["Evidence quality policy"]
     QUALITY --> REVIEW["Analyst review"]
     REVIEW --> SEARCH["Full-text and optional vector retrieval"]
+    METRICS --> METRIC_REVIEW["Analyst metric review"]
+    METRIC_REVIEW --> SEARCH
 
     SEARCH --> ASK["Research Assistant"]
     SEARCH --> MEMO["Comparison memos"]
@@ -101,6 +105,9 @@ The application is a TypeScript monolith with clear service boundaries. React wo
 erDiagram
     COMPANY ||--o{ SOURCE_DOCUMENT : publishes
     SOURCE_DOCUMENT ||--o{ EVIDENCE : contains
+    COMPANY ||--o{ METRIC_OBSERVATION : reports
+    SOURCE_DOCUMENT ||--o{ METRIC_OBSERVATION : substantiates
+    USER ||--o{ METRIC_OBSERVATION : reviews
     EVIDENCE }o--o{ CLAIM : supports
     CLAIM }o--o{ MEMO : appears_in
     WORKSPACE ||--o{ MEMO : owns
@@ -111,6 +118,8 @@ erDiagram
 ```
 
 An evidence record retains the source document, exact excerpt, section, document date, original URL, optional PDF page, quality scores, review decision, reviewer, and timestamps. Generated outputs store evidence snapshots rather than relying on a future retrieval to reconstruct what the model saw.
+
+A metric observation separately retains its reporting period, normalized value, unit, source method, XBRL taxonomy and concept when available, source URL, confidence, and analyst decision. Conflicting standardized financial facts are surfaced for resolution; scope differences such as facility-level capacity are not automatically mislabeled as conflicts.
 
 ## Grounding And Hallucination Controls
 
@@ -146,6 +155,10 @@ The Research Assistant retrieves across one or more companies and returns a cite
 
 The comparison workflow analyzes two companies with accepted evidence only. It supports Postgres full-text search plus optional pgvector similarity. A claim-quality layer removes repetition, rejects malformed source text, verifies numeric and quote fidelity, and measures lexical support. Failed synthesis uses a labeled exact-source fallback instead of presenting an unverified paraphrase. Each saved memo includes six balanced sections, inline citations, “why it matters” context, retrieval mode, generation engine, verification diagnostics, and a frozen source packet.
 
+### Filing Facts To Peer Benchmark
+
+Company Intelligence combines existing passage extraction with the SEC Company Facts API. XBRL facts are normalized to comparable units and stored as proposed observations; accepted passage-derived metrics remain durable across refreshes. Analysts can compare all four Neoclouds in a matrix, inspect source-linked history, accept or reject observations, and resolve true standardized-financial conflicts. Only accepted observations flow into memo and Research Assistant KPI snapshots or generate material-change alerts.
+
 ### Memo To Published Report
 
 An analyst submits a memo to another workspace analyst or admin for independent review. Review comments can target the memo or a specific claim, unresolved comments block approval, and each decision is bound to a hash of the exact memo and evidence packet. Only an approved, non-stale snapshot can be published as an immutable, versioned report at a tokenized public URL. Every report includes reviewer sign-off, its evidence-as-of date, quality scores, frozen source appendix, publisher identity, and audit history. Published versions can be copied, exported to Markdown, printed to PDF, or revoked without rewriting prior snapshots.
@@ -156,7 +169,7 @@ Point-in-time replay reconstructs the eligible packet at an earlier date and com
 
 ### Pipeline To Analyst Inbox
 
-The scheduled research cycle runs SEC, IR, live-event, evidence, intelligence, embedding, thesis, and briefing stages. Each run records stage timing and failures under a trace ID. The Activity workspace converts the result into a research briefing rather than forcing the analyst to inspect raw ingestion logs.
+The scheduled research cycle runs SEC, IR, live-event, evidence, intelligence, XBRL metric, embedding, thesis, and briefing stages. Each run records stage timing and failures under a trace ID. The Activity workspace converts the result into a research briefing rather than forcing the analyst to inspect raw ingestion logs.
 
 ## Technology
 
@@ -181,6 +194,8 @@ The deterministic engine keeps the complete product usable without an API key. A
 ### Evidence quality is not analyst approval
 
 Scoring is a triage tool. It can prioritize specific, material passages and suppress boilerplate, but it does not replace analyst judgment. Review state is modeled separately and remains visible.
+
+The same policy applies to numeric observations. Structured XBRL is high-confidence source data, but it is still proposed until an analyst accepts it. Review decisions survive intelligence rebuilds, and a resolved conflict records the canonical observation and reviewer.
 
 ### Event discovery is not evidence
 
@@ -296,7 +311,7 @@ pnpm test
 
 The current suite includes:
 
-- **100 deterministic tests** covering ingestion, normalization, extraction, evidence policy, claim synthesis, numeric fidelity, content-bound review approval, citation verification, report publishing, quality scoring, company intelligence, events, replay, and durable queue contracts.
+- **104 deterministic tests** covering ingestion, normalization, extraction, SEC Company Facts, metric conflict policy, evidence policy, claim synthesis, numeric fidelity, content-bound review approval, citation verification, report publishing, quality scoring, company intelligence, events, replay, and durable queue contracts.
 - **32 research-quality cases** covering four companies, topic retrieval, pairwise comparisons, source policy, synthesis, and refusal behavior.
 - **15 Chromium journeys** covering login, the curated demo, responsive layouts, all four Neoclouds, evidence review, two-user memo approval, team roles, public report publishing and export, assistant persistence, durable job retries and replay, benchmarks, lineage, workspace isolation, and audit history.
 

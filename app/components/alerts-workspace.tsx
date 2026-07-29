@@ -32,10 +32,10 @@ const EMPTY_RESPONSE: AlertsResponse = {
 
 export function AlertsWorkspace({ onOpenFiling, onUnreadChange }: AlertsWorkspaceProps) {
   const [data, setData] = useState<AlertsResponse>(EMPTY_RESPONSE);
-  const [status, setStatus] = useState("unread");
+  const [status, setStatus] = useState("priority");
   const [company, setCompany] = useState("all");
   const [category, setCategory] = useState("all");
-  const [significance, setSignificance] = useState("high");
+  const [significance, setSignificance] = useState("all");
   const [selectedClaim, setSelectedClaim] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -105,7 +105,7 @@ export function AlertsWorkspace({ onOpenFiling, onUnreadChange }: AlertsWorkspac
 
       <div className="alerts-toolbar">
         <select aria-label="Filter alert status" value={status} onChange={(event) => setStatus(event.target.value)}>
-          <option value="unread">Unread</option><option value="all">All statuses</option><option value="watching">Watching</option><option value="reviewed">Reviewed</option><option value="dismissed">Dismissed</option>
+          <option value="priority">Priority inbox</option><option value="unread">All unread</option><option value="all">All statuses</option><option value="watching">Watching</option><option value="reviewed">Reviewed</option><option value="dismissed">Dismissed</option>
         </select>
         <select aria-label="Filter alert company" value={company} onChange={(event) => { setCompany(event.target.value); setSelectedClaim(null); }}>
           <option value="all">All companies</option>{data.filters.companies.map((item) => <option value={item.id} key={item.id}>{item.name} ({item.ticker})</option>)}
@@ -121,7 +121,7 @@ export function AlertsWorkspace({ onOpenFiling, onUnreadChange }: AlertsWorkspac
 
       <section className="alerts-layout">
         <div className="alerts-list-panel">
-          <div className="alerts-list-heading"><div><span className="section-kicker">Evidence changes</span><h2>Material alerts</h2></div><span>{status === "all" ? data.summary.total : data.alerts.length}</span></div>
+          <div className="alerts-list-heading"><div><span className="section-kicker">Evidence changes</span><h2>{status === "priority" ? "Priority inbox" : "Material alerts"}</h2></div><span>{status === "all" ? data.summary.total : data.alerts.length}</span></div>
           {loading ? (
             <div className="alerts-state"><LoaderCircle className="drawer-spinner" size={24} /><strong>Loading alerts</strong></div>
           ) : error ? (

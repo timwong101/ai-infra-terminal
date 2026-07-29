@@ -3,6 +3,8 @@ import { asc, desc, eq, inArray } from "drizzle-orm";
 import { buildEarningsChangeBrief } from "@/lib/company-intelligence/brief-builder";
 import type { BriefComparisonInput } from "@/lib/company-intelligence/brief-builder";
 import { compareDisclosureTone, compareMetricValues, extractMetricsFromText } from "@/lib/company-intelligence/extract";
+import { fetchCompanyFacts } from "@/lib/company-intelligence/company-facts";
+import { rebuildMetricConflicts } from "@/lib/company-intelligence/metric-ledger";
 import { calendarPeriodForDate, resolveDocumentPeriods } from "@/lib/company-intelligence/period-resolver";
 import type { CompanyIntelligenceResponse, EarningsChangeBrief, IntelligenceComparison, IntelligencePeriod } from "@/lib/company-intelligence/types";
 import { withDatabase } from "@/lib/db/client";
@@ -24,6 +26,7 @@ import {
   researchEvidence,
 } from "@/lib/db/schema";
 import type { ResearchEvidenceItem } from "@/lib/research/types";
+import { validateSecUserAgent } from "@/lib/sec/client";
 
 type PeriodShape = {
   id: string; companyId: string; periodKey: string; label: string; calendarYear: number; calendarQuarter: number;
@@ -33,8 +36,9 @@ type PeriodShape = {
 };
 
 type MetricShape = {
-  id: string; companyId: string; periodId: string; sourceEvidenceId: string; metricKey: string; label: string;
+  id: string; companyId: string; periodId: string; sourceEvidenceId: string | null; metricKey: string; label: string;
   category: string; normalizedValue: string; displayValue: string; unit: string; context: string; confidence: number; documentDate: string;
+  sourceKind: string; reviewStatus: string;
 };
 
 export function periodForDate(value: string) {
@@ -42,8 +46,10 @@ export function periodForDate(value: string) {
 }
 
 function bestMetric(metrics: MetricShape[], key: string) {
-  return metrics.filter((item) => item.metricKey === key).sort((left, right) =>
-    right.documentDate.localeCompare(left.documentDate) || right.confidence - left.confidence,
+  return metrics.filter((item) => item.metricKey === key && item.reviewStatus !== "rejected").sort((left, right) =>
+    Number(right.reviewStatus === "accepted") - Number(left.reviewStatus === "accepted")
+    || Number(right.sourceKind === "xbrl") - Number(left.sourceKind === "xbrl")
+    || right.documentDate.localeCompare(left.documentDate) || right.confidence - left.confidence,
   )[0];
 }
 
@@ -51,9 +57,24 @@ export async function syncCompanyIntelligence() {
   const result = await withDatabase(async (db) => {
     const evidenceRows = await db.select().from(researchEvidence).orderBy(asc(researchEvidence.documentDate));
     const companyRows = await db.select().from(companies);
+    const previousMetricRows = await db.select().from(companyMetrics);
+    const previousMetricState = new Map(previousMetricRows.map((metric) => [metric.id, {
+      reviewStatus: metric.reviewStatus, reviewNote: metric.reviewNote, reviewedByUserId: metric.reviewedByUserId, reviewedAt: metric.reviewedAt,
+    }]));
     const filingRows = await db.select().from(filings);
     const irDocumentRows = await db.select().from(irDocuments);
     const irSourceDocumentRows = await db.select().from(irSourceDocuments);
+    const companyFactsByCompany = new Map<string, Awaited<ReturnType<typeof fetchCompanyFacts>>>();
+    if (process.env.E2E_TEST !== "1" && process.env.SEC_USER_AGENT?.trim()) {
+      const userAgent = validateSecUserAgent(process.env.SEC_USER_AGENT);
+      await Promise.all(companyRows.map(async (company) => {
+        try {
+          companyFactsByCompany.set(company.id, await fetchCompanyFacts(company.cik, userAgent));
+        } catch (error) {
+          console.warn(`Company Facts unavailable for ${company.ticker}:`, error instanceof Error ? error.message : error);
+        }
+      }));
+    }
     await db.delete(reportingPeriods);
 
     const filingsById = new Map(filingRows.map((filing) => [filing.id, filing]));
@@ -157,8 +178,45 @@ export async function syncCompanyIntelligence() {
           sourceEvidenceId: evidence.id, metricKey: extracted.metricKey, label: extracted.label, category: extracted.category,
           normalizedValue: String(extracted.normalizedValue), displayValue: extracted.displayValue, unit: extracted.unit,
           context: extracted.context, confidence: Math.min(evidence.sourceQuality, extracted.confidence), documentDate: evidence.documentDate,
+          sourceKind: "text", reviewStatus: previousMetricState.get(`metric:${evidence.id}:${extracted.metricKey}`)?.reviewStatus
+            ?? (evidence.reviewStatus === "accepted" ? "accepted" : "proposed"),
         };
-        await db.insert(companyMetrics).values(metric);
+        const previous = previousMetricState.get(metric.id);
+        await db.insert(companyMetrics).values({
+          ...metric, sourceDocumentId: evidence.sourceDocumentId, sourceUrl: evidence.sourceUrl,
+          sourceLabel: `${evidence.sourceType}: ${evidence.documentTitle}`, valueType: "reported",
+          measurementType: "instant", reviewNote: previous?.reviewNote ?? null,
+          reviewedByUserId: previous?.reviewedByUserId ?? null, reviewedAt: previous?.reviewedAt ?? null,
+        });
+        metrics.push(metric);
+      }
+    }
+
+    for (const company of companyRows) {
+      const companyPeriods = periods.filter((period) => period.companyId === company.id);
+      for (const fact of companyFactsByCompany.get(company.id) ?? []) {
+        const period = companyPeriods.find((item) => item.periodEnd === fact.periodEnd);
+        if (!period) continue;
+        if (fact.measurementType === "duration" && fact.periodStart) {
+          const durationDays = Math.round((Date.parse(fact.periodEnd) - Date.parse(fact.periodStart)) / 86_400_000);
+          if (period.periodKind === "quarter" && (durationDays < 70 || durationDays > 110)) continue;
+          if (period.periodKind === "annual" && (durationDays < 300 || durationDays > 400)) continue;
+        }
+        const previous = previousMetricState.get(fact.id);
+        const metric: MetricShape = {
+          id: fact.id, companyId: company.id, periodId: period.id, sourceEvidenceId: null,
+          metricKey: fact.metricKey, label: fact.label, category: fact.category,
+          normalizedValue: String(fact.normalizedValue), displayValue: fact.displayValue, unit: fact.unit,
+          context: fact.context, confidence: fact.confidence, documentDate: fact.documentDate,
+          sourceKind: "xbrl", reviewStatus: previous?.reviewStatus ?? "proposed",
+        };
+        await db.insert(companyMetrics).values({
+          ...metric, sourceDocumentId: fact.accessionNumber, sourceUrl: fact.sourceUrl,
+          sourceLabel: `SEC ${fact.form} · Company Facts`, taxonomy: fact.taxonomy, concept: fact.concept,
+          accessionNumber: fact.accessionNumber, valueType: "reported", measurementType: fact.measurementType,
+          reviewNote: previous?.reviewNote ?? null, reviewedByUserId: previous?.reviewedByUserId ?? null,
+          reviewedAt: previous?.reviewedAt ?? null,
+        }).onConflictDoNothing();
         metrics.push(metric);
       }
     }
@@ -169,8 +227,8 @@ export async function syncCompanyIntelligence() {
     for (const [companyId, companyPeriods] of orderedByCompany) {
       for (const [index, currentPeriod] of companyPeriods.entries()) {
         const previousPeriod = companyPeriods.slice(0, index).reverse().find((period) => period.periodKind === currentPeriod.periodKind);
-        const currentMetrics = metrics.filter((metric) => metric.periodId === currentPeriod.id);
-        const previousMetrics = previousPeriod ? metrics.filter((metric) => metric.periodId === previousPeriod.id) : [];
+        const currentMetrics = metrics.filter((metric) => metric.periodId === currentPeriod.id && metric.reviewStatus === "accepted");
+        const previousMetrics = previousPeriod ? metrics.filter((metric) => metric.periodId === previousPeriod.id && metric.reviewStatus === "accepted") : [];
         for (const metricKey of new Set(currentMetrics.map((metric) => metric.metricKey))) {
           const current = bestMetric(currentMetrics, metricKey);
           const previous = bestMetric(previousMetrics, metricKey);
@@ -186,7 +244,7 @@ export async function syncCompanyIntelligence() {
               ? `${current.label} ${change.direction} from ${previous.displayValue} to ${current.displayValue}${delta}.`
               : `${current.label} was newly identified at ${current.displayValue} in ${currentPeriod.label}.`,
             currentText: current.context, previousText: previous?.context ?? null,
-            evidenceIds: [current.sourceEvidenceId, ...(previous ? [previous.sourceEvidenceId] : [])],
+            evidenceIds: [current.sourceEvidenceId, previous?.sourceEvidenceId].filter((id): id is string => Boolean(id)),
           });
           metricComparisons += 1;
         }
@@ -278,7 +336,8 @@ export async function syncCompanyIntelligence() {
     return { periods: periods.length, packages: periods.length, documents: resolvedDocuments.length, metrics: metrics.length, metricComparisons, disclosureComparisons, briefs };
   });
   if (!result) throw new Error("Company intelligence requires a configured database.");
-  return result;
+  const conflicts = await rebuildMetricConflicts();
+  return { ...result, conflicts: conflicts.open };
 }
 
 function toEvidenceItem(evidence: typeof researchEvidence.$inferSelect, company: typeof companies.$inferSelect): ResearchEvidenceItem {
@@ -317,7 +376,10 @@ export async function getCompanyIntelligence(companyId?: string, currentPeriodId
     const selectedCompany = companyRows.find((company) => company.id === companyId) ?? companyRows.find((company) => allPeriods.some((period) => period.companyId === company.id));
     if (!selectedCompany) throw new Error("No company intelligence is available yet. Run the intelligence sync first.");
     const periods = allPeriods.filter((period) => period.companyId === selectedCompany.id);
+    const companyMetricRows = await db.select().from(companyMetrics).where(eq(companyMetrics.companyId, selectedCompany.id));
+    const metricPeriodIds = new Set(companyMetricRows.filter((metric) => metric.reviewStatus !== "rejected").map((metric) => metric.periodId));
     const current = periods.find((period) => period.id === currentPeriodId)
+      ?? periods.find((period) => metricPeriodIds.has(period.id) && period.periodKind === "quarter" && period.periodBasis !== "calendar-fallback")
       ?? periods.find((period) => period.periodKind === "quarter" && period.periodBasis !== "calendar-fallback")
       ?? periods[0];
     if (!current) throw new Error("This company has no reporting periods yet.");
@@ -327,8 +389,8 @@ export async function getCompanyIntelligence(companyId?: string, currentPeriodId
       ?? null;
     const comparisons = await db.select().from(periodComparisons).where(eq(periodComparisons.currentPeriodId, current.id)).orderBy(desc(periodComparisons.significance), asc(periodComparisons.category));
     const disclosures = comparisons.filter((item) => item.comparisonKind === "disclosure");
-    const currentMetricRows = await db.select().from(companyMetrics).where(eq(companyMetrics.periodId, current.id));
-    const previousMetricRows = previous ? await db.select().from(companyMetrics).where(eq(companyMetrics.periodId, previous.id)) : [];
+    const currentMetricRows = companyMetricRows.filter((metric) => metric.periodId === current.id);
+    const previousMetricRows = previous ? companyMetricRows.filter((metric) => metric.periodId === previous.id) : [];
     const dynamicMetrics: IntelligenceComparison[] = [...new Set(currentMetricRows.map((item) => item.metricKey))].map((metricKey) => {
       const currentMetric = bestMetric(currentMetricRows, metricKey);
       const previousMetric = bestMetric(previousMetricRows, metricKey);
@@ -342,7 +404,7 @@ export async function getCompanyIntelligence(companyId?: string, currentPeriodId
           ? `${currentMetric.label} ${change.direction} from ${previousMetric.displayValue} to ${currentMetric.displayValue}${delta}.`
           : `${currentMetric.label} was identified at ${currentMetric.displayValue} in ${current.label}, with no matching metric in ${previous?.label ?? "the prior period"}.`,
         currentText: currentMetric.context, previousText: previousMetric?.context ?? null,
-        evidenceIds: [currentMetric.sourceEvidenceId, ...(previousMetric ? [previousMetric.sourceEvidenceId] : [])],
+        evidenceIds: [currentMetric.sourceEvidenceId, previousMetric?.sourceEvidenceId].filter((id): id is string => Boolean(id)),
         tone: "neutral",
       };
     });

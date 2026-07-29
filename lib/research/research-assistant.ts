@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { withDatabase } from "@/lib/db/client";
 import { companies, researchAssistantMessages, researchAssistantSessions, researchEvidence } from "@/lib/db/schema";
@@ -6,6 +6,7 @@ import { searchAcceptedEvidence } from "@/lib/research/search";
 import type { ResearchAssistantClaim, ResearchAssistantFilters, ResearchAssistantMessage, ResearchAssistantSession, ResearchEvidenceItem } from "@/lib/research/types";
 import type { AuthContext } from "@/lib/auth/types";
 import { recordAuditEvent } from "@/lib/auth/session";
+import { getAcceptedMetricSnapshot } from "@/lib/company-intelligence/metric-ledger";
 
 const researchAssistantOutputSchema = z.object({
   claims: z.array(z.object({
@@ -172,6 +173,17 @@ export async function createResearchAssistantSession(auth: AuthContext, filters:
   const catalog = await getResearchAssistantCatalog();
   const normalized = normalizeFilters(filters, new Set(catalog.companies.map((item) => item.id)));
   if (!normalized.companyIds.length) normalized.companyIds = catalog.companies.map((item) => item.id);
+  const reusable = await withDatabase(async (db) => {
+    const sessions = await db.select().from(researchAssistantSessions).where(eq(researchAssistantSessions.workspaceId, auth.workspace.id)).orderBy(desc(researchAssistantSessions.updatedAt));
+    if (!sessions.length) return null;
+    const messages = await db.select({ sessionId: researchAssistantMessages.sessionId }).from(researchAssistantMessages).where(inArray(researchAssistantMessages.sessionId, sessions.map((session) => session.id)));
+    const populated = new Set(messages.map((message) => message.sessionId));
+    return sessions.find((session) => !populated.has(session.id)) ?? null;
+  });
+  if (reusable) {
+    await withDatabase((db) => db.update(researchAssistantSessions).set({ companyIds: normalized.companyIds, topic: normalized.topic, sourceKinds: normalized.sourceKinds, dateFrom: normalized.dateFrom, dateTo: normalized.dateTo, updatedAt: new Date() }).where(eq(researchAssistantSessions.id, reusable.id)));
+    return reusable.id;
+  }
   const id = `research-assistant:${crypto.randomUUID()}`;
   const rows = await withDatabase((db) => db.insert(researchAssistantSessions).values({ id, workspaceId: auth.workspace.id, ownerUserId: auth.user.id, title: "New research question", companyIds: normalized.companyIds, topic: normalized.topic, sourceKinds: normalized.sourceKinds, dateFrom: normalized.dateFrom, dateTo: normalized.dateTo }).returning());
   if (!rows?.[0]) throw new Error("Unable to create a research session.");
@@ -186,6 +198,7 @@ function messageFromRow(row: typeof researchAssistantMessages.$inferSelect): Res
     confidenceScore: row.confidenceScore, evidenceQualityScore: row.evidenceQualityScore, sourceDiversityScore: row.sourceDiversityScore,
     engine: row.engine, model: row.model, retrievalMode: row.retrievalMode, status: row.status as ResearchAssistantMessage["status"],
     filters: row.filters as ResearchAssistantFilters, citations: row.evidenceSnapshot as ResearchEvidenceItem[],
+    metricSnapshot: row.metricSnapshot as ResearchAssistantMessage["metricSnapshot"],
     verification: row.verification as ResearchAssistantMessage["verification"], error: row.error, createdAt: row.createdAt.toISOString(),
   };
 }
@@ -194,9 +207,14 @@ export async function listResearchAssistantSessions(workspaceId: string) {
   const result = await withDatabase(async (db) => {
     const sessions = await db.select().from(researchAssistantSessions).where(eq(researchAssistantSessions.workspaceId, workspaceId)).orderBy(desc(researchAssistantSessions.updatedAt)).limit(30);
     const messages = await db.select().from(researchAssistantMessages).orderBy(desc(researchAssistantMessages.createdAt));
-    return sessions.map((session) => ({
+    const messageCount = new Map<string, number>();
+    for (const message of messages) messageCount.set(message.sessionId, (messageCount.get(message.sessionId) ?? 0) + 1);
+    const emptySessions = sessions.filter((session) => !messageCount.get(session.id));
+    const staleEmptyIds = emptySessions.slice(1).map((session) => session.id);
+    if (staleEmptyIds.length) await db.delete(researchAssistantSessions).where(inArray(researchAssistantSessions.id, staleEmptyIds));
+    return sessions.filter((session) => !staleEmptyIds.includes(session.id)).map((session) => ({
       id: session.id, title: session.title, updatedAt: session.updatedAt.toISOString(),
-      messageCount: messages.filter((item) => item.sessionId === session.id).length,
+      messageCount: messageCount.get(session.id) ?? 0,
       lastQuestion: messages.find((item) => item.sessionId === session.id)?.question ?? null,
     }));
   });
@@ -231,8 +249,9 @@ export async function answerResearchAssistantQuestion(sessionId: string, questio
 
   try {
     const result = await runResearchAssistantPipeline(question, inputFilters, requestedEngine);
+    const metricSnapshot = await getAcceptedMetricSnapshot(result.filters.companyIds);
     await withDatabase(async (db) => {
-      await db.update(researchAssistantMessages).set({ answerMarkdown: result.markdown, claims: result.claims, openQuestions: result.openQuestions, confidenceScore: Math.max(0, result.scores.confidence - result.verification.rejectedClaims * 5), evidenceQualityScore: result.scores.quality, sourceDiversityScore: result.scores.diversity, engine: result.engine, model: result.model, filters: result.filters, retrievalMode: result.retrievalMode, status: "completed", evidenceSnapshot: result.selected, verification: result.verification, inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, totalTokens: result.usage.totalTokens, error: result.error, completedAt: new Date() }).where(eq(researchAssistantMessages.id, id));
+      await db.update(researchAssistantMessages).set({ answerMarkdown: result.markdown, claims: result.claims, openQuestions: result.openQuestions, confidenceScore: Math.max(0, result.scores.confidence - result.verification.rejectedClaims * 5), evidenceQualityScore: result.scores.quality, sourceDiversityScore: result.scores.diversity, engine: result.engine, model: result.model, filters: result.filters, retrievalMode: result.retrievalMode, status: "completed", evidenceSnapshot: result.selected, metricSnapshot, verification: result.verification, inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, totalTokens: result.usage.totalTokens, error: result.error, completedAt: new Date() }).where(eq(researchAssistantMessages.id, id));
       await db.update(researchAssistantSessions).set({ title: question.slice(0, 90), companyIds: result.filters.companyIds, topic: result.filters.topic, sourceKinds: result.filters.sourceKinds, dateFrom: result.filters.dateFrom, dateTo: result.filters.dateTo, updatedAt: new Date() }).where(eq(researchAssistantSessions.id, sessionId));
     });
     await recordAuditEvent(auth, { action: "research_answer.created", entityType: "research_assistant_message", entityId: id, summary: `Answered: ${question.slice(0, 120)}`, metadata: { sessionId, engine: result.engine, citationCount: result.selected.length } });

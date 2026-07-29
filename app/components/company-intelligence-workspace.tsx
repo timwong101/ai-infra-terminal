@@ -17,9 +17,11 @@ import {
   LoaderCircle,
   PackageOpen,
   RefreshCw,
+  Rows3,
   ShieldAlert,
 } from "lucide-react";
 import type { CompanyIntelligenceResponse, IntelligenceComparison } from "@/lib/company-intelligence/types";
+import { MetricBenchmark } from "@/app/components/metric-benchmark";
 
 type Props = {
   initialCompanyId?: string;
@@ -38,6 +40,7 @@ export function CompanyIntelligenceWorkspace({ initialCompanyId = "", onCompanyC
   const [selectedComparisonId, setSelectedComparisonId] = useState("");
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState("");
+  const [view, setView] = useState<"company" | "peers">("company");
 
   const load = async (params: { company?: string; current?: string; previous?: string; sync?: boolean } = {}) => {
     setStatus("loading"); setError("");
@@ -76,9 +79,9 @@ export function CompanyIntelligenceWorkspace({ initialCompanyId = "", onCompanyC
   if (!data && status === "loading") return <div className="research-workspace"><div className="workspace-state full"><LoaderCircle className="drawer-spinner" size={26} /><strong>Building company intelligence</strong></div></div>;
 
   return <div className="research-workspace company-intelligence-workspace">
-    <header className="workspace-title-row"><div><p className="breadcrumb">Research workspace / Temporal analysis</p><h1>Company Intelligence</h1><p className="workspace-subtitle">Reporting-period changes across capacity, demand, capital, funding, and management disclosures.</p></div><button className="command-button" disabled={status === "loading"} onClick={() => void load({ company: data?.company.id, sync: true })}>{status === "loading" ? <LoaderCircle className="drawer-spinner" size={15} /> : <RefreshCw size={15} />} Refresh analysis</button></header>
+    <header className="workspace-title-row"><div><p className="breadcrumb">Research workspace / Temporal analysis</p><h1>Company Intelligence</h1><p className="workspace-subtitle">Reporting-period changes and comparable, source-linked operating metrics across Neoclouds.</p></div><div className="company-view-actions"><div className="view-segmented-control" aria-label="Company intelligence view"><button className={view === "company" ? "active" : ""} onClick={() => setView("company")}><Building2 size={14} /> Company view</button><button className={view === "peers" ? "active" : ""} onClick={() => setView("peers")}><Rows3 size={14} /> Peer benchmark</button></div>{view === "company" && <button className="command-button" disabled={status === "loading"} onClick={() => void load({ company: data?.company.id, sync: true })}>{status === "loading" ? <LoaderCircle className="drawer-spinner" size={15} /> : <RefreshCw size={15} />} Refresh analysis</button>}</div></header>
     {error && <div className="builder-error"><ShieldAlert size={14} /> {error}</div>}
-    {data && <section className="company-intelligence-layout">
+    {view === "peers" ? <MetricBenchmark /> : data && <section className="company-intelligence-layout">
       <aside className="panel company-coverage-panel"><div className="catalog-heading"><div><h2>Neocloud coverage</h2><span>{data.companies.length} companies</span></div><Building2 size={17} /></div>{data.companies.map((company) => <button key={company.id} className={company.id === data.company.id ? "active" : ""} onClick={() => selectCompany(company.id)}><span>{company.ticker}</span><div><strong>{company.name}</strong><small>{company.periodCount} periods · {company.latestPeriod}</small></div><ChevronRight size={14} /></button>)}</aside>
 
       <div className="company-intelligence-main">
