@@ -21,6 +21,14 @@ const researchAssistantOutputSchema = z.object({
 type Verification = { passed: boolean; rejectedClaims: number; checkedClaims: number; allowedCitations: number };
 type ResearchAssistantOutput = { claims: ResearchAssistantClaim[]; openQuestions: Array<{ companyId: string; text: string }> };
 export type ResearchAssistantEngine = "auto" | "deterministic" | "ai";
+export const RESEARCH_ASSISTANT_PROMPT_VERSION = "research-assistant-v2";
+const RESEARCH_ASSISTANT_CONFIG = {
+  retrievalLimit: 36,
+  perCompanyLimit: 6,
+  evidencePacketLimit: 24,
+  maxOutputTokens: 2200,
+  verifierVersion: "same-company-citations-v1",
+} as const;
 
 export function chunkResearchAssistantMarkdown(value: string, size = 80) {
   const chunks: string[] = [];
@@ -80,6 +88,12 @@ function buildPrompt(question: string, names: Map<string, string>, evidence: Res
   return `Answer this investor research question using only the approved evidence packet: ${question}\n\nReturn concise claims and open questions. Every factual claim must cite exact evidence IDs belonging to the same company. Do not use outside knowledge, prices, forecasts, or unsupported inference. When evidence is insufficient, omit the claim and create an open question instead.\n\nEVIDENCE PACKET\n${packet}`;
 }
 
+function estimatedCostMicros(usage: { inputTokens?: number; outputTokens?: number }) {
+  const inputRate = Number(process.env.AI_RESEARCH_INPUT_COST_PER_MILLION ?? process.env.AI_QUALITY_INPUT_COST_PER_MILLION ?? 0);
+  const outputRate = Number(process.env.AI_RESEARCH_OUTPUT_COST_PER_MILLION ?? process.env.AI_QUALITY_OUTPUT_COST_PER_MILLION ?? 0);
+  return Math.round((usage.inputTokens ?? 0) * inputRate + (usage.outputTokens ?? 0) * outputRate);
+}
+
 function answerMarkdown(output: ResearchAssistantOutput, evidence: ResearchEvidenceItem[], names: Map<string, string>) {
   if (!output.claims.length) return "## Insufficient evidence\n\nThe accepted evidence packet does not support a factual answer to this question. Broaden the filters or review additional source passages before drawing a conclusion.";
   const ordinal = new Map(evidence.map((item, index) => [item.id, index + 1]));
@@ -117,8 +131,10 @@ export async function runResearchAssistantPipeline(
   const canUseAi = Boolean(process.env.OPENAI_API_KEY?.trim());
   if (requestedEngine === "ai" && !canUseAi) throw new Error("OPENAI_API_KEY is required for an AI quality run.");
   const useAi = requestedEngine === "ai" || (requestedEngine === "auto" && canUseAi);
-  const retrieval = await searchAcceptedEvidence({ ...filters, query: question, limit: 36 });
-  const selected = filters.companyIds.flatMap((companyId) => retrieval.items.filter((item) => item.companyId === companyId).slice(0, 6)).slice(0, 24);
+  const retrieval = await searchAcceptedEvidence({ ...filters, query: question, limit: RESEARCH_ASSISTANT_CONFIG.retrievalLimit });
+  const selected = filters.companyIds
+    .flatMap((companyId) => retrieval.items.filter((item) => item.companyId === companyId).slice(0, RESEARCH_ASSISTANT_CONFIG.perCompanyLimit))
+    .slice(0, RESEARCH_ASSISTANT_CONFIG.evidencePacketLimit);
   const names = new Map(catalog.companies.map((item) => [item.id, item.name]));
   const prompt = buildPrompt(question, names, selected);
   let raw = deterministicOutput(selected, filters.companyIds);
@@ -129,7 +145,7 @@ export async function runResearchAssistantPipeline(
   if (useAi && selected.length) {
     try {
       const [{ generateText, Output }, { openai }] = await Promise.all([import("ai"), import("@ai-sdk/openai")]);
-      const result = await generateText({ model: openai(model), output: Output.object({ schema: researchAssistantOutputSchema }), prompt, maxOutputTokens: 2200 });
+      const result = await generateText({ model: openai(model), output: Output.object({ schema: researchAssistantOutputSchema }), prompt, maxOutputTokens: RESEARCH_ASSISTANT_CONFIG.maxOutputTokens });
       raw = result.output as ResearchAssistantOutput;
       usage = result.totalUsage;
     } catch (generationError) {
@@ -152,8 +168,12 @@ export async function runResearchAssistantPipeline(
     markdown: answerMarkdown(verified, selected, names),
     engine,
     model: useAi ? model : "deterministic-v1",
+    prompt,
+    promptVersion: RESEARCH_ASSISTANT_PROMPT_VERSION,
+    configSnapshot: RESEARCH_ASSISTANT_CONFIG,
     retrievalMode: retrieval.mode,
     usage,
+    estimatedCostMicros: estimatedCostMicros(usage),
     error,
     latencyMs: Math.max(1, Math.round(performance.now() - startedAt)),
   };
@@ -197,9 +217,11 @@ function messageFromRow(row: typeof researchAssistantMessages.$inferSelect): Res
     claims: row.claims as ResearchAssistantClaim[], openQuestions: row.openQuestions as ResearchAssistantMessage["openQuestions"],
     confidenceScore: row.confidenceScore, evidenceQualityScore: row.evidenceQualityScore, sourceDiversityScore: row.sourceDiversityScore,
     engine: row.engine, model: row.model, retrievalMode: row.retrievalMode, status: row.status as ResearchAssistantMessage["status"],
+    promptVersion: row.promptVersion, configSnapshot: row.configSnapshot as Record<string, unknown>,
     filters: row.filters as ResearchAssistantFilters, citations: row.evidenceSnapshot as ResearchEvidenceItem[],
     metricSnapshot: row.metricSnapshot as ResearchAssistantMessage["metricSnapshot"],
-    verification: row.verification as ResearchAssistantMessage["verification"], error: row.error, createdAt: row.createdAt.toISOString(),
+    verification: row.verification as ResearchAssistantMessage["verification"], estimatedCostMicros: row.estimatedCostMicros,
+    latencyMs: row.latencyMs, error: row.error, createdAt: row.createdAt.toISOString(),
   };
 }
 
@@ -251,7 +273,32 @@ export async function answerResearchAssistantQuestion(sessionId: string, questio
     const result = await runResearchAssistantPipeline(question, inputFilters, requestedEngine);
     const metricSnapshot = await getAcceptedMetricSnapshot(result.filters.companyIds);
     await withDatabase(async (db) => {
-      await db.update(researchAssistantMessages).set({ answerMarkdown: result.markdown, claims: result.claims, openQuestions: result.openQuestions, confidenceScore: Math.max(0, result.scores.confidence - result.verification.rejectedClaims * 5), evidenceQualityScore: result.scores.quality, sourceDiversityScore: result.scores.diversity, engine: result.engine, model: result.model, filters: result.filters, retrievalMode: result.retrievalMode, status: "completed", evidenceSnapshot: result.selected, metricSnapshot, verification: result.verification, inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, totalTokens: result.usage.totalTokens, error: result.error, completedAt: new Date() }).where(eq(researchAssistantMessages.id, id));
+      await db.update(researchAssistantMessages).set({
+        answerMarkdown: result.markdown,
+        claims: result.claims,
+        openQuestions: result.openQuestions,
+        confidenceScore: Math.max(0, result.scores.confidence - result.verification.rejectedClaims * 5),
+        evidenceQualityScore: result.scores.quality,
+        sourceDiversityScore: result.scores.diversity,
+        engine: result.engine,
+        model: result.model,
+        prompt: result.prompt,
+        promptVersion: result.promptVersion,
+        configSnapshot: result.configSnapshot,
+        filters: result.filters,
+        retrievalMode: result.retrievalMode,
+        status: "completed",
+        evidenceSnapshot: result.selected,
+        metricSnapshot,
+        verification: result.verification,
+        inputTokens: result.usage.inputTokens,
+        outputTokens: result.usage.outputTokens,
+        totalTokens: result.usage.totalTokens,
+        estimatedCostMicros: result.estimatedCostMicros,
+        latencyMs: result.latencyMs,
+        error: result.error,
+        completedAt: new Date(),
+      }).where(eq(researchAssistantMessages.id, id));
       await db.update(researchAssistantSessions).set({ title: question.slice(0, 90), companyIds: result.filters.companyIds, topic: result.filters.topic, sourceKinds: result.filters.sourceKinds, dateFrom: result.filters.dateFrom, dateTo: result.filters.dateTo, updatedAt: new Date() }).where(eq(researchAssistantSessions.id, sessionId));
     });
     await recordAuditEvent(auth, { action: "research_answer.created", entityType: "research_assistant_message", entityId: id, summary: `Answered: ${question.slice(0, 120)}`, metadata: { sessionId, engine: result.engine, citationCount: result.selected.length } });

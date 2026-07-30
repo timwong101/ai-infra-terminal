@@ -46,12 +46,16 @@ export type ResearchAssistantMessage = {
   sourceDiversityScore: number | null;
   engine: string;
   model: string;
+  promptVersion: string;
+  configSnapshot: Record<string, unknown>;
   retrievalMode: string;
   status: "running" | "completed" | "error";
   filters: ResearchAssistantFilters;
   citations: ResearchEvidenceItem[];
   metricSnapshot: ResearchMetricSnapshot[];
   verification: { passed: boolean; rejectedClaims: number; checkedClaims: number; allowedCitations: number } | null;
+  estimatedCostMicros: number;
+  latencyMs: number | null;
   error: string | null;
   createdAt: string;
 };
@@ -77,6 +81,8 @@ export type ResearchQualityScores = {
 export type ResearchQualityResult = {
   id: string;
   benchmarkId: string;
+  caseOrigin: "curated" | "production";
+  caseVersion: number;
   title: string;
   category: string;
   question: string;
@@ -113,6 +119,78 @@ export type ResearchQualityRun = {
   startedAt: string;
   completedAt: string | null;
   results: ResearchQualityResult[];
+};
+
+export type ResearchQualityFailureType =
+  | "wrong-retrieval"
+  | "unsupported-claim"
+  | "citation-mismatch"
+  | "incorrect-metric"
+  | "stale-source"
+  | "missing-evidence"
+  | "should-abstain"
+  | "incorrect-answer";
+
+export type ResearchQualityTrace = {
+  sourceType: "research-assistant";
+  sourceEntityId: string;
+  question: string;
+  answerMarkdown: string | null;
+  claims: ResearchAssistantClaim[];
+  filters: ResearchAssistantFilters;
+  engine: string;
+  model: string;
+  prompt: string | null;
+  promptVersion: string;
+  configSnapshot: Record<string, unknown>;
+  retrievalMode: string;
+  evidenceSnapshot: ResearchEvidenceItem[];
+  metricSnapshot: ResearchMetricSnapshot[];
+  verification: ResearchAssistantMessage["verification"];
+  inputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
+  estimatedCostMicros: number;
+  latencyMs: number | null;
+  completedAt: string | null;
+};
+
+export type ResearchQualityFeedback = {
+  id: string;
+  sourceType: "research-assistant";
+  sourceEntityId: string;
+  failureType: ResearchQualityFailureType;
+  severity: "low" | "medium" | "high" | "critical";
+  summary: string;
+  expectedBehavior: string | null;
+  status: "open" | "adjudicated" | "promoted" | "dismissed";
+  trace: ResearchQualityTrace;
+  adjudication: { companyIds?: string[] };
+  promotedCaseId: string | null;
+  reporter: { id: string; name: string };
+  adjudicator: { id: string; name: string } | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ResearchQualityCase = {
+  id: string;
+  stableKey: string;
+  title: string;
+  category: string;
+  status: "active" | "archived";
+  currentVersion: number;
+  sourceFeedbackId: string | null;
+  question: string;
+  filters: ResearchAssistantFilters;
+  expectations: {
+    topics: string[];
+    behavior: "answer" | "insufficient";
+    minimumCitations: number;
+    expectedEvidenceIds?: string[];
+  };
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type ResearchEvidenceItem = {

@@ -138,7 +138,7 @@ test.describe.serial("evidence-grounded analyst journey", () => {
 
     await page.goto("/audit");
     await expect(page.getByText("Created CoreWeave vs. Nebius comparison memo.", { exact: true })).toBeVisible();
-    await expect(page.getByText(/Completed neocloud-grounding-v1 with \d+\/100\./)).toBeVisible();
+    await expect(page.getByText(/Completed neocloud-grounding-v2 with \d+\/100\./)).toBeVisible();
     await expect(page.getByText("Replayed 2 companies as of 2026-02-01.", { exact: true })).toBeVisible();
   });
 
@@ -313,6 +313,7 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await page.getByLabel("Company B").selectOption("iren");
     await page.getByLabel("Research question").fill("Compare Applied Digital and IREN with an independent review gate.");
     await page.getByRole("button", { name: "Generate grounded memo" }).click();
+    await expect(page).toHaveURL(/\/memos\/.+/);
     await page.getByRole("button", { name: "Submit for review" }).click();
 
     const submitDialog = page.getByRole("dialog", { name: "Submit memo for review" });
@@ -375,13 +376,46 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await expect(reloadedAnswer.getByRole("heading", { name: "Evidence-backed answer" })).toBeVisible();
   });
 
+  test("analyst feedback becomes an executable production regression case", async ({ page }) => {
+    const question = "Compare the selected Neoclouds on capacity, demand, and financing risk.";
+    await page.goto("/research-assistant");
+    const savedAnswer = page.locator(".saved-answer").filter({ hasText: question });
+    await savedAnswer.getByRole("button", { name: "Report issue" }).click();
+    await savedAnswer.getByRole("combobox", { name: "Failure type" }).selectOption("wrong-retrieval");
+    await savedAnswer.getByRole("combobox", { name: "Severity" }).selectOption("high");
+    await savedAnswer.getByRole("textbox", { name: "What failed?" }).fill("The answer should have been limited to the requested CoreWeave scope.");
+    await savedAnswer.getByRole("textbox", { name: "Expected behavior optional" }).fill("Return only CoreWeave evidence and exclude unrelated company claims.");
+    await savedAnswer.getByRole("button", { name: "Submit issue" }).click();
+    await expect(savedAnswer.getByText("Issue captured", { exact: false })).toBeVisible();
+
+    await page.goto("/research-quality");
+    await page.getByRole("button", { name: /Failure queue · 1/ }).click();
+    await expect(page.getByRole("heading", { name: "Failure Queue" })).toBeVisible();
+    await page.getByRole("checkbox", { name: "APLD Applied Digital" }).uncheck();
+    await page.getByRole("checkbox", { name: "IREN IREN" }).uncheck();
+    await page.getByRole("checkbox", { name: "NBIS Nebius" }).uncheck();
+    await page.getByRole("button", { name: "Promote to regression" }).click();
+    await expect(page.getByText("Regression case created and added to future quality runs.")).toBeVisible();
+    await expect(page.getByText("answer · 1 minimum citations", { exact: true })).toBeVisible();
+
+    await page.reload();
+    await page.getByRole("button", { name: "Failure queue" }).click();
+    await expect(page.getByRole("checkbox", { name: "CRWV CoreWeave" })).toBeChecked();
+    await expect(page.getByRole("checkbox", { name: "APLD Applied Digital" })).not.toBeChecked();
+    await expect(page.getByText("version 1", { exact: false })).toBeVisible();
+    await page.getByRole("textbox", { name: "Expected behavior" }).fill("Return only accepted CoreWeave evidence with at least one same-company citation.");
+    await page.getByRole("button", { name: "Create new version" }).click();
+    await expect(page.getByText("A new case version was created without rewriting prior benchmark history.")).toBeVisible();
+    await expect(page.getByText("version 2", { exact: false })).toBeVisible();
+  });
+
   test("research quality runs a durable grounding benchmark and exposes case evidence", async ({ page }) => {
     await page.goto("/research-quality");
     await expect(page.getByRole("heading", { name: "Research Quality" })).toBeVisible();
     await page.getByRole("button", { name: "Run benchmark" }).click();
 
     await expect(page).toHaveURL(/\/research-quality\/.+/, { timeout: 30_000 });
-    await expect(page.getByText("32/32 passed", { exact: false })).toBeVisible();
+    await expect(page.getByText("33/33 passed", { exact: false })).toBeVisible();
     await expect(page.getByLabel("Quality metrics").getByText("Citation precision", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Quality metrics").getByText("Groundedness", { exact: true })).toBeVisible();
     await expect(page.getByText("Evidence packet")).toBeVisible();
@@ -389,7 +423,7 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     const runUrl = page.url();
     await page.reload();
     await expect(page).toHaveURL(runUrl);
-    await expect(page.getByText("32/32 passed", { exact: false })).toBeVisible();
+    await expect(page.getByText("33/33 passed", { exact: false })).toBeVisible();
 
     await page.getByRole("button", { name: "Metric extraction" }).click();
     await page.getByRole("button", { name: "Run metric benchmark" }).click();

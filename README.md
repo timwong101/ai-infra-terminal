@@ -52,7 +52,7 @@ It does not insert synthetic research evidence. The seeded memo, answer, benchma
 | Research Assistant | Grounded retrieval, structured generation, streaming UI, and citation verification |
 | Comparison memos | Analyst-grade claim synthesis, numeric fidelity, frozen evidence packets, and stale-artifact detection |
 | Published research reports | Immutable versions, public token URLs, compliance filtering, revocation, and export |
-| Research Quality | Versioned evaluation suite with deterministic CI gates and model diagnostics |
+| Research Quality | Production failure capture, versioned regression cases, run comparison, and deterministic CI gates |
 | Point-in-time replay | Temporal data modeling and explicit leakage checks |
 | Claim-to-evidence lineage | Relational provenance projected into an interactive graph |
 | Workspaces and roles | GitHub OAuth, database sessions, tenant isolation, and RBAC |
@@ -80,6 +80,8 @@ flowchart LR
     METRIC_REVIEW --> SEARCH
 
     SEARCH --> ASK["Research Assistant"]
+    ASK --> FEEDBACK["Analyst failure reports"]
+    FEEDBACK --> BENCH
     SEARCH --> MEMO["Comparison memos"]
     MEMO --> REPORT["Published reports"]
     SEARCH --> BENCH["Quality benchmarks"]
@@ -149,7 +151,11 @@ SEC filings and IR documents are normalized into citation-ready passages. Determ
 
 ### Evidence To Answer
 
-The Research Assistant retrieves across one or more companies and returns a cited answer, confidence score, evidence quality, source diversity, open questions, and claim-check status. Sessions have durable URLs and retain model, token, filter, and evidence metadata.
+The Research Assistant retrieves across one or more companies and returns a cited answer, confidence score, evidence quality, source diversity, open questions, and claim-check status. Sessions have durable URLs and retain prompt version, model, token use, latency, retrieval configuration, KPI snapshot, and the exact evidence packet.
+
+### Production Failure To Evaluation
+
+An analyst can report wrong retrieval, unsupported claims, citation mismatches, incorrect metrics, stale sources, missing evidence, incorrect answers, or failures to abstain directly from a saved answer. The report freezes the complete generation trace separately from the analyst's judgment. In the Quality workspace, the analyst records expected behavior and executable company scope, then promotes the issue into a versioned production regression case. Future benchmark runs combine the 32 curated cases with all active production cases; saved runs can be compared for regressions and fixes without adding another top-level workflow.
 
 ### Evidence To Memo
 
@@ -312,10 +318,10 @@ pnpm test
 
 The current suite includes:
 
-- **112 deterministic tests** covering ingestion, normalization, extraction, SEC Company Facts, metric reconciliation and anomaly policy, evidence policy, claim synthesis, numeric fidelity, content-bound review approval, citation verification, report publishing, quality scoring, company intelligence, events, replay, and durable queue contracts.
-- **32 research-quality cases** covering four companies, topic retrieval, pairwise comparisons, source policy, synthesis, and refusal behavior.
+- **116 deterministic tests** covering ingestion, normalization, extraction, SEC Company Facts, metric reconciliation and anomaly policy, evidence policy, claim synthesis, numeric fidelity, content-bound review approval, citation verification, production regression contracts, report publishing, quality scoring, company intelligence, events, replay, and durable queue contracts.
+- **32 curated research-quality cases plus versioned production cases** covering four companies, topic retrieval, pairwise comparisons, source policy, synthesis, refusal behavior, and analyst-reported failures.
 - **11 metric-quality cases** covering golden extraction fixtures, value and unit normalization, scope and period dimensions, anomaly suppression, and live canonical-fact contracts.
-- **15 Chromium journeys** covering login, the curated demo, responsive layouts, all four Neoclouds, evidence review, two-user memo approval, team roles, public report publishing and export, assistant persistence, durable job retries and replay, benchmarks, lineage, workspace isolation, and audit history.
+- **16 Chromium journeys** covering login, the curated demo, responsive layouts, all four Neoclouds, evidence review, two-user memo approval, team roles, public report publishing and export, assistant persistence, failure-to-regression promotion, durable job retries and replay, benchmarks, lineage, workspace isolation, and audit history.
 
 CI runs two quality gates. Research answers require at least 85 overall, at least an 85% case pass rate, and 100% citation precision and groundedness. Metrics require at least 90 overall with 100% anomaly safety and live-contract health.
 

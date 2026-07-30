@@ -5,8 +5,9 @@ import { runResearchAssistantPipeline, type ResearchAssistantEngine } from "@/li
 import type { ResearchAssistantClaim, ResearchEvidenceItem, ResearchQualityResult, ResearchQualityRun, ResearchQualityScores } from "@/lib/research/types";
 import type { AuthContext } from "@/lib/auth/types";
 import { ensureDemoIdentity, recordAuditEvent } from "@/lib/auth/session";
+import { listResearchQualityCases } from "@/lib/research/quality-feedback";
 
-export const RESEARCH_QUALITY_SUITE_VERSION = "neocloud-grounding-v1";
+export const RESEARCH_QUALITY_SUITE_VERSION = "neocloud-grounding-v2";
 
 const TRACKED_COMPANIES = [
   { id: "coreweave", name: "CoreWeave" },
@@ -23,8 +24,10 @@ const TOPICS = {
 
 export type ResearchQualityBenchmark = {
   id: string;
+  origin?: "curated" | "production";
+  version?: number;
   title: string;
-  category: "retrieval" | "synthesis" | "comparison" | "source-policy" | "insufficiency";
+  category: "retrieval" | "synthesis" | "comparison" | "source-policy" | "insufficiency" | "production-regression";
   question: string;
   filters: {
     companyIds: string[];
@@ -36,6 +39,7 @@ export type ResearchQualityBenchmark = {
     topics: string[];
     behavior: "answer" | "insufficient";
     minimumCitations: number;
+    expectedEvidenceIds?: string[];
   };
 };
 
@@ -106,9 +110,16 @@ export function scoreResearchQualityCase(input: {
   const expectedCompanies = benchmark.filters.companyIds;
   const expectedCells = expectedCompanies.flatMap((companyId) => benchmark.expectations.topics.map((topic) => `${companyId}:${topic}`));
   const foundCells = new Set(evidence.map((item) => `${item.companyId}:${item.topic}`));
-  const retrievalCoverage = percentage(expectedCells.filter((cell) => foundCells.has(cell)).length, expectedCells.length);
-  const citationIds = [...new Set(claims.flatMap((claim) => claim.citationIds))];
-  const citationPrecision = percentage(rawClaimCount - rejectedClaims, rawClaimCount);
+  const expectedEvidenceIds = benchmark.expectations.expectedEvidenceIds ?? [];
+  const retrievedEvidenceIds = new Set(evidence.map((item) => item.id));
+  const retrievalCoverage = expectedEvidenceIds.length
+    ? percentage(expectedEvidenceIds.filter((id) => retrievedEvidenceIds.has(id)).length, expectedEvidenceIds.length)
+    : percentage(expectedCells.filter((cell) => foundCells.has(cell)).length, expectedCells.length);
+  const allCitationIds = claims.flatMap((claim) => claim.citationIds.map((id) => ({ id, companyId: claim.companyId })));
+  const citationIds = [...new Set(allCitationIds.map((citation) => citation.id))];
+  const evidenceById = new Map(evidence.map((item) => [item.id, item]));
+  const validCitations = allCitationIds.filter((citation) => evidenceById.get(citation.id)?.companyId === citation.companyId);
+  const citationPrecision = allCitationIds.length ? percentage(validCitations.length, allCitationIds.length) : (rawClaimCount > 0 ? 0 : 100);
   const groundedness = percentage(rawClaimCount - rejectedClaims, rawClaimCount);
   const companiesWithClaims = new Set(claims.map((claim) => claim.companyId));
   const companyAccuracy = benchmark.expectations.behavior === "insufficient"
@@ -123,7 +134,8 @@ export function scoreResearchQualityCase(input: {
   const failureReasons: string[] = [];
   if (!behaviorCorrect) failureReasons.push(benchmark.expectations.behavior === "insufficient" ? "The answer should have refused because no eligible evidence was available." : "No supported answer claims were produced.");
   if (retrievalCoverage < 70) failureReasons.push(`Expected company-topic retrieval coverage was ${retrievalCoverage}%.`);
-  if (citationPrecision < 100) failureReasons.push(`${rejectedClaims} generated claim${rejectedClaims === 1 ? " was" : "s were"} rejected by citation verification.`);
+  if (rejectedClaims > 0) failureReasons.push(`${rejectedClaims} generated claim${rejectedClaims === 1 ? " was" : "s were"} rejected by citation verification.`);
+  if (citationPrecision < 100 && rejectedClaims === 0) failureReasons.push("One or more citations did not resolve to evidence for the claimed company.");
   if (companyAccuracy < 100) failureReasons.push("One or more expected companies had no supported claim.");
   if (citationIds.length < benchmark.expectations.minimumCitations) failureReasons.push(`Only ${citationIds.length} of ${benchmark.expectations.minimumCitations} expected citations were returned.`);
   const scores: ResearchQualityScores = { retrievalCoverage, citationPrecision, groundedness, companyAccuracy, answerCompleteness, overall };
@@ -142,19 +154,34 @@ function estimatedCostMicros(usage: { inputTokens?: number; outputTokens?: numbe
 
 export async function runResearchQualitySuite(engine: Exclude<ResearchAssistantEngine, "auto"> = "deterministic", auth?: AuthContext) {
   const owner = auth ? { userId: auth.user.id, workspaceId: auth.workspace.id } : await ensureDemoIdentity();
+  const productionCases = (await listResearchQualityCases(owner.workspaceId))
+    .filter((item) => item.status === "active")
+    .map((item): ResearchQualityBenchmark => ({
+      id: item.stableKey,
+      origin: "production",
+      version: item.currentVersion,
+      title: item.title,
+      category: "production-regression",
+      question: item.question,
+      filters: item.filters,
+      expectations: item.expectations,
+    }));
+  const benchmarks = [...RESEARCH_QUALITY_BENCHMARKS, ...productionCases];
   const id = `research-quality:${crypto.randomUUID()}`;
   const startedAt = performance.now();
-  const inserted = await withDatabase((db) => db.insert(researchQualityRuns).values({ id, workspaceId: owner.workspaceId, ownerUserId: owner.userId, suiteVersion: RESEARCH_QUALITY_SUITE_VERSION, engine, caseCount: RESEARCH_QUALITY_BENCHMARKS.length }).returning());
+  const inserted = await withDatabase((db) => db.insert(researchQualityRuns).values({ id, workspaceId: owner.workspaceId, ownerUserId: owner.userId, suiteVersion: RESEARCH_QUALITY_SUITE_VERSION, engine, caseCount: benchmarks.length }).returning());
   if (!inserted?.[0]) throw new Error("Postgres is required to run the research quality suite.");
 
   try {
     const results: ResearchQualityResult[] = [];
-    for (const benchmark of RESEARCH_QUALITY_BENCHMARKS) {
+    for (const benchmark of benchmarks) {
       const pipeline = await runResearchAssistantPipeline(benchmark.question, benchmark.filters, engine);
       const scored = scoreResearchQualityCase({ benchmark, evidence: pipeline.selected, claims: pipeline.claims, rawClaimCount: pipeline.rawClaimCount, rejectedClaims: pipeline.verification.rejectedClaims });
       const result: ResearchQualityResult = {
         id: `research-quality-result:${crypto.randomUUID()}`,
         benchmarkId: benchmark.id,
+        caseOrigin: benchmark.origin ?? "curated",
+        caseVersion: benchmark.version ?? 1,
         title: benchmark.title,
         category: benchmark.category,
         question: benchmark.question,
@@ -176,7 +203,7 @@ export async function runResearchQualitySuite(engine: Exclude<ResearchAssistantE
       };
       results.push(result);
       await withDatabase((db) => db.insert(researchQualityResults).values({
-        id: result.id, runId: id, benchmarkId: result.benchmarkId, title: result.title, category: result.category,
+        id: result.id, runId: id, benchmarkId: result.benchmarkId, caseOrigin: result.caseOrigin, caseVersion: result.caseVersion, title: result.title, category: result.category,
         question: result.question, companyIds: result.companyIds, expectations: result.expectations, status: result.status,
         scores: result.scores, failureReasons: result.failureReasons, evidenceSnapshot: result.citations, claims: result.claims,
         retrievalMode: result.retrievalMode, citationCount: result.citationCount, unsupportedClaimCount: result.unsupportedClaimCount,
@@ -208,7 +235,8 @@ export async function runResearchQualitySuite(engine: Exclude<ResearchAssistantE
 
 function resultFromRow(row: typeof researchQualityResults.$inferSelect): ResearchQualityResult {
   return {
-    id: row.id, benchmarkId: row.benchmarkId, title: row.title, category: row.category, question: row.question,
+    id: row.id, benchmarkId: row.benchmarkId, caseOrigin: row.caseOrigin as ResearchQualityResult["caseOrigin"], caseVersion: row.caseVersion,
+    title: row.title, category: row.category, question: row.question,
     companyIds: row.companyIds as string[], expectations: row.expectations as ResearchQualityResult["expectations"], status: row.status as ResearchQualityResult["status"],
     scores: row.scores as ResearchQualityScores, failureReasons: row.failureReasons as string[], citations: row.evidenceSnapshot as ResearchEvidenceItem[], claims: row.claims as ResearchAssistantClaim[],
     retrievalMode: row.retrievalMode, citationCount: row.citationCount, unsupportedClaimCount: row.unsupportedClaimCount,

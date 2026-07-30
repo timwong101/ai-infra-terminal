@@ -1,12 +1,15 @@
 "use client";
 
-import { BarChart3, CheckCircle2, ChevronRight, CircleDollarSign, Clock3, Database, FlaskConical, LoaderCircle, Play, ShieldCheck, XCircle } from "lucide-react";
+import { BarChart3, CheckCircle2, ChevronRight, CircleDollarSign, Clock3, Database, FlaskConical, GitBranch, LoaderCircle, Play, ShieldCheck, XCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ResearchQualityResult, ResearchQualityRun } from "@/lib/research/types";
+import type { ResearchQualityCase, ResearchQualityFeedback, ResearchQualityResult, ResearchQualityRun } from "@/lib/research/types";
 import { MetricQualityWorkspace } from "@/app/components/metric-quality-workspace";
+import { ResearchQualityFeedbackWorkspace } from "@/app/components/research-quality-feedback-workspace";
 
 type Catalog = {
   runs: ResearchQualityRun[];
+  feedback: ResearchQualityFeedback[];
+  cases: ResearchQualityCase[];
   suite: { version: string; caseCount: number };
   aiAvailable: boolean;
 };
@@ -37,6 +40,9 @@ export function ResearchQualityWorkspace({ initialRunId = "", onRunSelect }: Pro
   const [status, setStatus] = useState<"loading" | "ready" | "running" | "error">("loading");
   const [notice, setNotice] = useState("");
   const [qualityDomain, setQualityDomain] = useState<"research" | "metrics">("research");
+  const [researchView, setResearchView] = useState<"runs" | "feedback">("runs");
+  const [baselineRunId, setBaselineRunId] = useState("");
+  const [baselineRun, setBaselineRun] = useState<ResearchQualityRun | null>(null);
 
   const loadCatalog = useCallback(async () => {
     const response = await fetch("/api/research-quality", { cache: "no-store" });
@@ -89,6 +95,21 @@ export function ResearchQualityWorkspace({ initialRunId = "", onRunSelect }: Pro
     }
   };
 
+  const selectBaseline = async (id: string) => {
+    setBaselineRunId(id);
+    if (!id || id === run?.id) {
+      setBaselineRun(null);
+      return;
+    }
+    try {
+      const response = await fetch(`/api/research-quality/${encodeURIComponent(id)}`, { cache: "no-store" });
+      const result = await response.json() as { run?: ResearchQualityRun };
+      setBaselineRun(response.ok ? result.run ?? null : null);
+    } catch {
+      setBaselineRun(null);
+    }
+  };
+
   const selectedResult = useMemo(() => run?.results.find((item) => item.id === selectedResultId) ?? null, [run, selectedResultId]);
   const metrics = run?.metrics;
   const totalCost = run?.results.reduce((sum, item) => sum + item.estimatedCostMicros, 0) ?? 0;
@@ -103,16 +124,22 @@ export function ResearchQualityWorkspace({ initialRunId = "", onRunSelect }: Pro
         <div className="quality-run-controls">
           <div className="quality-engine quality-domain" aria-label="Quality domain"><button className={qualityDomain === "research" ? "active" : ""} onClick={() => setQualityDomain("research")}>Research answers</button><button className={qualityDomain === "metrics" ? "active" : ""} onClick={() => setQualityDomain("metrics")}>Metric extraction</button></div>
           {qualityDomain === "research" && <>
+          <div className="quality-engine" aria-label="Research quality workflow">
+            <button className={researchView === "runs" ? "active" : ""} onClick={() => setResearchView("runs")}>Runs</button>
+            <button className={researchView === "feedback" ? "active" : ""} onClick={() => setResearchView("feedback")}>Failure queue{catalog?.feedback.some((item) => item.status === "open") ? ` · ${catalog.feedback.filter((item) => item.status === "open").length}` : ""}</button>
+          </div>
+          {researchView === "runs" && <>
           <div className="quality-engine" aria-label="Evaluation engine">
             <button className={engine === "deterministic" ? "active" : ""} onClick={() => setEngine("deterministic")}>Deterministic</button>
             <button className={engine === "ai" ? "active" : ""} disabled={!catalog?.aiAvailable} title={!catalog?.aiAvailable ? "Configure OPENAI_API_KEY to evaluate the AI engine" : undefined} onClick={() => setEngine("ai")}>AI model</button>
           </div>
-          <button className="primary-button" disabled={status === "running"} onClick={() => void startRun()}>{status === "running" ? <LoaderCircle className="drawer-spinner" size={15} /> : <Play size={15} />}<span>{status === "running" ? "Running 32 cases" : "Run benchmark"}</span></button>
+          <button className="primary-button" disabled={status === "running"} onClick={() => void startRun()}>{status === "running" ? <LoaderCircle className="drawer-spinner" size={15} /> : <Play size={15} />}<span>{status === "running" ? `Running ${catalog?.suite.caseCount ?? 32} cases` : "Run benchmark"}</span></button>
+          </>}
           </>}
         </div>
       </header>
 
-      {qualityDomain === "metrics" ? <MetricQualityWorkspace /> : <>
+      {qualityDomain === "metrics" ? <MetricQualityWorkspace /> : researchView === "feedback" ? <ResearchQualityFeedbackWorkspace feedback={catalog?.feedback ?? []} cases={catalog?.cases ?? []} onChanged={async () => { await loadCatalog(); }} /> : <>
       {(notice || status === "running") && <div className={`quality-notice ${status}`}><FlaskConical size={15} /><span>{notice || "Running the complete benchmark against accepted evidence. This view will update when all cases are persisted."}</span></div>}
 
       <section className="quality-metrics" aria-label="Quality metrics">
@@ -123,6 +150,12 @@ export function ResearchQualityWorkspace({ initialRunId = "", onRunSelect }: Pro
         <Metric label="Groundedness" value={metrics && "groundedness" in metrics ? metrics.groundedness : null} suffix="%" icon={ShieldCheck} />
         <article><CircleDollarSign size={16} /><span><small>Estimated model cost</small><strong>${(totalCost / 1_000_000).toFixed(4)}</strong><em>{run?.engine ?? "No run"}</em></span></article>
       </section>
+
+      {!!run && (catalog?.runs.length ?? 0) > 1 && <section className="quality-comparison-bar">
+        <GitBranch size={14} />
+        <label><span>Compare against</span><select value={baselineRunId} onChange={(event) => void selectBaseline(event.target.value)}><option value="">No baseline</option>{catalog?.runs.filter((item) => item.id !== run.id).map((item) => <option key={item.id} value={item.id}>{formatDate(item.startedAt)} · {item.engine} · {item.overallScore ?? "--"}/100</option>)}</select></label>
+        {baselineRun && <div><span>Overall <b className={(run.overallScore ?? 0) - (baselineRun.overallScore ?? 0) >= 0 ? "positive" : "negative"}>{formatDelta((run.overallScore ?? 0) - (baselineRun.overallScore ?? 0))}</b></span><span>Pass rate <b className={(run.passRate ?? 0) - (baselineRun.passRate ?? 0) >= 0 ? "positive" : "negative"}>{formatDelta((run.passRate ?? 0) - (baselineRun.passRate ?? 0))} pts</b></span><span>Regressions <b className="negative">{compareRuns(run, baselineRun).regressions}</b></span><span>Fixed <b className="positive">{compareRuns(run, baselineRun).fixed}</b></span></div>}
+      </section>}
 
       <div className="quality-layout">
         <aside className="quality-history">
@@ -135,7 +168,7 @@ export function ResearchQualityWorkspace({ initialRunId = "", onRunSelect }: Pro
 
         <section className="quality-results">
           <div className="quality-panel-heading"><div><span className="section-kicker">Benchmark suite</span><h2>{catalog?.suite.version ?? "Neocloud grounding"}</h2></div><span>{run ? `${run.passedCount} pass · ${run.failedCount} fail` : `${catalog?.suite.caseCount ?? 32} cases`}</span></div>
-          {run ? <div className="quality-result-list" role="list">{run.results.map((result) => <ResultRow key={result.id} result={result} active={selectedResultId === result.id} onSelect={() => setSelectedResultId(result.id)} />)}</div> : <div className="quality-empty"><FlaskConical size={25} /><strong>No benchmark selected</strong><span>Run the deterministic suite to measure the current research pipeline.</span></div>}
+          {run ? <div className="quality-result-list" role="list">{run.results.map((result) => <ResultRow key={result.id} result={result} baseline={baselineRun?.results.find((item) => item.benchmarkId === result.benchmarkId) ?? null} active={selectedResultId === result.id} onSelect={() => setSelectedResultId(result.id)} />)}</div> : <div className="quality-empty"><FlaskConical size={25} /><strong>No benchmark selected</strong><span>Run the deterministic suite to measure the current research pipeline.</span></div>}
         </section>
 
         <aside className="quality-detail">
@@ -147,12 +180,30 @@ export function ResearchQualityWorkspace({ initialRunId = "", onRunSelect }: Pro
   );
 }
 
+function formatDelta(value: number) {
+  return `${value > 0 ? "+" : ""}${value}`;
+}
+
+function compareRuns(current: ResearchQualityRun, baseline: ResearchQualityRun) {
+  const baselineById = new Map(baseline.results.map((item) => [item.benchmarkId, item]));
+  let regressions = 0;
+  let fixed = 0;
+  for (const result of current.results) {
+    const previous = baselineById.get(result.benchmarkId);
+    if (!previous) continue;
+    if (previous.status === "passed" && result.status === "failed") regressions += 1;
+    if (previous.status === "failed" && result.status === "passed") fixed += 1;
+  }
+  return { regressions, fixed };
+}
+
 function Metric({ label, value, suffix = "", icon: Icon }: { label: string; value: number | null; suffix?: string; icon: typeof BarChart3 }) {
   return <article><Icon size={16} /><span><small>{label}</small><strong className={scoreTone(value)}>{value ?? "--"}{value !== null ? suffix : ""}</strong><em>{value === null ? "Awaiting baseline" : value >= 90 ? "Healthy" : value >= 75 ? "Review" : "Below gate"}</em></span></article>;
 }
 
-function ResultRow({ result, active, onSelect }: { result: ResearchQualityResult; active: boolean; onSelect: () => void }) {
-  return <button className={active ? "active" : ""} onClick={onSelect} role="listitem"><span className={`quality-case-status ${result.status}`}>{result.status === "passed" ? <CheckCircle2 size={15} /> : <XCircle size={15} />}</span><span><strong>{result.title}</strong><small>{result.category.replaceAll("-", " ")} · {result.citationCount} citations · {result.retrievalMode}</small></span><b className={scoreTone(result.scores.overall)}>{result.scores.overall}</b><ChevronRight size={13} /></button>;
+function ResultRow({ result, baseline, active, onSelect }: { result: ResearchQualityResult; baseline: ResearchQualityResult | null; active: boolean; onSelect: () => void }) {
+  const delta = baseline ? result.scores.overall - baseline.scores.overall : null;
+  return <button className={active ? "active" : ""} onClick={onSelect} role="listitem"><span className={`quality-case-status ${result.status}`}>{result.status === "passed" ? <CheckCircle2 size={15} /> : <XCircle size={15} />}</span><span><strong>{result.title}{result.caseOrigin === "production" && <em className="production-case-label">Production v{result.caseVersion}</em>}</strong><small>{result.category.replaceAll("-", " ")} · {result.citationCount} citations · {result.retrievalMode}</small></span><b className={scoreTone(result.scores.overall)}>{result.scores.overall}{delta !== null && <small className={delta >= 0 ? "positive" : "negative"}>{formatDelta(delta)}</small>}</b><ChevronRight size={13} /></button>;
 }
 
 function QualityDetail({ result }: { result: ResearchQualityResult }) {

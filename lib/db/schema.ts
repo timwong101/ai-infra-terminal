@@ -782,6 +782,9 @@ export const researchAssistantMessages = pgTable("research_assistant_messages", 
   sourceDiversityScore: integer("source_diversity_score"),
   engine: text("engine").notNull(),
   model: text("model").notNull(),
+  prompt: text("prompt"),
+  promptVersion: text("prompt_version").default("research-assistant-v1").notNull(),
+  configSnapshot: jsonb("config_snapshot").default({}).notNull(),
   retrievalMode: text("retrieval_mode").default("pending").notNull(),
   status: text("status").default("running").notNull(),
   filters: jsonb("filters").notNull(),
@@ -791,6 +794,8 @@ export const researchAssistantMessages = pgTable("research_assistant_messages", 
   inputTokens: integer("input_tokens"),
   outputTokens: integer("output_tokens"),
   totalTokens: integer("total_tokens"),
+  estimatedCostMicros: integer("estimated_cost_micros").default(0).notNull(),
+  latencyMs: integer("latency_ms"),
   error: text("error"),
   startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
@@ -824,6 +829,8 @@ export const researchQualityResults = pgTable("research_quality_results", {
   id: text("id").primaryKey(),
   runId: text("run_id").notNull().references(() => researchQualityRuns.id, { onDelete: "cascade" }),
   benchmarkId: text("benchmark_id").notNull(),
+  caseOrigin: text("case_origin").default("curated").notNull(),
+  caseVersion: integer("case_version").default(1).notNull(),
   title: text("title").notNull(),
   category: text("category").notNull(),
   question: text("question").notNull(),
@@ -846,6 +853,64 @@ export const researchQualityResults = pgTable("research_quality_results", {
 }, (table) => [
   uniqueIndex("research_quality_results_run_benchmark_unique").on(table.runId, table.benchmarkId),
   index("research_quality_results_run_status_idx").on(table.runId, table.status),
+]);
+
+export const researchQualityFeedback = pgTable("research_quality_feedback", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  reporterUserId: text("reporter_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  sourceType: text("source_type").notNull(),
+  sourceEntityId: text("source_entity_id").notNull(),
+  sourceMessageId: text("source_message_id").references(() => researchAssistantMessages.id, { onDelete: "set null" }),
+  failureType: text("failure_type").notNull(),
+  severity: text("severity").default("medium").notNull(),
+  summary: text("summary").notNull(),
+  expectedBehavior: text("expected_behavior"),
+  status: text("status").default("open").notNull(),
+  traceSnapshot: jsonb("trace_snapshot").notNull(),
+  adjudicationSnapshot: jsonb("adjudication_snapshot").default({}).notNull(),
+  promotedCaseId: text("promoted_case_id"),
+  adjudicatedByUserId: text("adjudicated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  adjudicatedAt: timestamp("adjudicated_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("research_quality_feedback_workspace_status_idx").on(table.workspaceId, table.status, table.createdAt),
+  index("research_quality_feedback_source_idx").on(table.sourceType, table.sourceEntityId),
+]);
+
+export const researchQualityCases = pgTable("research_quality_cases", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  sourceFeedbackId: text("source_feedback_id").references(() => researchQualityFeedback.id, { onDelete: "set null" }),
+  stableKey: text("stable_key").notNull(),
+  title: text("title").notNull(),
+  category: text("category").default("production-regression").notNull(),
+  status: text("status").default("active").notNull(),
+  currentVersion: integer("current_version").default(1).notNull(),
+  createdByUserId: text("created_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("research_quality_cases_workspace_key_unique").on(table.workspaceId, table.stableKey),
+  index("research_quality_cases_workspace_status_idx").on(table.workspaceId, table.status, table.updatedAt),
+]);
+
+export const researchQualityCaseVersions = pgTable("research_quality_case_versions", {
+  id: text("id").primaryKey(),
+  caseId: text("case_id").notNull().references(() => researchQualityCases.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(),
+  question: text("question").notNull(),
+  filters: jsonb("filters").notNull(),
+  expectations: jsonb("expectations").notNull(),
+  expectedEvidenceIds: jsonb("expected_evidence_ids").default([]).notNull(),
+  traceSnapshot: jsonb("trace_snapshot").notNull(),
+  changeNote: text("change_note"),
+  createdByUserId: text("created_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("research_quality_case_versions_case_version_unique").on(table.caseId, table.version),
+  index("research_quality_case_versions_case_created_idx").on(table.caseId, table.createdAt),
 ]);
 
 export const metricQualityRuns = pgTable("metric_quality_runs", {
