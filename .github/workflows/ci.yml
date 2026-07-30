@@ -46,6 +46,11 @@ jobs:
       REDIS_URL: redis://127.0.0.1:6379/1
       E2E_TEST: "1"
       SEC_USER_AGENT: AI Infra Terminal CI ci@example.com
+      ARTIFACT_STORAGE_ENDPOINT: http://127.0.0.1:9000
+      ARTIFACT_STORAGE_BUCKET: ai-infra-source-artifacts
+      ARTIFACT_STORAGE_REGION: us-east-1
+      ARTIFACT_STORAGE_ACCESS_KEY: ai_infra
+      ARTIFACT_STORAGE_SECRET_KEY: ai_infra_artifacts
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -55,6 +60,18 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - name: Start immutable source object store
+        run: |
+          docker run --detach --name ai-infra-minio --publish 9000:9000 \
+            --env MINIO_ROOT_USER="$ARTIFACT_STORAGE_ACCESS_KEY" \
+            --env MINIO_ROOT_PASSWORD="$ARTIFACT_STORAGE_SECRET_KEY" \
+            minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+          for attempt in {1..30}; do
+            curl --fail --silent http://127.0.0.1:9000/minio/health/live && exit 0
+            sleep 1
+          done
+          docker logs ai-infra-minio
+          exit 1
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm lint
