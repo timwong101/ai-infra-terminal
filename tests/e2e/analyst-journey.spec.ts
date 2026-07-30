@@ -281,6 +281,37 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await expect(page.getByText("Reconciled Planned or secured power as achieved using 320 MW.", { exact: true })).toBeVisible();
   });
 
+  test("archives exact source bytes and previews parser replay without rewriting accepted evidence", async ({ page }) => {
+    await page.goto("/evidence?company=coreweave");
+    await expect(page.getByRole("heading", { name: "Evidence Review" })).toBeVisible();
+    await page.getByLabel("Filter evidence triage").selectOption("all");
+    const archivedRow = page.locator('[data-evidence-id="e2e:coreweave:capacity"]');
+    await expect(archivedRow).toBeVisible();
+    await archivedRow.click();
+
+    const provenance = page.getByRole("region", { name: "Immutable source provenance" });
+    await expect(provenance).toBeVisible();
+    await expect(provenance.getByText("Artifact provenance", { exact: true })).toBeVisible();
+    await expect(provenance.getByText("ir-html-v1", { exact: true })).toBeVisible();
+
+    const download = await page.request.get("/api/source-artifacts?source=ir&document=e2e-document%3Acoreweave%3Acapacity&action=download");
+    expect(download.status(), await download.text()).toBe(200);
+    expect(download.headers()["x-content-sha256"]).toMatch(/^[a-f0-9]{64}$/);
+
+    await provenance.getByRole("button", { name: "Reprocess" }).click();
+    await expect(provenance.getByText("Isolated parser preview", { exact: true })).toBeVisible();
+    await expect(provenance.getByText("Canonical evidence is unchanged until this preview is promoted.", { exact: true })).toBeVisible();
+
+    const evidenceResponse = await page.request.get("/api/research-evidence?sync=0");
+    const evidence = await evidenceResponse.json() as { items: Array<{ id: string; reviewStatus: string }> };
+    expect(evidence.items.find((item) => item.id === "e2e:coreweave:capacity")?.reviewStatus).toBe("accepted");
+
+    await page.goto("/activity");
+    await expect(page.getByRole("heading", { name: "Source archive" })).toBeVisible();
+    await expect(page.getByText("document coverage", { exact: true })).toBeVisible();
+    await expect(page.locator(".source-archive-health dd").last()).toHaveText(/filesystem|s3/);
+  });
+
   test("durable research jobs retry, stream progress, and replay from the control plane", async ({ page }) => {
     await page.goto("/activity");
     await expect(page.getByText("Redis connected", { exact: true })).toBeVisible();
@@ -290,14 +321,14 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     const latestRun = page.locator(".run-history > button").first();
     await expect(latestRun).toContainText("dashboard");
     await expect(latestRun.getByText("completed", { exact: true })).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText("100%", { exact: true })).toBeVisible();
+    await expect(page.locator(".run-progress").getByText("100%", { exact: true })).toBeVisible();
     await expect(page.getByText("Attempt 2 of 3", { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "Replay" }).click();
     const replayedRun = page.locator(".run-history > button").first();
     await expect(replayedRun).toContainText("replay:cycle");
     await expect(replayedRun.getByText("completed", { exact: true })).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText("100%", { exact: true })).toBeVisible();
+    await expect(page.locator(".run-progress").getByText("100%", { exact: true })).toBeVisible();
   });
 
   test("viewer sessions can inspect research but cannot mutate it", async ({ context, page }) => {
@@ -523,5 +554,41 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await page.goto("/audit");
     await expect(page.getByRole("heading", { name: "Audit Trail" })).toBeVisible();
     await expect(page.getByText("Created CoreWeave vs. Nebius comparison memo.", { exact: true }).first()).toBeVisible();
+  });
+
+  test("analyst promotion is audited and repeated replay cannot downgrade the canonical parser run", async ({ page }) => {
+    const source = { sourceKind: "ir", sourceDocumentId: "e2e-document:coreweave:capacity" } as const;
+    const query = "/api/source-artifacts?source=ir&document=e2e-document%3Acoreweave%3Acapacity";
+    const provenanceResponse = await page.request.get(query);
+    expect(provenanceResponse.status()).toBe(200);
+    const provenance = await provenanceResponse.json() as { previews: Array<{ id: string }> };
+    if (!provenance.previews.length) {
+      const previewResponse = await page.request.post("/api/source-artifacts", {
+        data: { action: "reprocess", ...source },
+      });
+      expect(previewResponse.status()).toBe(200);
+      const previewed = await previewResponse.json() as { previews: Array<{ id: string }> };
+      provenance.previews = previewed.previews;
+    }
+    expect(provenance.previews).toHaveLength(1);
+
+    const promotedResponse = await page.request.post("/api/source-artifacts", {
+      data: { action: "promote", runId: provenance.previews[0].id },
+    });
+    const promoted = await promotedResponse.json() as { currentExtraction: { id: string }; previews: Array<unknown> };
+    expect(promotedResponse.status(), JSON.stringify(promoted)).toBe(200);
+    expect(promoted.currentExtraction.id).toBe(provenance.previews[0].id);
+    expect(promoted.previews).toHaveLength(0);
+
+    const repeatedReplay = await page.request.post("/api/source-artifacts", {
+      data: { action: "reprocess", ...source },
+    });
+    const replayed = await repeatedReplay.json() as { currentExtraction: { id: string }; previews: Array<unknown> };
+    expect(repeatedReplay.status(), JSON.stringify(replayed)).toBe(200);
+    expect(replayed.currentExtraction.id).toBe(provenance.previews[0].id);
+    expect(replayed.previews).toHaveLength(0);
+
+    await page.goto("/audit");
+    await expect(page.getByText("Promoted reviewed ir-html-v1 extraction into canonical evidence.", { exact: true })).toBeVisible();
   });
 });

@@ -19,6 +19,7 @@ The terminal treats provenance as a product feature:
 - Every factual research claim must cite saved evidence from the same company.
 - Only analyst-accepted evidence above a quality floor enters research retrieval.
 - Generated memos retain their exact evidence packet and become stale when that packet changes.
+- Every newly extracted SEC or IR document retains an immutable, checksum-addressed raw source artifact.
 - Discovery events cannot silently become trusted research.
 - Historical replay checks that future information did not leak across the selected cutoff.
 - Management commitments retain append-only revisions and are reconciled only to analyst-approved canonical facts.
@@ -49,6 +50,7 @@ It does not insert synthetic research evidence. The seeded memo, answer, benchma
 | Product capability | Engineering signal |
 | --- | --- |
 | SEC and official IR ingestion | Source-specific normalization, retry policy, caching, and idempotent persistence |
+| Immutable source archive | S3-compatible content-addressed storage, SHA-256 verification, parser versioning, and deterministic replay |
 | Evidence review | Human-in-the-loop workflow with durable decisions and provenance |
 | KPI ledger and peer benchmark | SEC XBRL normalization, source conflict resolution, review state, and comparable time series |
 | Guidance and commitments | Stable domain identity, bitemporal revisions, human review, and actual-versus-target reconciliation |
@@ -70,9 +72,10 @@ flowchart LR
     SCHEDULE["API and scheduled triggers"] --> REDIS[("Redis / BullMQ")]
     REDIS --> WORKER["Durable research workers"]
     WORKER --> INGEST["Parallel ingest and processing stages"]
-    SEC["SEC EDGAR"] --> INGEST
+    SEC["SEC EDGAR"] --> ARCHIVE[("Immutable source artifacts")]
+    IR["Official investor relations"] --> ARCHIVE
+    ARCHIVE --> INGEST
     XBRL["SEC Company Facts / XBRL"] --> METRICS["Normalized KPI ledger"]
-    IR["Official investor relations"] --> INGEST
     GDELT["GDELT discovery"] --> EVENTS["Discovery event pipeline"]
 
     INGEST --> DOCS[("Postgres documents and passages")]
@@ -124,7 +127,7 @@ erDiagram
     RESEARCH_SESSION ||--o{ RESEARCH_MESSAGE : contains
 ```
 
-An evidence record retains the source document, exact excerpt, section, document date, original URL, optional PDF page, quality scores, review decision, reviewer, and timestamps. Generated outputs store evidence snapshots rather than relying on a future retrieval to reconstruct what the model saw.
+An evidence record retains the source document, exact excerpt, section, document date, original URL, optional PDF page, quality scores, review decision, reviewer, and timestamps. Its source document can reference immutable raw bytes, a SHA-256 checksum, and a versioned parser run. Generated outputs store evidence snapshots rather than relying on a future retrieval to reconstruct what the model saw.
 
 A metric observation separately retains its reporting period, normalized value, unit, source method, XBRL taxonomy and concept when available, source URL, confidence, and analyst decision. Conflicting standardized financial facts are surfaced for resolution; scope differences such as facility-level capacity are not automatically mislabeled as conflicts.
 
@@ -195,6 +198,7 @@ The scheduled research cycle runs SEC, IR, live-event, evidence, intelligence, X
 | Frontend | React 19, TypeScript, Tailwind CSS 4, Lucide |
 | Application | Next.js-compatible App Router via vinext |
 | Database | PostgreSQL 17, pgvector, Drizzle ORM |
+| Object storage | S3-compatible source archive, MinIO for local development |
 | AI | Vercel AI SDK with optional OpenAI generation |
 | Parsing | Cheerio for HTML, unpdf for page-aware PDF extraction |
 | Visualization | Cytoscape for interactive lineage |
@@ -257,7 +261,7 @@ In a second terminal, start the web application:
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The root URL resolves to `/login`; the portfolio demo requires no OAuth configuration. Docker Compose starts both PostgreSQL and Redis. The web process accepts research jobs while the independent worker executes them, so queued work survives web-server restarts.
+Open [http://localhost:3000](http://localhost:3000). The root URL resolves to `/login`; the portfolio demo requires no OAuth configuration. Docker Compose starts PostgreSQL, Redis, and MinIO. The web process accepts research jobs while the independent worker executes them, so queued work survives web-server restarts.
 
 SEC asks automated clients to identify themselves. Replace the example value in `.env.local` with a real application name and contact email:
 
@@ -307,6 +311,7 @@ Without `OPENAI_API_KEY`, memos and answers use the grounded deterministic engin
 | `pnpm db:backfill` | Extract and persist SEC filing evidence |
 | `pnpm db:backfill:ir` | Backfill official IR document passages |
 | `pnpm db:process:ir -- --all` | Drain the durable IR extraction queue |
+| `pnpm artifacts:backfill` | Archive existing raw documents and isolate parser differences as reviewable previews |
 | `pnpm research:intelligence` | Rebuild periods, earnings packages, metrics, and change briefs |
 | `pnpm research:events` | Refresh official and GDELT event discovery |
 | `pnpm research:briefing` | Build a briefing from the current research window |
@@ -329,10 +334,10 @@ pnpm test
 
 The current suite includes:
 
-- **116 deterministic tests** covering ingestion, normalization, extraction, SEC Company Facts, metric reconciliation and anomaly policy, evidence policy, claim synthesis, numeric fidelity, content-bound review approval, citation verification, production regression contracts, report publishing, quality scoring, company intelligence, events, replay, and durable queue contracts.
+- **126 deterministic tests** covering ingestion, immutable source hashing, parser replay diffs, normalization, extraction, SEC Company Facts, metric reconciliation and anomaly policy, evidence policy, claim synthesis, numeric fidelity, content-bound review approval, citation verification, production regression contracts, report publishing, quality scoring, company intelligence, events, replay, and durable queue contracts.
 - **32 curated research-quality cases plus versioned production cases** covering four companies, topic retrieval, pairwise comparisons, source policy, synthesis, refusal behavior, and analyst-reported failures.
 - **11 metric-quality cases** covering golden extraction fixtures, value and unit normalization, scope and period dimensions, anomaly suppression, and live canonical-fact contracts.
-- **16 Chromium journeys** covering login, the curated demo, responsive layouts, all four Neoclouds, evidence review, two-user memo approval, team roles, public report publishing and export, assistant persistence, failure-to-regression promotion, durable job retries and replay, benchmarks, lineage, workspace isolation, and audit history.
+- **19 Chromium journeys** covering login, the curated demo, responsive layouts, all four Neoclouds, immutable source download, parser replay and analyst promotion, evidence review, commitments, two-user memo approval, team roles, public report publishing and export, assistant persistence, failure-to-regression promotion, durable job retries, benchmarks, lineage, workspace isolation, and audit history.
 
 CI runs two quality gates. Research answers require at least 85 overall, at least an 85% case pass rate, and 100% citation precision and groundedness. Metrics require at least 90 overall with 100% anomaly safety and live-contract health.
 
@@ -350,6 +355,7 @@ The E2E fixture refuses to truncate a database whose name does not end in `_e2e`
 ```text
 app/                    React workspaces and API routes
 lib/auth/               Sessions, roles, workspaces, and audit events
+lib/artifacts/          Raw source storage, checksums, versions, replay, and promotion
 lib/sec/                SEC client, normalization, extraction, and persistence
 lib/ir/                 IR discovery, extraction, and queue processing
 lib/research/           Evidence retrieval, memo, assistant, and quality services

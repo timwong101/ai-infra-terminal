@@ -10,6 +10,7 @@ import { fetchSecDocument, validateSecUserAgent } from "@/lib/sec/client";
 import { extractSecFilingDetail } from "@/lib/sec/extract";
 import { buildSecArchiveUrl } from "@/lib/sec/normalize";
 import { authorizeApi } from "@/lib/auth/session";
+import { archiveSourceBytes, recordInitialExtraction } from "@/lib/artifacts/service";
 
 const DETAIL_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const detailCache = new Map<string, { expiresAt: number; detail: SecFilingDetail }>();
@@ -67,8 +68,18 @@ async function loadFilingDetail(filing: FilingRequest) {
   if (!inFlight) {
     const sourceUrl = buildSecArchiveUrl(filing.cik, filing.accessionNumber, filing.primaryDocument);
     const userAgent = validateSecUserAgent(process.env.SEC_USER_AGENT);
+    const extractionStartedAt = Date.now();
     inFlight = fetchSecDocument(sourceUrl, userAgent)
-      .then((html) => extractSecFilingDetail(html, {
+      .then(async (html) => {
+        const archived = await archiveSourceBytes({
+          sourceKind: "sec",
+          sourceDocumentId: filingId,
+          companyId: company.id,
+          sourceUrl,
+          bytes: new TextEncoder().encode(html),
+          contentType: "text/html; charset=utf-8",
+        });
+        const detail = extractSecFilingDetail(html, {
         filingId,
         companyId: company.id,
         companyName: company.name,
@@ -77,8 +88,13 @@ async function loadFilingDetail(filing: FilingRequest) {
         filedAt: filing.filedAt,
         periodOfReport: null,
         accessionNumber: filing.accessionNumber,
-        sourceUrl,
-      }))
+          sourceUrl,
+        }, archived.version.fetchedAt.toISOString());
+        const persisted = await persistFilingDetail(detail);
+        if (!persisted) throw new Error("Postgres is required for durable SEC extraction.");
+        await recordInitialExtraction(archived, detail, Date.now() - extractionStartedAt);
+        return detail;
+      })
       .then((detail) => {
         detailCache.set(cacheKey, { detail, expiresAt: Date.now() + DETAIL_CACHE_TTL_MS });
         return detail;
@@ -88,13 +104,7 @@ async function loadFilingDetail(filing: FilingRequest) {
   }
 
   const detail = await inFlight;
-  let persisted = false;
-  try {
-    persisted = await persistFilingDetail(detail);
-  } catch {
-    persisted = false;
-  }
-  return { detail, cacheStatus: "fresh" as const, persisted };
+  return { detail, cacheStatus: "fresh" as const, persisted: true };
 }
 
 export async function GET(request: Request) {

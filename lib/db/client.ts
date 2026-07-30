@@ -1,6 +1,9 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import * as schema from "@/lib/db/schema";
+import * as coreSchema from "@/lib/db/schema";
+import * as artifactSchema from "@/lib/artifacts/schema";
+
+const schema = { ...coreSchema, ...artifactSchema };
 
 function connectionString() {
   if (process.env.E2E_TEST === "1") return process.env.E2E_DATABASE_URL?.trim();

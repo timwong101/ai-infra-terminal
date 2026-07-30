@@ -6,6 +6,7 @@ import { listResearchBriefings } from "@/lib/operations/briefing";
 import { getCompanyFlowCoverage } from "@/lib/operations/company-coverage";
 import { enqueueResearchCycle, getResearchQueueStatus } from "@/lib/operations/queue";
 import type { ResearchCycleEventItem, ResearchCycleRunItem, ResearchRuntimeSnapshot, ResearchWorkerItem } from "@/lib/operations/types";
+import { getArtifactIntegritySummary } from "@/lib/artifacts/service";
 
 function runItem(run: typeof researchCycleRuns.$inferSelect): ResearchCycleRunItem {
   return {
@@ -81,17 +82,19 @@ export async function getResearchRuntimeSnapshot(): Promise<ResearchRuntimeSnaps
 }
 
 export async function getResearchOperations() {
-  const [runtime, briefings, ingestion, coverage] = await Promise.all([
+  const [runtime, briefings, ingestion, coverage, artifactIntegrity] = await Promise.all([
     getResearchRuntimeSnapshot(),
     listResearchBriefings(12),
     getIrIngestionSummary(),
     getCompanyFlowCoverage(),
+    getArtifactIntegritySummary(),
   ]);
   return {
     ...runtime,
     briefings,
     ingestion,
     coverage,
+    artifactIntegrity,
     schedule: {
       cadence: "Every 6 hours",
       cron: "17 */6 * * *",

@@ -8,6 +8,7 @@ import {
 } from "@/lib/db/evidence-repository";
 import { fetchSecDocument } from "@/lib/sec/client";
 import { extractSecFilingDetail } from "@/lib/sec/extract";
+import { archiveSourceBytes, recordInitialExtraction } from "@/lib/artifacts/service";
 
 type SyncProgress = {
   processed: number;
@@ -46,7 +47,17 @@ export async function syncSecFilingEvidence(
       if (detail) {
         reused += 1;
       } else {
+        const extractionStartedAt = Date.now();
         const html = await fetchSecDocument(filing.sourceUrl, userAgent);
+        const archived = await archiveSourceBytes({
+          sourceKind: "sec",
+          sourceDocumentId: filing.id,
+          companyId: filing.companyId,
+          sourceUrl: filing.sourceUrl,
+          bytes: new TextEncoder().encode(html),
+          contentType: "text/html; charset=utf-8",
+          fetchedAt: filing.fetchedAt,
+        });
         detail = extractSecFilingDetail(html, {
           filingId: filing.id,
           companyId: filing.companyId,
@@ -57,8 +68,9 @@ export async function syncSecFilingEvidence(
           periodOfReport: filing.periodOfReport,
           accessionNumber: filing.accessionNumber,
           sourceUrl: filing.sourceUrl,
-        });
+        }, archived.version.fetchedAt.toISOString());
         await persistFilingDetail(detail);
+        await recordInitialExtraction(archived, detail, Date.now() - extractionStartedAt);
         persisted += 1;
         status = "persisted";
       }

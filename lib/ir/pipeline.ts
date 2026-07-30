@@ -8,6 +8,7 @@ import {
 } from "@/lib/db/ir-evidence-repository";
 import { fetchIrDocumentContent } from "@/lib/ir/client";
 import { buildCatalogOnlyIrDetail, extractIrHtmlDetail, extractIrPdfDetail } from "@/lib/ir/extract";
+import { archiveSourceBytes, recordInitialExtraction } from "@/lib/artifacts/service";
 import type { IrEvidenceCache, IrIngestionRun, IrIngestionSummary } from "@/lib/ir/types";
 
 const EMPTY_SUMMARY: IrIngestionSummary = { pending: 0, processing: 0, completed: 0, failed: 0 };
@@ -29,16 +30,32 @@ export async function processIrExtractionQueue(limit = 1): Promise<IrIngestionRu
     if (!document) break;
     processed += 1;
     try {
+      const extractionStartedAt = Date.now();
       const config = irSources.find((source) => source.companyId === document.companyId);
       if (!config) throw new Error("IR source configuration is missing.");
       const isCatalogOnly = config.catalogOnlyHosts?.includes(new URL(document.sourceUrl).hostname) ?? false;
-      const detail = isCatalogOnly
-        ? buildCatalogOnlyIrDetail(document)
-        : await fetchIrDocumentContent(config, document).then((content) => content.kind === "pdf"
-          ? extractIrPdfDetail(content.bytes, document)
-          : extractIrHtmlDetail(content.html, document));
+      const content = isCatalogOnly
+        ? { kind: "catalog" as const, bytes: new TextEncoder().encode(JSON.stringify(document)) }
+        : await fetchIrDocumentContent(config, document).then((item) => item.kind === "pdf"
+          ? { kind: "pdf" as const, bytes: item.bytes }
+          : { kind: "html" as const, bytes: new TextEncoder().encode(item.html) });
+      const archived = await archiveSourceBytes({
+        sourceKind: "ir",
+        sourceDocumentId: document.id,
+        companyId: document.companyId,
+        sourceUrl: document.sourceUrl,
+        bytes: content.bytes,
+        contentType: content.kind === "pdf" ? "application/pdf" : content.kind === "catalog" ? "application/vnd.ai-infra.catalog+json" : "text/html; charset=utf-8",
+        fetchedAt: document.fetchedAt,
+      });
+      const detail = content.kind === "catalog"
+        ? buildCatalogOnlyIrDetail(document, archived.version.fetchedAt.toISOString())
+        : content.kind === "pdf"
+          ? await extractIrPdfDetail(content.bytes, document, archived.version.fetchedAt.toISOString())
+          : extractIrHtmlDetail(new TextDecoder().decode(content.bytes), document, archived.version.fetchedAt.toISOString());
       const persisted = await persistIrDocumentDetail(detail);
       if (!persisted) throw new Error("Postgres is unavailable for durable IR extraction.");
+      await recordInitialExtraction(archived, detail, Date.now() - extractionStartedAt);
       completed += 1;
     } catch (error) {
       failed += 1;

@@ -5,6 +5,7 @@ import { fetchIrDocumentContent } from "@/lib/ir/client";
 import { buildCatalogOnlyIrDetail, extractIrHtmlDetail, extractIrPdfDetail } from "@/lib/ir/extract";
 import type { IrDocumentDetail, IrDocumentDetailResponse, IrEvidenceCache } from "@/lib/ir/types";
 import { authorizeApi } from "@/lib/auth/session";
+import { archiveSourceBytes, recordInitialExtraction } from "@/lib/artifacts/service";
 
 const cache = irEvidenceCacheJson as unknown as IrEvidenceCache;
 const DETAIL_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -30,13 +31,31 @@ async function loadDocumentDetail(documentId: string) {
 
   let inFlight = requestsInFlight.get(documentId);
   if (!inFlight) {
+    const extractionStartedAt = Date.now();
     const isCatalogOnly = config.catalogOnlyHosts?.includes(new URL(document.sourceUrl).hostname) ?? false;
     inFlight = (isCatalogOnly
-      ? Promise.resolve(buildCatalogOnlyIrDetail(document))
+      ? Promise.resolve({ kind: "catalog" as const, bytes: new TextEncoder().encode(JSON.stringify(document)) })
       : fetchIrDocumentContent(config, document).then((content) => content.kind === "pdf"
-        ? extractIrPdfDetail(content.bytes, document)
-        : extractIrHtmlDetail(content.html, document)))
-      .then((detail) => {
+        ? { kind: "pdf" as const, bytes: content.bytes }
+        : { kind: "html" as const, bytes: new TextEncoder().encode(content.html) }))
+      .then(async (content) => {
+        const archived = await archiveSourceBytes({
+          sourceKind: "ir",
+          sourceDocumentId: document.id,
+          companyId: document.companyId,
+          sourceUrl: document.sourceUrl,
+          bytes: content.bytes,
+          contentType: content.kind === "pdf" ? "application/pdf" : content.kind === "catalog" ? "application/vnd.ai-infra.catalog+json" : "text/html; charset=utf-8",
+          fetchedAt: document.fetchedAt,
+        });
+        const detail = content.kind === "catalog"
+          ? buildCatalogOnlyIrDetail(document, archived.version.fetchedAt.toISOString())
+          : content.kind === "pdf"
+            ? await extractIrPdfDetail(content.bytes, document, archived.version.fetchedAt.toISOString())
+            : extractIrHtmlDetail(new TextDecoder().decode(content.bytes), document, archived.version.fetchedAt.toISOString());
+        const persisted = await persistIrDocumentDetail(detail);
+        if (!persisted) throw new Error("Postgres is required for durable IR extraction.");
+        await recordInitialExtraction(archived, detail, Date.now() - extractionStartedAt);
         detailCache.set(documentId, { detail, expiresAt: Date.now() + DETAIL_CACHE_TTL_MS });
         return detail;
       })
@@ -45,9 +64,7 @@ async function loadDocumentDetail(documentId: string) {
   }
 
   const detail = await inFlight;
-  let persisted = false;
-  try { persisted = await persistIrDocumentDetail(detail); } catch { persisted = false; }
-  return { detail, cacheStatus: "fresh" as const, persisted };
+  return { detail, cacheStatus: "fresh" as const, persisted: true };
 }
 
 export async function GET(request: Request) {

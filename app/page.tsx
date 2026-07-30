@@ -632,7 +632,6 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
           <ResearchReplayWorkspace />
         ) : activeNav === "Research Quality" ? (
           <ResearchQualityWorkspace
-            key={routeResearchQualityRunId || "research-quality-index"}
             initialRunId={routeResearchQualityRunId}
             onRunSelect={(runId) => navigate(`/research-quality/${encodeURIComponent(runId)}`)}
           />

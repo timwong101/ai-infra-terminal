@@ -2,17 +2,19 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Activity, AlertTriangle, Ban, BookOpenText, CalendarClock, CheckCircle2, ChevronRight,
+  Activity, AlertTriangle, Archive, Ban, BookOpenText, CalendarClock, CheckCircle2, ChevronRight,
   Clock3, Copy, Database, ExternalLink, FileSearch, LoaderCircle, Play, RefreshCw,
   RotateCcw, ServerCog, ShieldCheck, Sparkles, TimerReset, Wifi, WifiOff, XCircle,
 } from "lucide-react";
 import { RESEARCH_STAGE_NAMES, type ResearchBriefing, type ResearchCycleEventItem, type ResearchCycleRunItem, type ResearchQueueStatus, type ResearchRuntimeSnapshot, type ResearchStageName, type ResearchWorkerItem } from "@/lib/operations/types";
+import type { ArtifactIntegritySummary } from "@/lib/artifacts/types";
 
 type Operations = ResearchRuntimeSnapshot & {
   briefings: ResearchBriefing[];
   ingestion: { pending: number; processing: number; completed: number; failed: number } | null;
   schedule: { cadence: string; cron: string; source: string; nextAction: string };
   aiEnabled: boolean;
+  artifactIntegrity: ArtifactIntegritySummary;
   coverage: Array<{
     company: { id: string; name: string; ticker: string };
     counts: { accepted: number };
@@ -193,6 +195,7 @@ export function OperationsWorkspace() {
         <section className="panel worker-health"><div className="catalog-heading"><div><h2>Workers</h2><span>Process heartbeats</span></div>{onlineWorkers.length ? <Wifi size={15} /> : <WifiOff size={15} />}</div>{data?.workers.slice(0, 6).map((worker: ResearchWorkerItem) => <article key={worker.id}><span className={`worker-state ${worker.online ? "online" : "offline"}`} /><div><strong>{worker.queueName.replace("research-", "")}</strong><small>{worker.online ? `Concurrency ${worker.concurrency}` : "Heartbeat expired"}</small></div><em>{worker.currentRunId ? "busy" : worker.status}</em></article>)}{!data?.workers.length && <div className="workspace-state compact"><ServerCog size={19} /><strong>No worker heartbeat</strong><span>Run `pnpm worker:research`.</span></div>}</section>
         <section className="panel schedule-card"><div className="catalog-heading"><div><h2>Automation</h2><span>Scheduled queue trigger</span></div><CalendarClock size={16} /></div><div className="schedule-body"><strong>{data?.schedule.cadence}</strong><span>{data?.schedule.source}</span><code>{data?.schedule.cron}</code><p>{data?.schedule.nextAction}</p></div></section>
         <section className={`panel queue-health ${queue.available ? "available" : "unavailable"}`}><div><Database size={16} /><span><strong>{queue.available ? "Redis connected" : "Queue unavailable"}</strong><small>{queue.error || `${queue.completed} retained completions`}</small></span></div></section>
+        <section className="panel source-archive-health"><div className="catalog-heading"><div><h2>Source archive</h2><span>Immutable ingestion inputs</span></div><Archive size={16} /></div><div className="archive-coverage"><strong>{data?.artifactIntegrity.coveragePercent ?? 0}%</strong><span>document coverage</span><i><b style={{ width: `${data?.artifactIntegrity.coveragePercent ?? 0}%` }} /></i></div><dl><div><dt>Artifacts</dt><dd>{data?.artifactIntegrity.immutableArtifacts ?? 0}</dd></div><div><dt>Verified</dt><dd>{data?.artifactIntegrity.verifiedArtifacts ?? 0}</dd></div><div><dt>Parser previews</dt><dd>{data?.artifactIntegrity.previewRuns ?? 0}</dd></div><div><dt>Storage</dt><dd>{data?.artifactIntegrity.storageBackend ?? "unconfigured"}</dd></div></dl></section>
       </aside>
     </div>
 

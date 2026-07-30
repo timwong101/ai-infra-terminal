@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { Client } from "pg";
 import { secCompanies } from "@/data/companies";
+import { archiveSourceBytes, recordInitialExtraction } from "@/lib/artifacts/service";
+import { persistIrDocumentDetail } from "@/lib/db/ir-evidence-repository";
+import type { IrDocumentDetail } from "@/lib/ir/types";
 
 const connectionString = process.env.E2E_DATABASE_URL?.trim() || process.env.DATABASE_URL?.trim();
 if (process.env.E2E_TEST !== "1") throw new Error("Refusing to seed unless E2E_TEST=1.");
@@ -163,6 +166,40 @@ try {
   }
 
   await client.query("COMMIT");
+  const archivedCompany = secCompanies.find((company) => company.id === "coreweave")!;
+  const archivedExcerpt = evidenceTemplates[0].text(archivedCompany.name);
+  const archivedDetail: IrDocumentDetail = {
+    documentId: `e2e-document:${archivedCompany.id}:capacity`,
+    companyId: archivedCompany.id,
+    companyName: archivedCompany.name,
+    ticker: archivedCompany.ticker,
+    documentType: "Press Release",
+    publishedAt: evidenceTemplates[0].date,
+    title: evidenceTemplates[0].title,
+    sourceUrl: `https://example.com/${archivedCompany.id}/capacity`,
+    sourcePageUrl: `https://example.com/${archivedCompany.id}`,
+    retrievedAt: "2026-04-01T12:00:00.000Z",
+    wordCount: archivedExcerpt.split(/\s+/).length,
+    pageCount: null,
+    sections: [{
+      id: "operating-update",
+      title: "Operating update",
+      category: "Power & capacity",
+      passages: [{ id: `e2e-passage:${archivedCompany.id}:capacity`, text: archivedExcerpt, wordCount: archivedExcerpt.split(/\s+/).length }],
+    }],
+    extraction: { method: "deterministic-html", quality: "high", message: "E2E immutable source fixture." },
+  };
+  await persistIrDocumentDetail(archivedDetail);
+  const archived = await archiveSourceBytes({
+    sourceKind: "ir",
+    sourceDocumentId: archivedDetail.documentId,
+    companyId: archivedDetail.companyId,
+    sourceUrl: archivedDetail.sourceUrl,
+    bytes: new TextEncoder().encode(`<html><body><p>${archivedExcerpt}</p></body></html>`),
+    contentType: "text/html; charset=utf-8",
+    fetchedAt: archivedDetail.retrievedAt,
+  });
+  await recordInitialExtraction(archived, archivedDetail, 4);
   console.log(`Seeded ${secCompanies.length} companies and ${secCompanies.length * 5} evidence records for end-to-end tests.`);
 } catch (error) {
   await client.query("ROLLBACK");

@@ -245,12 +245,25 @@ export async function syncResearchEvidence() {
 
     const secPassageIds = researchGradeSecRows.map(({ passage }) => passage.id);
     const irPassageIds = researchGradeIrRows.map(({ passage }) => passage.id);
-    await db.delete(researchEvidence).where(secPassageIds.length
-      ? and(eq(researchEvidence.sourceKind, "sec"), notInArray(researchEvidence.sourcePassageId, secPassageIds))
-      : eq(researchEvidence.sourceKind, "sec"));
-    await db.delete(researchEvidence).where(irPassageIds.length
-      ? and(eq(researchEvidence.sourceKind, "ir"), notInArray(researchEvidence.sourcePassageId, irPassageIds))
-      : eq(researchEvidence.sourceKind, "ir"));
+    const reconcileMissingPassages = async (sourceKind: "sec" | "ir", activePassageIds: string[]) => {
+      const missing = activePassageIds.length
+        ? and(eq(researchEvidence.sourceKind, sourceKind), notInArray(researchEvidence.sourcePassageId, activePassageIds))
+        : eq(researchEvidence.sourceKind, sourceKind);
+      await db.update(researchEvidence).set({
+        reviewStatus: "rejected",
+        suggestionStatus: "rejected",
+        reviewNote: "Superseded by the current source extraction; retained for audit history.",
+        updatedAt: new Date(),
+      }).where(and(missing, eq(researchEvidence.reviewStatus, "accepted")));
+      await db.delete(researchEvidence).where(and(
+        missing,
+        eq(researchEvidence.reviewStatus, "unreviewed"),
+        sql`NOT EXISTS (SELECT 1 FROM company_commitments WHERE company_commitments.source_evidence_id = ${researchEvidence.id})`,
+        sql`NOT EXISTS (SELECT 1 FROM commitment_revisions WHERE commitment_revisions.source_evidence_id = ${researchEvidence.id})`,
+      ));
+    };
+    await reconcileMissingPassages("sec", secPassageIds);
+    await reconcileMissingPassages("ir", irPassageIds);
 
     const evidenceRows = await db.select().from(researchEvidence);
     const duplicateCounts = new Map<string, number>();
