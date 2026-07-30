@@ -223,12 +223,12 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await page.getByRole("button", { name: "Peer benchmark" }).click();
     await expect(page.getByRole("heading", { name: "Neocloud peer matrix" })).toBeVisible();
     await expect(page.locator(".metric-matrix thead th")).toHaveCount(5);
-    await expect(page.getByText("Verified observations", { exact: true })).toBeVisible();
+    await expect(page.getByText("Canonical facts", { exact: true })).toBeVisible();
     const firstMetric = page.locator(".metric-matrix-value").first();
     await expect(firstMetric).toBeVisible();
     await firstMetric.click();
     await expect(page.getByRole("heading", { name: "Observation review" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Accept" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Make canonical" })).toBeVisible();
 
     await page.goto("/activity");
     await expect(page).toHaveURL(/\/activity$/);
