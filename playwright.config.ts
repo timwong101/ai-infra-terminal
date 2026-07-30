@@ -1,10 +1,13 @@
 import { defineConfig, devices } from "@playwright/test";
+import { resolve } from "node:path";
 
 const port = 4173;
 const workerPort = 4174;
 const baseURL = `http://localhost:${port}`;
 const e2eDatabaseUrl = process.env.E2E_DATABASE_URL?.trim();
 const e2eRedisUrl = process.env.E2E_REDIS_URL?.trim() || process.env.REDIS_URL?.trim() || "redis://127.0.0.1:6379/1";
+const e2eArtifactPath = process.env.ARTIFACT_STORAGE_PATH?.trim() || resolve(process.cwd(), ".artifacts/e2e");
+process.env.ARTIFACT_STORAGE_PATH = e2eArtifactPath;
 
 if (!e2eDatabaseUrl) {
   throw new Error("E2E_DATABASE_URL must point to a dedicated test database before running Playwright.");
@@ -35,6 +38,7 @@ export default defineConfig({
         E2E_TEST: "1",
         E2E_DATABASE_URL: e2eDatabaseUrl,
         E2E_REDIS_URL: e2eRedisUrl,
+        ARTIFACT_STORAGE_PATH: e2eArtifactPath,
         E2E_FAIL_STAGE_ONCE: "embedding-evidence",
         REDIS_URL: e2eRedisUrl,
         SEC_USER_AGENT: process.env.SEC_USER_AGENT || "AI Infra Terminal CI ci@example.com",
@@ -50,6 +54,7 @@ export default defineConfig({
         E2E_TEST: "1",
         E2E_DATABASE_URL: e2eDatabaseUrl,
         E2E_REDIS_URL: e2eRedisUrl,
+        ARTIFACT_STORAGE_PATH: e2eArtifactPath,
         REDIS_URL: e2eRedisUrl,
         SEC_USER_AGENT: process.env.SEC_USER_AGENT || "AI Infra Terminal CI ci@example.com",
       },
