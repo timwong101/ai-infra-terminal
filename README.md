@@ -21,6 +21,7 @@ The terminal treats provenance as a product feature:
 - Generated memos retain their exact evidence packet and become stale when that packet changes.
 - Discovery events cannot silently become trusted research.
 - Historical replay checks that future information did not leak across the selected cutoff.
+- Management commitments retain append-only revisions and are reconciled only to analyst-approved canonical facts.
 - Analyst decisions and generated artifacts remain attributable in an audit trail.
 
 The initial live coverage focuses on four Neocloud companies: **CoreWeave, Nebius, Applied Digital, and IREN**. The infrastructure map keeps the broader taxonomy visible while clearly distinguishing live research from planned coverage.
@@ -31,8 +32,9 @@ The initial live coverage focuses on four Neocloud companies: **CoreWeave, Nebiu
 2. Open **Research → Evidence** to inspect real SEC and IR passages, quality signals, review state, and original sources.
 3. Open **Analysis → Ask** to review a saved four-company answer with claim checks and inline citations.
 4. Open **Analysis → Memos** for the cited CoreWeave vs. Nebius comparison and its frozen evidence packet.
-5. Open **Analysis → Replay** to compare what the evidence supported on February 1, 2026 with what is accepted today.
-6. Open **Research → Lineage** or **System → Audit** to trace generated claims back to sources and analyst actions.
+5. Open **Research → Companies → Commitments** to inspect forward-looking targets, revisions, and outcome reconciliation.
+6. Open **Analysis → Replay** to compare what the evidence supported on February 1, 2026 with what is accepted today.
+7. Open **Research → Lineage** or **System → Audit** to trace generated claims back to sources and analyst actions.
 
 The demo seeder is idempotent. It repairs missing portfolio artifacts, removes accidental empty research sessions, and reuses completed artifacts instead of creating duplicates:
 
@@ -49,6 +51,7 @@ It does not insert synthetic research evidence. The seeded memo, answer, benchma
 | SEC and official IR ingestion | Source-specific normalization, retry policy, caching, and idempotent persistence |
 | Evidence review | Human-in-the-loop workflow with durable decisions and provenance |
 | KPI ledger and peer benchmark | SEC XBRL normalization, source conflict resolution, review state, and comparable time series |
+| Guidance and commitments | Stable domain identity, bitemporal revisions, human review, and actual-versus-target reconciliation |
 | Research Assistant | Grounded retrieval, structured generation, streaming UI, and citation verification |
 | Comparison memos | Analyst-grade claim synthesis, numeric fidelity, frozen evidence packets, and stale-artifact detection |
 | Published research reports | Immutable versions, public token URLs, compliance filtering, revocation, and export |
@@ -78,6 +81,9 @@ flowchart LR
     REVIEW --> SEARCH["Full-text and optional vector retrieval"]
     METRICS --> METRIC_REVIEW["Analyst metric review"]
     METRIC_REVIEW --> SEARCH
+    REVIEW --> COMMITMENTS["Guidance and commitments"]
+    METRIC_REVIEW --> OUTCOMES["Outcome reconciliation"]
+    COMMITMENTS --> OUTCOMES
 
     SEARCH --> ASK["Research Assistant"]
     ASK --> FEEDBACK["Analyst failure reports"]
@@ -112,7 +118,6 @@ erDiagram
     USER ||--o{ METRIC_OBSERVATION : reviews
     EVIDENCE }o--o{ CLAIM : supports
     CLAIM }o--o{ MEMO : appears_in
-    WORKSPACE ||--o{ MEMO : owns
     USER ||--o{ EVIDENCE : reviews
     USER ||--o{ AUDIT_EVENT : performs
     WORKSPACE ||--o{ RESEARCH_SESSION : owns
@@ -122,6 +127,8 @@ erDiagram
 An evidence record retains the source document, exact excerpt, section, document date, original URL, optional PDF page, quality scores, review decision, reviewer, and timestamps. Generated outputs store evidence snapshots rather than relying on a future retrieval to reconstruct what the model saw.
 
 A metric observation separately retains its reporting period, normalized value, unit, source method, XBRL taxonomy and concept when available, source URL, confidence, and analyst decision. Conflicting standardized financial facts are surfaced for resolution; scope differences such as facility-level capacity are not automatically mislabeled as conflicts.
+
+The reviewer-oriented [architecture guide](docs/architecture/README.md) maps bounded contexts to code and records the key temporal-modeling decisions as ADRs.
 
 ## Grounding And Hallucination Controls
 
@@ -164,6 +171,10 @@ The comparison workflow analyzes two companies with accepted evidence only. It s
 ### Filing Facts To Peer Benchmark
 
 Company Intelligence combines existing passage extraction with the SEC Company Facts API. XBRL facts are normalized to comparable units and stored as proposed observations; accepted passage-derived metrics remain durable across refreshes. Analysts can compare all four Neoclouds in a matrix, inspect source-linked history, accept or reject observations, and resolve true standardized-financial conflicts. Only accepted observations flow into memo and Research Assistant KPI snapshots or generate material-change alerts.
+
+### Guidance To Outcome
+
+The commitments ledger scans accepted evidence for explicit numeric forward-looking statements. Extraction creates proposed records; analysts confirm identity, scope, value, and target period before a commitment becomes trusted. Later statements are appended as reiterations, raises, reductions, delays, or updates with separate valid and recorded times. Accepted commitments can be reconciled to compatible canonical metrics, preserving the actual, variance, outcome classification, rationale, reviewer, and complete source history.
 
 ### Memo To Published Report
 
@@ -343,13 +354,14 @@ lib/sec/                SEC client, normalization, extraction, and persistence
 lib/ir/                 IR discovery, extraction, and queue processing
 lib/research/           Evidence retrieval, memo, assistant, and quality services
 lib/company-intelligence/
-                        Period resolution, metrics, comparisons, and change briefs
+                        Periods, metrics, commitments, comparisons, and change briefs
 lib/events/             Event normalization and discovery policy
 lib/replay/             Point-in-time reconstruction and leakage checks
 lib/lineage/            Claim-to-evidence graph projection
 lib/operations/         Durable queues, workers, tracing, coverage, and briefings
 scripts/                Migrations, ingestion, backfills, benchmarks, and demo seed
 tests/                  Deterministic and Playwright coverage
+docs/architecture/      Reviewer map and architecture decision records
 ```
 
 ## Current Scope

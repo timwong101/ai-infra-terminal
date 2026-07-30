@@ -17,6 +17,7 @@ import { answerResearchAssistantQuestion, createResearchAssistantSession } from 
 import { RESEARCH_QUALITY_SUITE_VERSION, runResearchQualitySuite } from "@/lib/research/research-quality";
 import { METRIC_QUALITY_SUITE_VERSION, runMetricQualitySuite } from "@/lib/company-intelligence/metric-quality";
 import { createResearchReplay } from "@/lib/replay/service";
+import { syncCommitmentCandidates } from "@/lib/company-intelligence/commitments/service";
 
 const COMPANY_IDS = ["coreweave", "nebius", "applied-digital", "iren"];
 const TOPICS = ["Power & capacity", "Customers & demand", "Financing & liquidity"];
@@ -42,6 +43,7 @@ export type PortfolioEvidenceCandidate = {
 
 export type PortfolioDemoSeedSummary = {
   acceptedEvidenceCount: number;
+  commitmentSync: { created: number; revised: number; scannedEvidence: number };
   removedEmptySessions: number;
   memoId: string;
   assistantSessionId: string;
@@ -264,6 +266,7 @@ export async function ensurePortfolioDemoWorkspace(identity: { userId: string; w
   const task = (async () => {
     const auth = demoAuth(identity);
     const acceptedEvidenceCount = await ensureEvidenceCoverage(identity);
+    const commitmentSync = await syncCommitmentCandidates(auth);
     const removedEmptySessions = await removeEmptyAssistantSessions(identity.workspaceId);
     const memoId = await ensureMemo(auth);
     await ensureMemoApproval(memoId, auth);
@@ -271,7 +274,7 @@ export async function ensurePortfolioDemoWorkspace(identity: { userId: string; w
     const qualityRunId = await ensureQualityRun(auth);
     const metricQualityRunId = await ensureMetricQualityRun(auth);
     const replayRunId = await ensureReplay(auth);
-    return { acceptedEvidenceCount, removedEmptySessions, memoId, assistantSessionId, qualityRunId, metricQualityRunId, replayRunId };
+    return { acceptedEvidenceCount, commitmentSync, removedEmptySessions, memoId, assistantSessionId, qualityRunId, metricQualityRunId, replayRunId };
   })();
   inFlight.set(identity.workspaceId, task);
   try {

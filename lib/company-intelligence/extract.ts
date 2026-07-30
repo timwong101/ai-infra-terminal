@@ -25,6 +25,7 @@ function moneyDisplay(amount: string, scale = "") {
 
 type MoneyRule = { metricKey: string; label: string; category: string; context: RegExp; confidence: number };
 const MONEY_RULES: MoneyRule[] = [
+  { metricKey: "annual_recurring_revenue", label: "Annual recurring revenue", category: "Revenue & demand", context: /annual recurring revenue|\bARR\b/i, confidence: 92 },
   { metricKey: "contract_value", label: "Contract value", category: "Customers & demand", context: /\bcontract(?:ed)?(?:\s+\w+){0,2}\s+(?:value|revenue)|customer commitment|capacity reservation/i, confidence: 84 },
   { metricKey: "backlog", label: "Backlog", category: "Customers & demand", context: /\bbacklog|remaining performance obligation/i, confidence: 92 },
   { metricKey: "revenue", label: "Revenue", category: "Revenue & demand", context: /\brevenue|sales\b/i, confidence: 91 },

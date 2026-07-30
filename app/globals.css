@@ -1502,6 +1502,93 @@ input::placeholder, textarea::placeholder { color: #758791; opacity: 1; }
 .view-segmented-control button { min-width: 118px; padding: 0 10px; border: 0; border-radius: 2px; background: transparent; color: #71858e; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 9px; cursor: pointer; }
 .view-segmented-control button:hover { color: #b6c5cb; }
 .view-segmented-control button.active { background: #123143; color: #75cdf4; box-shadow: inset 0 0 0 1px #275c75; }
+
+/* Guidance and commitments ledger */
+.commitments-ledger { min-width: 0; padding-bottom: 20px; display: grid; gap: 8px; }
+.commitments-toolbar { min-height: 76px; padding: 13px 15px; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.commitments-toolbar h2 { margin: 3px 0 4px; color: #dce8ec; font-size: 17px; }
+.commitments-toolbar > div:first-child > span { color: #71858e; font-size: 10px; }
+.commitments-toolbar > div:last-child { display: flex; align-items: end; gap: 7px; }
+.commitments-toolbar label { min-width: 210px; color: #6f858e; display: grid; gap: 4px; font-size: 8px; text-transform: uppercase; }
+.commitments-toolbar select, .commitment-reconcile-control select { height: 31px; border: 1px solid #2d4854; border-radius: 3px; outline: 0; background: #051018; color: #c5d2d7; padding: 0 8px; font-size: 10px; }
+.commitment-summary-strip { border: 1px solid var(--border); background: #07151d; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.commitment-summary-strip article { min-height: 54px; padding: 9px 12px; border-right: 1px solid var(--border-soft); display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 7px; }
+.commitment-summary-strip article:last-child { border-right: 0; }
+.commitment-summary-strip svg { color: #658694; }
+.commitment-summary-strip span { color: #71858e; font-size: 9px; }
+.commitment-summary-strip strong { color: #d3e0e4; font-size: 16px; }
+.commitment-summary-strip article.warning svg, .commitment-summary-strip article.warning strong { color: #e1b95f; }
+.commitment-ledger-layout { min-width: 0; min-height: 650px; display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 8px; align-items: start; }
+.commitment-list { min-width: 0; overflow: hidden; }
+.commitment-list > header { min-height: 45px; padding: 9px 11px; border-bottom: 1px solid var(--border-soft); display: flex; align-items: center; justify-content: space-between; }
+.commitment-list > header strong, .commitment-list > header span { display: block; }
+.commitment-list > header strong { color: #c7d6db; font-size: 10px; }
+.commitment-list > header span { margin-top: 3px; color: #6a8089; font-size: 8px; }
+.commitment-list > header svg { color: #648594; }
+.commitment-list > button { width: 100%; min-height: 92px; padding: 10px 11px; border: 0; border-bottom: 1px solid var(--border-soft); background: transparent; color: inherit; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; text-align: left; cursor: pointer; }
+.commitment-list > button:hover { background: #0a1b23; }
+.commitment-list > button.active { background: #0d2531; box-shadow: inset 2px 0 #4cbbe9; }
+.commitment-list button > strong { overflow: hidden; color: #c4d3d8; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.commitment-list button > b { color: #83d4f5; font-size: 11px; }
+.commitment-list button > small { grid-column: 1 / -1; color: #667d87; font-size: 8px; line-height: 1.45; }
+.commitment-status { width: fit-content; padding: 2px 5px; border: 1px solid #66572f; border-radius: 2px; color: #d2b35c; font-size: 7px; text-transform: uppercase; }
+.commitment-status.accepted { border-color: #316747; color: #69cc8c; }
+.commitment-status.rejected { border-color: #6b403c; color: #db746c; }
+.commitment-detail { min-width: 0; overflow: hidden; }
+.commitment-detail-heading { min-height: 88px; padding: 14px 16px; border-bottom: 1px solid var(--border-soft); display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.commitment-detail-heading > div:first-child > span { color: #68a8c4; font-size: 8px; text-transform: uppercase; }
+.commitment-detail-heading h2 { margin: 4px 0; color: #d9e6ea; font-size: 18px; }
+.commitment-detail-heading p { margin: 0; color: #6d848e; font-size: 9px; }
+.commitment-detail-heading > div:last-child { text-align: right; }
+.commitment-detail-heading > div:last-child strong, .commitment-detail-heading > div:last-child span { display: block; }
+.commitment-detail-heading > div:last-child strong { color: #82d4f4; font-size: 20px; }
+.commitment-detail-heading > div:last-child span { margin-top: 4px; color: #78909a; font-size: 9px; }
+.commitment-review-banner { min-height: 70px; padding: 11px 14px; border-bottom: 1px solid #594d2b; background: #1a180d; display: grid; grid-template-columns: 20px minmax(0, 1fr) 30px 30px; align-items: center; gap: 9px; }
+.commitment-review-banner > svg { color: #d3ae51; }
+.commitment-review-banner strong { color: #dfc576; font-size: 10px; }
+.commitment-review-banner p { margin: 4px 0 0; color: #9b8d63; font-size: 9px; line-height: 1.5; }
+.icon-button.approve { color: #6acb8c; }
+.icon-button.approve:hover { border-color: #346849; background: #0b2518; }
+.commitment-timeline, .commitment-outcomes { padding: 14px 16px; }
+.commitment-outcomes { border-top: 1px solid var(--border-soft); }
+.commitment-timeline .catalog-heading, .commitment-outcomes .catalog-heading { min-height: 38px; padding: 0 0 9px; border-bottom: 1px solid var(--border-soft); }
+.commitment-timeline .catalog-heading h3, .commitment-outcomes .catalog-heading h3 { margin: 0; color: #c8d7dc; font-size: 11px; }
+.commitment-timeline .catalog-heading span, .commitment-outcomes .catalog-heading span { margin-top: 3px; color: #657b84; display: block; font-size: 8px; }
+.commitment-revision { position: relative; margin-left: 6px; padding: 12px 0 12px 18px; border-left: 1px solid #27424d; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px 12px; }
+.commitment-revision > i { width: 9px; height: 9px; position: absolute; top: 16px; left: -5px; border: 2px solid #07151d; border-radius: 50%; background: #4bb9e5; }
+.commitment-revision.rejected { opacity: .55; }
+.commitment-revision.rejected > i { background: #a85e59; }
+.commitment-revision-meta { display: flex; align-items: center; gap: 7px; }
+.commitment-revision-meta time, .commitment-revision-meta em { color: #6d838c; font-size: 8px; font-style: normal; }
+.commitment-revision-meta em { text-transform: uppercase; }
+.revision-kind { padding: 2px 5px; border: 1px solid #31586a; border-radius: 2px; color: #70c4e8; font-size: 7px; text-transform: uppercase; }
+.revision-kind.raised { border-color: #326649; color: #68cc8a; }
+.revision-kind.lowered, .revision-kind.delayed { border-color: #735b2f; color: #ddb75b; }
+.commitment-revision-value { text-align: right; }
+.commitment-revision-value strong, .commitment-revision-value span { display: block; }
+.commitment-revision-value strong { color: #cbdade; font-size: 11px; }
+.commitment-revision-value span { margin-top: 3px; color: #687e88; font-size: 8px; }
+.commitment-revision > p { grid-column: 1 / -1; margin: 0; color: #92a5ac; font-size: 10px; line-height: 1.55; }
+.commitment-revision > footer { grid-column: 1 / -1; min-width: 0; display: flex; align-items: center; gap: 10px; }
+.commitment-revision footer a { min-width: 0; overflow: hidden; color: #62b9df; display: inline-flex; align-items: center; gap: 4px; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.commitment-revision footer > span { margin-left: auto; color: #627983; font-size: 8px; white-space: nowrap; }
+.commitment-revision footer > div { display: flex; gap: 4px; }
+.commitment-outcomes > article { margin-top: 9px; padding: 10px 11px; border: 1px solid #326047; background: #092017; display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; }
+.commitment-outcomes > article svg { color: #6dd091; }
+.commitment-outcomes > article strong { color: #bfe2cb; font-size: 10px; text-transform: capitalize; }
+.commitment-outcomes > article p { margin: 4px 0; color: #829e8d; font-size: 9px; line-height: 1.45; }
+.commitment-outcomes > article small { color: #5f7e6b; font-size: 8px; }
+.commitment-outcomes > article.missed { border-color: #653f3b; background: #211313; }
+.commitment-outcomes > article.missed svg { color: #dd756d; }
+.commitment-reconcile-control { margin-top: 9px; padding: 10px; border: 1px solid #294854; background: #071820; display: grid; grid-template-columns: minmax(0, 1fr) 130px auto; align-items: center; gap: 8px; }
+.commitment-reconcile-control span, .commitment-reconcile-control strong, .commitment-reconcile-control small { display: block; }
+.commitment-reconcile-control span { color: #6a818a; font-size: 8px; text-transform: uppercase; }
+.commitment-reconcile-control strong { margin-top: 3px; color: #cfe0e5; font-size: 12px; }
+.commitment-reconcile-control small { margin-top: 3px; color: #647b84; font-size: 8px; }
+.commitment-empty { min-height: 330px; padding: 40px; display: grid; place-items: center; align-content: center; text-align: center; }
+.commitment-empty svg { color: #4f859c; }
+.commitment-empty strong { margin-top: 12px; color: #c9d8dd; font-size: 13px; }
+.commitment-empty p { max-width: 480px; margin: 7px 0 15px; color: #70858e; font-size: 10px; line-height: 1.6; }
 .metric-ledger-state { min-height: 420px; }
 .metric-benchmark-workspace { min-width: 0; padding-bottom: 20px; }
 .metric-ledger-summary { margin-bottom: 10px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 1px solid #29434f; background: #07151d; }
@@ -1624,6 +1711,8 @@ input::placeholder, textarea::placeholder { color: #758791; opacity: 1; }
   .quality-engine button, .quality-domain button { min-width: 0; flex: 1; }
   .metric-quality-layout { display: flex; flex-direction: column; }
   .metric-quality-layout .quality-history { display: none; }
+  .company-intelligence-workspace .workspace-title-row { flex-direction: column; }
+  .company-intelligence-workspace .workspace-title-row > div:first-child { width: 100%; }
   .company-view-actions { width: 100%; align-items: stretch; flex-direction: column; }
   .view-segmented-control { width: 100%; }
   .view-segmented-control button { min-width: 0; flex: 1; }
@@ -1633,6 +1722,27 @@ input::placeholder, textarea::placeholder { color: #758791; opacity: 1; }
   .metric-ledger-summary article:last-child { grid-column: 1 / -1; border-bottom: 0; }
   .metric-history-list article { grid-template-columns: 78px minmax(0, 1fr); }
   .memo-metric-snapshot > div { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 900px) {
+  .commitment-summary-strip { grid-template-columns: repeat(3, 1fr); }
+  .commitment-summary-strip article { border-bottom: 1px solid var(--border-soft); }
+  .commitment-ledger-layout { grid-template-columns: 220px minmax(0, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .commitments-toolbar, .commitments-toolbar > div:last-child { align-items: stretch; flex-direction: column; }
+  .commitments-toolbar label { min-width: 0; }
+  .commitment-summary-strip { grid-template-columns: 1fr 1fr; }
+  .commitment-summary-strip article:nth-child(2n) { border-right: 0; }
+  .commitment-ledger-layout { grid-template-columns: 1fr; }
+  .commitment-list { max-height: 330px; overflow-y: auto; }
+  .commitment-detail-heading { align-items: flex-start; flex-direction: column; }
+  .commitment-detail-heading > div:last-child { text-align: left; }
+  .commitment-review-banner { grid-template-columns: 20px minmax(0, 1fr) 30px 30px; }
+  .commitment-reconcile-control { grid-template-columns: 1fr; }
+  .commitment-revision > footer { align-items: flex-start; flex-wrap: wrap; }
+  .commitment-revision footer > span { width: 100%; margin-left: 0; }
 }
 
 /* Durable research pipeline */

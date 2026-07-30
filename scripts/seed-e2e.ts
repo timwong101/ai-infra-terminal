@@ -20,7 +20,7 @@ const evidenceTemplates = [
     topic: "Power & capacity",
     title: "Q1 2026 Infrastructure Update",
     date: "2026-03-31",
-    text: (name: string) => `${name} reported 200 MW of active AI data center capacity and said another 300 MW remains under construction for contracted GPU deployments.`,
+    text: (name: string) => `${name} expects active power capacity across its AI data centers to reach 300 MW by the end of 2027 as contracted GPU deployments enter service.`,
   },
   {
     key: "demand",
@@ -85,6 +85,31 @@ try {
       );
     }
 
+    const outcomeExcerpt = `${company.name} reported 320 MW of active power capacity across its AI data centers in service at year end.`;
+    await client.query(
+      `INSERT INTO research_evidence (
+        id, company_id, source_kind, source_document_id, source_passage_id, source_type,
+        document_title, document_date, section_title, topic, excerpt, source_url,
+        source_quality, content_hash, review_status, review_note, reviewed_at,
+        evidence_quality_score, materiality_score, specificity_score, relevance_score,
+        boilerplate_risk, quality_reasons, duplicate_count, suggestion_status, quality_scored_at
+      ) VALUES (
+        $1, $2, 'ir', $3, $4, 'Results release', 'FY 2027 Capacity Results', '2027-12-31',
+        'Operating capacity', 'Power & capacity', $5, $6, 92, $7, 'accepted',
+        'Deterministic outcome fixture', now(), 91, 92, 94, 95, 3, $8::jsonb, 1, 'pending', now()
+      )`,
+      [
+        `e2e:${company.id}:capacity-outcome`,
+        company.id,
+        `e2e-document:${company.id}:capacity-outcome`,
+        `e2e-passage:${company.id}:capacity-outcome`,
+        outcomeExcerpt,
+        `https://example.com/${company.id}/capacity-outcome`,
+        createHash("sha256").update(outcomeExcerpt).digest("hex"),
+        JSON.stringify(["Official company source", "Reported capacity outcome", "Explicit year-end actual"]),
+      ],
+    );
+
     const reviewExcerpt = `${company.name} deployed 10,000 current-generation GPUs during the quarter and expects utilization to ramp as customer clusters enter production.`;
     await client.query(
       `INSERT INTO research_evidence (
@@ -138,7 +163,7 @@ try {
   }
 
   await client.query("COMMIT");
-  console.log(`Seeded ${secCompanies.length} companies and ${secCompanies.length * 4} evidence records for end-to-end tests.`);
+  console.log(`Seeded ${secCompanies.length} companies and ${secCompanies.length * 5} evidence records for end-to-end tests.`);
 } catch (error) {
   await client.query("ROLLBACK");
   throw error;

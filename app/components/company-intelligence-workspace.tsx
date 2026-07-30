@@ -15,6 +15,7 @@ import {
   FileText,
   Gauge,
   LoaderCircle,
+  ListChecks,
   PackageOpen,
   RefreshCw,
   Rows3,
@@ -22,6 +23,7 @@ import {
 } from "lucide-react";
 import type { CompanyIntelligenceResponse, IntelligenceComparison } from "@/lib/company-intelligence/types";
 import { MetricBenchmark } from "@/app/components/metric-benchmark";
+import { CommitmentsLedger } from "@/app/components/commitments-ledger";
 
 type Props = {
   initialCompanyId?: string;
@@ -40,7 +42,7 @@ export function CompanyIntelligenceWorkspace({ initialCompanyId = "", onCompanyC
   const [selectedComparisonId, setSelectedComparisonId] = useState("");
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState("");
-  const [view, setView] = useState<"company" | "peers">("company");
+  const [view, setView] = useState<"company" | "commitments" | "peers">("company");
 
   const load = async (params: { company?: string; current?: string; previous?: string; sync?: boolean } = {}) => {
     setStatus("loading"); setError("");
@@ -79,9 +81,9 @@ export function CompanyIntelligenceWorkspace({ initialCompanyId = "", onCompanyC
   if (!data && status === "loading") return <div className="research-workspace"><div className="workspace-state full"><LoaderCircle className="drawer-spinner" size={26} /><strong>Building company intelligence</strong></div></div>;
 
   return <div className="research-workspace company-intelligence-workspace">
-    <header className="workspace-title-row"><div><p className="breadcrumb">Research workspace / Temporal analysis</p><h1>Company Intelligence</h1><p className="workspace-subtitle">Reporting-period changes and comparable, source-linked operating metrics across Neoclouds.</p></div><div className="company-view-actions"><div className="view-segmented-control" aria-label="Company intelligence view"><button className={view === "company" ? "active" : ""} onClick={() => setView("company")}><Building2 size={14} /> Company view</button><button className={view === "peers" ? "active" : ""} onClick={() => setView("peers")}><Rows3 size={14} /> Peer benchmark</button></div>{view === "company" && <button className="command-button" disabled={status === "loading"} onClick={() => void load({ company: data?.company.id, sync: true })}>{status === "loading" ? <LoaderCircle className="drawer-spinner" size={15} /> : <RefreshCw size={15} />} Refresh analysis</button>}</div></header>
+    <header className="workspace-title-row"><div><p className="breadcrumb">Research workspace / Temporal analysis</p><h1>Company Intelligence</h1><p className="workspace-subtitle">Reporting-period changes, management commitments, and comparable source-linked metrics across Neoclouds.</p></div><div className="company-view-actions"><div className="view-segmented-control" aria-label="Company intelligence view"><button aria-label="Company view" className={view === "company" ? "active" : ""} onClick={() => setView("company")}><Building2 size={14} /> Company</button><button className={view === "commitments" ? "active" : ""} onClick={() => setView("commitments")}><ListChecks size={14} /> Commitments</button><button aria-label="Peer benchmark" className={view === "peers" ? "active" : ""} onClick={() => setView("peers")}><Rows3 size={14} /> Peers</button></div>{view === "company" && <button className="command-button" disabled={status === "loading"} onClick={() => void load({ company: data?.company.id, sync: true })}>{status === "loading" ? <LoaderCircle className="drawer-spinner" size={15} /> : <RefreshCw size={15} />} Refresh analysis</button>}</div></header>
     {error && <div className="builder-error"><ShieldAlert size={14} /> {error}</div>}
-    {view === "peers" ? <MetricBenchmark /> : data && <section className="company-intelligence-layout">
+    {view === "peers" ? <MetricBenchmark /> : view === "commitments" && data ? <CommitmentsLedger companyId={data.company.id} companies={data.companies} onCompanyChange={selectCompany} /> : data && <section className="company-intelligence-layout">
       <aside className="panel company-coverage-panel"><div className="catalog-heading"><div><h2>Neocloud coverage</h2><span>{data.companies.length} companies</span></div><Building2 size={17} /></div>{data.companies.map((company) => <button key={company.id} className={company.id === data.company.id ? "active" : ""} onClick={() => selectCompany(company.id)}><span>{company.ticker}</span><div><strong>{company.name}</strong><small>{company.periodCount} periods · {company.latestPeriod}</small></div><ChevronRight size={14} /></button>)}</aside>
 
       <div className="company-intelligence-main">

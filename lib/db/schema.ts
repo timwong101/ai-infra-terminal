@@ -1037,3 +1037,75 @@ export const researchBriefings = pgTable("research_briefings", {
   index("research_briefings_created_idx").on(table.createdAt),
   index("research_briefings_run_idx").on(table.runId),
 ]);
+
+// Guidance and commitments are workspace-scoped analyst records. Source facts remain
+// global, while review decisions and outcome reconciliation belong to a workspace.
+export const companyCommitments = pgTable("company_commitments", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  companyId: text("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  sourceEvidenceId: text("source_evidence_id").notNull().references(() => researchEvidence.id, { onDelete: "restrict" }),
+  commitmentKey: text("commitment_key").notNull(),
+  metricKey: text("metric_key").notNull(),
+  label: text("label").notNull(),
+  category: text("category").notNull(),
+  scopeType: text("scope_type").default("company").notNull(),
+  scopeLabel: text("scope_label").default("Company total").notNull(),
+  initialStatement: text("initial_statement").notNull(),
+  reviewStatus: text("review_status").default("proposed").notNull(),
+  reviewNote: text("review_note"),
+  reviewedByUserId: text("reviewed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("company_commitments_workspace_source_metric_unique").on(table.workspaceId, table.sourceEvidenceId, table.metricKey),
+  index("company_commitments_workspace_company_idx").on(table.workspaceId, table.companyId, table.reviewStatus),
+  index("company_commitments_identity_idx").on(table.workspaceId, table.companyId, table.commitmentKey),
+]);
+
+export const commitmentRevisions = pgTable("commitment_revisions", {
+  id: text("id").primaryKey(),
+  commitmentId: text("commitment_id").notNull().references(() => companyCommitments.id, { onDelete: "cascade" }),
+  sourceEvidenceId: text("source_evidence_id").notNull().references(() => researchEvidence.id, { onDelete: "restrict" }),
+  previousRevisionId: text("previous_revision_id").references((): AnyPgColumn => commitmentRevisions.id, { onDelete: "set null" }),
+  sequence: integer("sequence").notNull(),
+  revisionKind: text("revision_kind").notNull(),
+  statement: text("statement").notNull(),
+  targetValue: text("target_value").notNull(),
+  targetDisplay: text("target_display").notNull(),
+  targetUnit: text("target_unit").notNull(),
+  targetPeriodEnd: date("target_period_end"),
+  targetDatePrecision: text("target_date_precision").default("undated").notNull(),
+  confidence: integer("confidence").notNull(),
+  validFrom: date("valid_from").notNull(),
+  reviewStatus: text("review_status").default("proposed").notNull(),
+  reviewNote: text("review_note"),
+  reviewedByUserId: text("reviewed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  recordedAt: timestamp("recorded_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("commitment_revisions_source_unique").on(table.commitmentId, table.sourceEvidenceId),
+  uniqueIndex("commitment_revisions_sequence_unique").on(table.commitmentId, table.sequence),
+  index("commitment_revisions_commitment_recorded_idx").on(table.commitmentId, table.recordedAt),
+]);
+
+export const commitmentOutcomes = pgTable("commitment_outcomes", {
+  id: text("id").primaryKey(),
+  commitmentId: text("commitment_id").notNull().references(() => companyCommitments.id, { onDelete: "cascade" }),
+  metricId: text("metric_id").references(() => companyMetrics.id, { onDelete: "set null" }),
+  sourceEvidenceId: text("source_evidence_id").references(() => researchEvidence.id, { onDelete: "set null" }),
+  outcomeStatus: text("outcome_status").notNull(),
+  actualValue: text("actual_value"),
+  actualDisplay: text("actual_display"),
+  actualUnit: text("actual_unit"),
+  actualPeriodEnd: date("actual_period_end"),
+  variancePercent: integer("variance_percent"),
+  rationale: text("rationale").notNull(),
+  confidence: integer("confidence").notNull(),
+  reviewedByUserId: text("reviewed_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  recordedAt: timestamp("recorded_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("commitment_outcomes_metric_unique").on(table.commitmentId, table.metricId),
+  index("commitment_outcomes_commitment_recorded_idx").on(table.commitmentId, table.recordedAt),
+]);

@@ -235,6 +235,52 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await expect(page.getByRole("heading", { name: "Activity & Briefings" })).toBeVisible();
   });
 
+  test("tracks management commitments from accepted evidence through a reviewed outcome", async ({ page }) => {
+    for (const company of companies) {
+      const response = await page.request.get(`/api/commitments?company=${company.id}`);
+      expect(response.status()).toBe(200);
+      const ledger = await response.json() as { company: { id: string }; commitments: Array<{ id: string }> };
+      expect(ledger.company.id).toBe(company.id);
+      expect(ledger.commitments.length).toBeGreaterThan(0);
+    }
+
+    await page.goto("/companies/coreweave");
+    await page.getByRole("button", { name: "Commitments", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Guidance & Commitments" })).toBeVisible();
+    await expect(page.getByText("300 MW", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Target 2027-12-31", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Analyst confirmation required", { exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "Accept commitment" }).click();
+    await expect(page.getByText("Analyst confirmation required", { exact: true })).toHaveCount(0);
+
+    const metricResponse = await page.request.get("/api/company-metrics");
+    expect(metricResponse.status()).toBe(200);
+    const metricLedger = await metricResponse.json() as { observations: Array<{ id: string; companyId: string; metricKey: string; normalizedValue: number; documentDate: string }> };
+    const deliveredCapacity = metricLedger.observations.find((item) =>
+      item.companyId === "coreweave"
+      && item.metricKey === "active_power_capacity"
+      && item.normalizedValue === 320
+      && item.documentDate === "2027-12-31",
+    );
+    expect(deliveredCapacity).toBeDefined();
+    const metricReview = await page.request.patch("/api/company-metrics", {
+      data: { id: deliveredCapacity!.id, status: "accepted", note: "Verified year-end delivered capacity for commitment reconciliation." },
+    });
+    expect(metricReview.status()).toBe(200);
+
+    await page.getByRole("button", { name: "Scan accepted evidence" }).click();
+    await expect(page.getByText("Latest compatible canonical actual", { exact: true })).toBeVisible();
+    await expect(page.getByText("320 MW", { exact: true }).last()).toBeVisible();
+    await page.getByRole("button", { name: "Reconcile actual" }).click();
+    await expect(page.getByText("achieved · 320 MW", { exact: true })).toBeVisible();
+    await expect(page.getByText(/320 MW reported for 2027-12-31 versus 300 MW committed \(\+7%\)/)).toBeVisible();
+
+    await page.goto("/audit");
+    await expect(page.getByText("Accepted Planned or secured power commitment.", { exact: true })).toBeVisible();
+    await expect(page.getByText("Reconciled Planned or secured power as achieved using 320 MW.", { exact: true })).toBeVisible();
+  });
+
   test("durable research jobs retry, stream progress, and replay from the control plane", async ({ page }) => {
     await page.goto("/activity");
     await expect(page.getByText("Redis connected", { exact: true })).toBeVisible();
