@@ -6,6 +6,7 @@ import { resolveDocumentPeriods, type PeriodDocument } from "@/lib/company-intel
 import { periodForDate } from "@/lib/company-intelligence/service";
 import { extractCompanyFactObservations } from "@/lib/company-intelligence/company-facts";
 import { choosePreferredObservation, hasMetricConflict } from "@/lib/company-intelligence/metric-ledger";
+import { analyzeMetricObservation, metricCompatibilityKey, metricPeriodType } from "@/lib/company-intelligence/metric-policy";
 
 test("extracts explicit infrastructure and financial metrics with normalized units", () => {
   const metrics = extractMetricsFromText("The company reported $1.2 billion of backlog. Energized data center power capacity reached 250 MW. The fleet includes 12,500 NVIDIA GPUs.");
@@ -24,6 +25,15 @@ test("separates active power from planned capacity and excludes market capex est
 test("does not classify unrelated dollar figures as company metrics", () => {
   const metrics = extractMetricsFromText("The agreement contains a $25 million termination threshold.");
   assert.equal(metrics.length, 0);
+});
+
+test("excludes offerings and component deltas from reported revenue", () => {
+  assert.equal(extractMetricsFromText("The prospectus covers the offer and sale of up to $6,000,000,000 of securities. Revenue was discussed elsewhere.").length, 0);
+  assert.equal(extractMetricsFromText("The decrease in revenue was attributable to a $25.8 million reduction in realized pricing.").length, 0);
+});
+
+test("excludes financing table values from infrastructure power capacity", () => {
+  assert.equal(extractMetricsFromText("Macquarie Transaction Overview capitalization table for the data center issuer lists 1 MW alongside net proceeds.").length, 0);
 });
 
 test("normalizes unscaled dollar figures as dollars rather than millions", () => {
@@ -156,10 +166,39 @@ test("detects material source disagreement with a two percent tolerance", () => 
   assert.equal(hasMetricConflict([100]), false);
 });
 
+test("classifies comparable metric scope and duration dimensions", () => {
+  const policy = analyzeMetricObservation({
+    metricKey: "revenue", normalizedValue: 145, context: "Consolidated revenue for the quarter was $145 million.",
+    measurementType: "duration", periodStart: "2026-01-01", periodEnd: "2026-03-31", sourceKind: "xbrl",
+  });
+  assert.equal(policy.scopeType, "consolidated");
+  assert.equal(policy.periodType, "quarter");
+  assert.equal(policy.canonicalEligible, true);
+  assert.equal(metricPeriodType({ measurementType: "duration", periodStart: "2026-01-01", periodEnd: "2026-06-30" }), "year-to-date");
+  assert.equal(metricCompatibilityKey({ metricKey: "revenue", scopeType: "consolidated", periodType: "quarter", valueType: "reported" }), "revenue:consolidated:quarter:reported");
+});
+
+test("flags financing amounts that resemble reported company revenue", () => {
+  const policy = analyzeMetricObservation({
+    metricKey: "revenue", normalizedValue: 6000, context: "The prospectus covers the offer and sale of $6 billion of securities.",
+    measurementType: "duration", periodStart: "2026-01-01", periodEnd: "2026-03-31", sourceKind: "text",
+  });
+  assert.equal(policy.canonicalEligible, false);
+  assert.ok(policy.anomalyFlags.includes("financing_amount_misclassified"));
+});
+
 test("prefers analyst-accepted observations over newer proposed values", () => {
   const preferred = choosePreferredObservation([
     { reviewStatus: "proposed" as const, periodEnd: "2026-06-30", confidence: 98, documentDate: "2026-07-20", sourceKind: "xbrl", value: 200 },
     { reviewStatus: "accepted" as const, periodEnd: "2026-03-31", confidence: 85, documentDate: "2026-05-01", sourceKind: "text", value: 180 },
   ]);
   assert.equal(preferred?.value, 180);
+});
+
+test("prefers canonical quarterly facts over accepted overlapping durations", () => {
+  const preferred = choosePreferredObservation([
+    { reviewStatus: "accepted" as const, isCanonical: true, canonicalEligible: true, periodType: "year-to-date", periodEnd: "2026-06-30", confidence: 99, documentDate: "2026-07-20", sourceKind: "xbrl", value: 400 },
+    { reviewStatus: "accepted" as const, isCanonical: true, canonicalEligible: true, periodType: "quarter", periodEnd: "2026-06-30", confidence: 95, documentDate: "2026-07-20", sourceKind: "xbrl", value: 220 },
+  ]);
+  assert.equal(preferred?.value, 220);
 });

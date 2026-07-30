@@ -296,6 +296,7 @@ Without `OPENAI_API_KEY`, memos and answers use the grounded deterministic engin
 | `pnpm research:cycle` | Run the complete research pipeline |
 | `pnpm worker:research` | Run the durable BullMQ cycle and stage workers |
 | `pnpm research:quality -- --gate` | Run the versioned benchmark and enforce CI thresholds |
+| `pnpm research:metric-quality -- --gate` | Verify extraction fixtures, anomaly safety, dimensions, and live canonical-fact contracts |
 
 SEC refreshes preserve recurring quarterly and annual coverage before newer event filings. IR ingestion only follows configured official domains, requires publication dates, rejects SEC mirrors, deduplicates repeated cards, and queues unseen documents for bounded retries.
 
@@ -311,11 +312,12 @@ pnpm test
 
 The current suite includes:
 
-- **104 deterministic tests** covering ingestion, normalization, extraction, SEC Company Facts, metric conflict policy, evidence policy, claim synthesis, numeric fidelity, content-bound review approval, citation verification, report publishing, quality scoring, company intelligence, events, replay, and durable queue contracts.
+- **112 deterministic tests** covering ingestion, normalization, extraction, SEC Company Facts, metric reconciliation and anomaly policy, evidence policy, claim synthesis, numeric fidelity, content-bound review approval, citation verification, report publishing, quality scoring, company intelligence, events, replay, and durable queue contracts.
 - **32 research-quality cases** covering four companies, topic retrieval, pairwise comparisons, source policy, synthesis, and refusal behavior.
+- **11 metric-quality cases** covering golden extraction fixtures, value and unit normalization, scope and period dimensions, anomaly suppression, and live canonical-fact contracts.
 - **15 Chromium journeys** covering login, the curated demo, responsive layouts, all four Neoclouds, evidence review, two-user memo approval, team roles, public report publishing and export, assistant persistence, durable job retries and replay, benchmarks, lineage, workspace isolation, and audit history.
 
-The CI quality gate requires at least 85 overall, at least an 85% case pass rate, and 100% citation precision and groundedness.
+CI runs two quality gates. Research answers require at least 85 overall, at least an 85% case pass rate, and 100% citation precision and groundedness. Metrics require at least 90 overall with 100% anomaly safety and live-contract health.
 
 To run the browser suite against a dedicated local database:
 

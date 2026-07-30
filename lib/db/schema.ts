@@ -484,6 +484,14 @@ export const companyMetrics = pgTable("company_metrics", {
   accessionNumber: text("accession_number"),
   valueType: text("value_type").default("reported").notNull(),
   measurementType: text("measurement_type").default("instant").notNull(),
+  scopeType: text("scope_type").default("company").notNull(),
+  scopeLabel: text("scope_label"),
+  periodType: text("period_type").default("instant").notNull(),
+  periodStart: date("period_start"),
+  anomalyFlags: jsonb("anomaly_flags").default([]).notNull(),
+  anomalyScore: integer("anomaly_score").default(0).notNull(),
+  extractorVersion: text("extractor_version").default("metric-extractor-v2").notNull(),
+  canonicalEligible: boolean("canonical_eligible").default(true).notNull(),
   metricKey: text("metric_key").notNull(),
   label: text("label").notNull(),
   category: text("category").notNull(),
@@ -503,6 +511,27 @@ export const companyMetrics = pgTable("company_metrics", {
   uniqueIndex("company_metrics_evidence_key_unique").on(table.sourceEvidenceId, table.metricKey),
   index("company_metrics_period_key_idx").on(table.periodId, table.metricKey),
   index("company_metrics_review_idx").on(table.reviewStatus, table.metricKey),
+  index("company_metrics_anomaly_idx").on(table.canonicalEligible, table.anomalyScore),
+]);
+
+export const canonicalMetrics = pgTable("canonical_metrics", {
+  id: text("id").primaryKey(),
+  companyId: text("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  periodId: text("period_id").notNull().references(() => reportingPeriods.id, { onDelete: "cascade" }),
+  metricKey: text("metric_key").notNull(),
+  scopeType: text("scope_type").default("company").notNull(),
+  periodType: text("period_type").default("instant").notNull(),
+  metricId: text("metric_id").notNull().references(() => companyMetrics.id, { onDelete: "cascade" }),
+  resolutionMethod: text("resolution_method").default("analyst_review").notNull(),
+  rationale: text("rationale"),
+  selectedByUserId: text("selected_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  selectedAt: timestamp("selected_at", { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("canonical_metrics_period_key_scope_unique").on(table.periodId, table.metricKey, table.scopeType, table.periodType),
+  uniqueIndex("canonical_metrics_metric_unique").on(table.metricId),
+  index("canonical_metrics_company_key_idx").on(table.companyId, table.metricKey),
 ]);
 
 export const metricConflicts = pgTable("metric_conflicts", {
@@ -510,6 +539,8 @@ export const metricConflicts = pgTable("metric_conflicts", {
   companyId: text("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
   periodId: text("period_id").notNull().references(() => reportingPeriods.id, { onDelete: "cascade" }),
   metricKey: text("metric_key").notNull(),
+  scopeType: text("scope_type").default("company").notNull(),
+  periodType: text("period_type").default("instant").notNull(),
   metricIds: jsonb("metric_ids").default([]).notNull(),
   status: text("status").default("open").notNull(),
   resolvedMetricId: text("resolved_metric_id").references(() => companyMetrics.id, { onDelete: "set null" }),
@@ -519,7 +550,7 @@ export const metricConflicts = pgTable("metric_conflicts", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
-  uniqueIndex("metric_conflicts_period_key_unique").on(table.periodId, table.metricKey),
+  uniqueIndex("metric_conflicts_period_key_scope_unique").on(table.periodId, table.metricKey, table.scopeType, table.periodType),
   index("metric_conflicts_status_idx").on(table.status, table.companyId),
 ]);
 
@@ -815,6 +846,41 @@ export const researchQualityResults = pgTable("research_quality_results", {
 }, (table) => [
   uniqueIndex("research_quality_results_run_benchmark_unique").on(table.runId, table.benchmarkId),
   index("research_quality_results_run_status_idx").on(table.runId, table.status),
+]);
+
+export const metricQualityRuns = pgTable("metric_quality_runs", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  ownerUserId: text("owner_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  suiteVersion: text("suite_version").notNull(),
+  status: text("status").default("running").notNull(),
+  overallScore: integer("overall_score"),
+  passRate: integer("pass_rate"),
+  metrics: jsonb("metrics").default({}).notNull(),
+  caseCount: integer("case_count").default(0).notNull(),
+  passedCount: integer("passed_count").default(0).notNull(),
+  failedCount: integer("failed_count").default(0).notNull(),
+  durationMs: integer("duration_ms"),
+  error: text("error"),
+  startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("metric_quality_runs_workspace_created_idx").on(table.workspaceId, table.createdAt)]);
+
+export const metricQualityResults = pgTable("metric_quality_results", {
+  id: text("id").primaryKey(),
+  runId: text("run_id").notNull().references(() => metricQualityRuns.id, { onDelete: "cascade" }),
+  benchmarkId: text("benchmark_id").notNull(),
+  title: text("title").notNull(),
+  category: text("category").notNull(),
+  status: text("status").notNull(),
+  expected: jsonb("expected").default({}).notNull(),
+  actual: jsonb("actual").default({}).notNull(),
+  failureReasons: jsonb("failure_reasons").default([]).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("metric_quality_results_run_benchmark_unique").on(table.runId, table.benchmarkId),
+  index("metric_quality_results_run_status_idx").on(table.runId, table.status),
 ]);
 
 export const researchReplayRuns = pgTable("research_replay_runs", {

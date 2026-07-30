@@ -390,6 +390,12 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await page.reload();
     await expect(page).toHaveURL(runUrl);
     await expect(page.getByText("32/32 passed", { exact: false })).toBeVisible();
+
+    await page.getByRole("button", { name: "Metric extraction" }).click();
+    await page.getByRole("button", { name: "Run metric benchmark" }).click();
+    await expect(page.getByText("11 pass · 0 fail", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Metric quality metrics").getByText("Anomaly safety", { exact: true })).toBeVisible();
+    await expect(page.getByText("Live metric data contracts", { exact: true })).toBeVisible();
   });
 
   test("live events, temporal replay, and lineage expose one connected research workflow", async ({ page }) => {

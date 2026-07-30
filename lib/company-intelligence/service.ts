@@ -5,11 +5,13 @@ import type { BriefComparisonInput } from "@/lib/company-intelligence/brief-buil
 import { compareDisclosureTone, compareMetricValues, extractMetricsFromText } from "@/lib/company-intelligence/extract";
 import { fetchCompanyFacts } from "@/lib/company-intelligence/company-facts";
 import { rebuildMetricConflicts } from "@/lib/company-intelligence/metric-ledger";
+import { analyzeMetricObservation } from "@/lib/company-intelligence/metric-policy";
 import { calendarPeriodForDate, resolveDocumentPeriods } from "@/lib/company-intelligence/period-resolver";
 import type { CompanyIntelligenceResponse, EarningsChangeBrief, IntelligenceComparison, IntelligencePeriod } from "@/lib/company-intelligence/types";
 import { withDatabase } from "@/lib/db/client";
 import {
   companies,
+  canonicalMetrics,
   companyMetrics,
   earningsChangeBriefClaims,
   earningsChangeBriefs,
@@ -58,6 +60,8 @@ export async function syncCompanyIntelligence() {
     const evidenceRows = await db.select().from(researchEvidence).orderBy(asc(researchEvidence.documentDate));
     const companyRows = await db.select().from(companies);
     const previousMetricRows = await db.select().from(companyMetrics);
+    const previousCanonicalRows = await db.select().from(canonicalMetrics);
+    const previousCanonicalMetricIds = new Set(previousCanonicalRows.map((item) => item.metricId));
     const previousMetricState = new Map(previousMetricRows.map((metric) => [metric.id, {
       reviewStatus: metric.reviewStatus, reviewNote: metric.reviewNote, reviewedByUserId: metric.reviewedByUserId, reviewedAt: metric.reviewedAt,
     }]));
@@ -173,19 +177,28 @@ export async function syncCompanyIntelligence() {
       const period = resolution ? periodByCompanyKey.get(`${evidence.companyId}:${resolution.periodKey}`) : undefined;
       if (!period) continue;
       for (const extracted of extractMetricsFromText(evidence.excerpt)) {
+        const measurementType = ["revenue", "capex", "operating_cash_flow"].includes(extracted.metricKey) ? "duration" : "instant";
+        const policy = analyzeMetricObservation({
+          metricKey: extracted.metricKey, normalizedValue: extracted.normalizedValue, context: extracted.context,
+          measurementType, periodStart: measurementType === "duration" ? period.periodStart : null,
+          periodEnd: period.periodEnd, sourceKind: "text", valueType: "reported",
+        });
         const metric: MetricShape = {
           id: `metric:${evidence.id}:${extracted.metricKey}`, companyId: evidence.companyId, periodId: period.id,
           sourceEvidenceId: evidence.id, metricKey: extracted.metricKey, label: extracted.label, category: extracted.category,
           normalizedValue: String(extracted.normalizedValue), displayValue: extracted.displayValue, unit: extracted.unit,
           context: extracted.context, confidence: Math.min(evidence.sourceQuality, extracted.confidence), documentDate: evidence.documentDate,
-          sourceKind: "text", reviewStatus: previousMetricState.get(`metric:${evidence.id}:${extracted.metricKey}`)?.reviewStatus
-            ?? (evidence.reviewStatus === "accepted" ? "accepted" : "proposed"),
+          sourceKind: "text", reviewStatus: previousMetricState.get(`metric:${evidence.id}:${extracted.metricKey}`)?.reviewedAt
+            ? previousMetricState.get(`metric:${evidence.id}:${extracted.metricKey}`)!.reviewStatus : "proposed",
         };
         const previous = previousMetricState.get(metric.id);
         await db.insert(companyMetrics).values({
           ...metric, sourceDocumentId: evidence.sourceDocumentId, sourceUrl: evidence.sourceUrl,
           sourceLabel: `${evidence.sourceType}: ${evidence.documentTitle}`, valueType: "reported",
-          measurementType: "instant", reviewNote: previous?.reviewNote ?? null,
+          measurementType, scopeType: policy.scopeType, scopeLabel: policy.scopeLabel, periodType: policy.periodType,
+          periodStart: measurementType === "duration" ? period.periodStart : null, anomalyFlags: policy.anomalyFlags,
+          anomalyScore: policy.anomalyScore, canonicalEligible: policy.canonicalEligible,
+          reviewNote: previous?.reviewNote ?? null,
           reviewedByUserId: previous?.reviewedByUserId ?? null, reviewedAt: previous?.reviewedAt ?? null,
         });
         metrics.push(metric);
@@ -203,17 +216,25 @@ export async function syncCompanyIntelligence() {
           if (period.periodKind === "annual" && (durationDays < 300 || durationDays > 400)) continue;
         }
         const previous = previousMetricState.get(fact.id);
+        const policy = analyzeMetricObservation({
+          metricKey: fact.metricKey, normalizedValue: fact.normalizedValue, context: fact.context,
+          measurementType: fact.measurementType, periodStart: fact.periodStart, periodEnd: fact.periodEnd,
+          sourceKind: "xbrl", valueType: "reported",
+        });
         const metric: MetricShape = {
           id: fact.id, companyId: company.id, periodId: period.id, sourceEvidenceId: null,
           metricKey: fact.metricKey, label: fact.label, category: fact.category,
           normalizedValue: String(fact.normalizedValue), displayValue: fact.displayValue, unit: fact.unit,
           context: fact.context, confidence: fact.confidence, documentDate: fact.documentDate,
-          sourceKind: "xbrl", reviewStatus: previous?.reviewStatus ?? "proposed",
+          sourceKind: "xbrl", reviewStatus: previous?.reviewedAt ? previous.reviewStatus : "proposed",
         };
         await db.insert(companyMetrics).values({
           ...metric, sourceDocumentId: fact.accessionNumber, sourceUrl: fact.sourceUrl,
           sourceLabel: `SEC ${fact.form} · Company Facts`, taxonomy: fact.taxonomy, concept: fact.concept,
           accessionNumber: fact.accessionNumber, valueType: "reported", measurementType: fact.measurementType,
+          scopeType: policy.scopeType, scopeLabel: policy.scopeLabel, periodType: policy.periodType,
+          periodStart: fact.periodStart, anomalyFlags: policy.anomalyFlags, anomalyScore: policy.anomalyScore,
+          canonicalEligible: policy.canonicalEligible,
           reviewNote: previous?.reviewNote ?? null, reviewedByUserId: previous?.reviewedByUserId ?? null,
           reviewedAt: previous?.reviewedAt ?? null,
         }).onConflictDoNothing();
@@ -221,14 +242,25 @@ export async function syncCompanyIntelligence() {
       }
     }
 
+    const persistedMetricRows = await db.select().from(companyMetrics);
+    const canonicalRows = persistedMetricRows.filter((metric) => previousCanonicalMetricIds.has(metric.id)
+      && metric.reviewStatus === "accepted");
+    if (canonicalRows.length) await db.insert(canonicalMetrics).values(canonicalRows.map((metric) => ({
+      id: `canonical:${metric.id}`, companyId: metric.companyId, periodId: metric.periodId,
+      metricKey: metric.metricKey, scopeType: metric.scopeType, periodType: metric.periodType, metricId: metric.id,
+      resolutionMethod: "analyst_review", rationale: metric.reviewNote ?? "Preserved analyst selection.",
+      selectedByUserId: metric.reviewedByUserId, selectedAt: metric.reviewedAt ?? new Date(),
+    }))).onConflictDoNothing();
+    const canonicalMetricIds = new Set(canonicalRows.map((metric) => metric.id));
+
     let metricComparisons = 0;
     const orderedByCompany = new Map<string, PeriodShape[]>();
     for (const company of companyRows) orderedByCompany.set(company.id, periods.filter((period) => period.companyId === company.id).sort((a, b) => a.periodEnd.localeCompare(b.periodEnd)));
     for (const [companyId, companyPeriods] of orderedByCompany) {
       for (const [index, currentPeriod] of companyPeriods.entries()) {
         const previousPeriod = companyPeriods.slice(0, index).reverse().find((period) => period.periodKind === currentPeriod.periodKind);
-        const currentMetrics = metrics.filter((metric) => metric.periodId === currentPeriod.id && metric.reviewStatus === "accepted");
-        const previousMetrics = previousPeriod ? metrics.filter((metric) => metric.periodId === previousPeriod.id && metric.reviewStatus === "accepted") : [];
+        const currentMetrics = metrics.filter((metric) => metric.periodId === currentPeriod.id && canonicalMetricIds.has(metric.id));
+        const previousMetrics = previousPeriod ? metrics.filter((metric) => metric.periodId === previousPeriod.id && canonicalMetricIds.has(metric.id)) : [];
         for (const metricKey of new Set(currentMetrics.map((metric) => metric.metricKey))) {
           const current = bestMetric(currentMetrics, metricKey);
           const previous = bestMetric(previousMetrics, metricKey);
@@ -377,7 +409,10 @@ export async function getCompanyIntelligence(companyId?: string, currentPeriodId
     if (!selectedCompany) throw new Error("No company intelligence is available yet. Run the intelligence sync first.");
     const periods = allPeriods.filter((period) => period.companyId === selectedCompany.id);
     const companyMetricRows = await db.select().from(companyMetrics).where(eq(companyMetrics.companyId, selectedCompany.id));
-    const metricPeriodIds = new Set(companyMetricRows.filter((metric) => metric.reviewStatus !== "rejected").map((metric) => metric.periodId));
+    const companyCanonicalRows = await db.select().from(canonicalMetrics).where(eq(canonicalMetrics.companyId, selectedCompany.id));
+    const canonicalMetricIds = new Set(companyCanonicalRows.map((metric) => metric.metricId));
+    const canonicalCompanyMetricRows = companyMetricRows.filter((metric) => canonicalMetricIds.has(metric.id));
+    const metricPeriodIds = new Set(canonicalCompanyMetricRows.map((metric) => metric.periodId));
     const current = periods.find((period) => period.id === currentPeriodId)
       ?? periods.find((period) => metricPeriodIds.has(period.id) && period.periodKind === "quarter" && period.periodBasis !== "calendar-fallback")
       ?? periods.find((period) => period.periodKind === "quarter" && period.periodBasis !== "calendar-fallback")
@@ -389,8 +424,8 @@ export async function getCompanyIntelligence(companyId?: string, currentPeriodId
       ?? null;
     const comparisons = await db.select().from(periodComparisons).where(eq(periodComparisons.currentPeriodId, current.id)).orderBy(desc(periodComparisons.significance), asc(periodComparisons.category));
     const disclosures = comparisons.filter((item) => item.comparisonKind === "disclosure");
-    const currentMetricRows = companyMetricRows.filter((metric) => metric.periodId === current.id);
-    const previousMetricRows = previous ? companyMetricRows.filter((metric) => metric.periodId === previous.id) : [];
+    const currentMetricRows = canonicalCompanyMetricRows.filter((metric) => metric.periodId === current.id);
+    const previousMetricRows = previous ? canonicalCompanyMetricRows.filter((metric) => metric.periodId === previous.id) : [];
     const dynamicMetrics: IntelligenceComparison[] = [...new Set(currentMetricRows.map((item) => item.metricKey))].map((metricKey) => {
       const currentMetric = bestMetric(currentMetricRows, metricKey);
       const previousMetric = bestMetric(previousMetricRows, metricKey);

@@ -35,6 +35,8 @@ const MONEY_RULES: MoneyRule[] = [
 ];
 
 const MARKET_ESTIMATE_PATTERN = /hyperscalers? capex estimates?|amazon|alphabet|google|meta platforms|microsoft|market size|total addressable market|megaprojects|industry estimate/i;
+const NON_TOTAL_REVENUE_PATTERN = /prospectus|offer and sale|securities|at-the-market|equity offering|convertible notes?|net proceeds|(?:increase|decrease|reduced|declined)(?:\s+in)?\s+revenue[^.]{0,45}\bby\b|attributable to/i;
+const FINANCING_TABLE_PATTERN = /capitalization table|macquarie expect to invest|issuer|equity commitment|net proceeds/i;
 
 export function extractMetricsFromText(value: string): ExtractedMetric[] {
   const metrics = new Map<string, ExtractedMetric>();
@@ -55,6 +57,7 @@ export function extractMetricsFromText(value: string): ExtractedMetric[] {
       .sort((left, right) => left.distance - right.distance)[0]?.candidate;
     if (!rule || metrics.has(rule.metricKey)) continue;
     if (["capex", "revenue"].includes(rule.metricKey) && MARKET_ESTIMATE_PATTERN.test(context)) continue;
+    if (rule.metricKey === "revenue" && NON_TOTAL_REVENUE_PATTERN.test(context)) continue;
     const normalizedValue = moneyInMillions(match[1], match[2] ?? "");
     if (!Number.isFinite(normalizedValue) || normalizedValue <= 0) continue;
     metrics.set(rule.metricKey, { ...rule, normalizedValue, displayValue: moneyDisplay(match[1], match[2] ?? ""), unit: "USD millions", context });
@@ -68,6 +71,7 @@ export function extractMetricsFromText(value: string): ExtractedMetric[] {
     const raw = parseNumber(match[1]);
     const normalizedValue = /^g/i.test(match[2]) ? raw * 1_000 : raw;
     if (!Number.isFinite(normalizedValue) || normalizedValue <= 0) continue;
+    if (normalizedValue <= 5 && FINANCING_TABLE_PATTERN.test(context)) continue;
     const activePosition = nearby.search(/energized|\blive\b|active power|in service|operates?/i);
     const plannedPosition = nearby.search(/contracted|secured|guidance|pipeline|planned|under construction|development capacity|available power|expected|will be operational/i);
     const metricPosition = nearby.indexOf(match[0]);

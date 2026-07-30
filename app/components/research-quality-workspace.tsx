@@ -3,6 +3,7 @@
 import { BarChart3, CheckCircle2, ChevronRight, CircleDollarSign, Clock3, Database, FlaskConical, LoaderCircle, Play, ShieldCheck, XCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ResearchQualityResult, ResearchQualityRun } from "@/lib/research/types";
+import { MetricQualityWorkspace } from "@/app/components/metric-quality-workspace";
 
 type Catalog = {
   runs: ResearchQualityRun[];
@@ -35,6 +36,7 @@ export function ResearchQualityWorkspace({ initialRunId = "", onRunSelect }: Pro
   const [engine, setEngine] = useState<"deterministic" | "ai">("deterministic");
   const [status, setStatus] = useState<"loading" | "ready" | "running" | "error">("loading");
   const [notice, setNotice] = useState("");
+  const [qualityDomain, setQualityDomain] = useState<"research" | "metrics">("research");
 
   const loadCatalog = useCallback(async () => {
     const response = await fetch("/api/research-quality", { cache: "no-store" });
@@ -97,16 +99,20 @@ export function ResearchQualityWorkspace({ initialRunId = "", onRunSelect }: Pro
   return (
     <div className="research-quality-workspace">
       <header className="quality-title-row">
-        <div><p className="breadcrumb">Research workspace / Reliability</p><h1>Research Quality</h1><span>Grounding, retrieval, citation, and refusal benchmarks for the Research Assistant.</span></div>
+        <div><p className="breadcrumb">Research workspace / Reliability</p><h1>Research Quality</h1><span>{qualityDomain === "research" ? "Grounding, retrieval, citation, and refusal benchmarks for the Research Assistant." : "Extraction correctness, anomaly safety, canonical facts, and live data contracts."}</span></div>
         <div className="quality-run-controls">
+          <div className="quality-engine quality-domain" aria-label="Quality domain"><button className={qualityDomain === "research" ? "active" : ""} onClick={() => setQualityDomain("research")}>Research answers</button><button className={qualityDomain === "metrics" ? "active" : ""} onClick={() => setQualityDomain("metrics")}>Metric extraction</button></div>
+          {qualityDomain === "research" && <>
           <div className="quality-engine" aria-label="Evaluation engine">
             <button className={engine === "deterministic" ? "active" : ""} onClick={() => setEngine("deterministic")}>Deterministic</button>
             <button className={engine === "ai" ? "active" : ""} disabled={!catalog?.aiAvailable} title={!catalog?.aiAvailable ? "Configure OPENAI_API_KEY to evaluate the AI engine" : undefined} onClick={() => setEngine("ai")}>AI model</button>
           </div>
           <button className="primary-button" disabled={status === "running"} onClick={() => void startRun()}>{status === "running" ? <LoaderCircle className="drawer-spinner" size={15} /> : <Play size={15} />}<span>{status === "running" ? "Running 32 cases" : "Run benchmark"}</span></button>
+          </>}
         </div>
       </header>
 
+      {qualityDomain === "metrics" ? <MetricQualityWorkspace /> : <>
       {(notice || status === "running") && <div className={`quality-notice ${status}`}><FlaskConical size={15} /><span>{notice || "Running the complete benchmark against accepted evidence. This view will update when all cases are persisted."}</span></div>}
 
       <section className="quality-metrics" aria-label="Quality metrics">
@@ -136,6 +142,7 @@ export function ResearchQualityWorkspace({ initialRunId = "", onRunSelect }: Pro
           {selectedResult ? <QualityDetail result={selectedResult} /> : <div className="quality-empty"><ShieldCheck size={25} /><strong>Case inspection</strong><span>Select a benchmark result to inspect its scores, failures, and exact source packet.</span></div>}
         </aside>
       </div>
+      </>}
     </div>
   );
 }

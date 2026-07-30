@@ -7,6 +7,7 @@ import {
   researchAssistantMessages,
   researchAssistantSessions,
   researchEvidence,
+  metricQualityRuns,
   researchQualityRuns,
   researchReplayRuns,
 } from "@/lib/db/schema";
@@ -14,6 +15,7 @@ import { generateComparisonMemo } from "@/lib/research/memos";
 import { decideMemoReview, submitMemoForReview } from "@/lib/reviews/service";
 import { answerResearchAssistantQuestion, createResearchAssistantSession } from "@/lib/research/research-assistant";
 import { RESEARCH_QUALITY_SUITE_VERSION, runResearchQualitySuite } from "@/lib/research/research-quality";
+import { METRIC_QUALITY_SUITE_VERSION, runMetricQualitySuite } from "@/lib/company-intelligence/metric-quality";
 import { createResearchReplay } from "@/lib/replay/service";
 
 const COMPANY_IDS = ["coreweave", "nebius", "applied-digital", "iren"];
@@ -44,6 +46,7 @@ export type PortfolioDemoSeedSummary = {
   memoId: string;
   assistantSessionId: string;
   qualityRunId: string;
+  metricQualityRunId: string;
   replayRunId: string;
 };
 
@@ -214,6 +217,23 @@ async function ensureQualityRun(auth: AuthContext) {
   return run.id;
 }
 
+async function ensureMetricQualityRun(auth: AuthContext) {
+  const existing = await withDatabase(async (db) => (await db
+    .select({ id: metricQualityRuns.id })
+    .from(metricQualityRuns)
+    .where(and(
+      eq(metricQualityRuns.workspaceId, auth.workspace.id),
+      eq(metricQualityRuns.suiteVersion, METRIC_QUALITY_SUITE_VERSION),
+      eq(metricQualityRuns.status, "completed"),
+    ))
+    .orderBy(desc(metricQualityRuns.createdAt))
+    .limit(1))[0] ?? null);
+  if (existing) return existing.id;
+  const run = await runMetricQualitySuite(auth);
+  if (!run) throw new Error("Unable to prepare the metric quality benchmark.");
+  return run.id;
+}
+
 async function ensureReplay(auth: AuthContext) {
   const existing = await withDatabase(async (db) => (await db
     .select({ id: researchReplayRuns.id })
@@ -249,8 +269,9 @@ export async function ensurePortfolioDemoWorkspace(identity: { userId: string; w
     await ensureMemoApproval(memoId, auth);
     const assistantSessionId = await ensureAssistant(auth);
     const qualityRunId = await ensureQualityRun(auth);
+    const metricQualityRunId = await ensureMetricQualityRun(auth);
     const replayRunId = await ensureReplay(auth);
-    return { acceptedEvidenceCount, removedEmptySessions, memoId, assistantSessionId, qualityRunId, replayRunId };
+    return { acceptedEvidenceCount, removedEmptySessions, memoId, assistantSessionId, qualityRunId, metricQualityRunId, replayRunId };
   })();
   inFlight.set(identity.workspaceId, task);
   try {
