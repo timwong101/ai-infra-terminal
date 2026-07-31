@@ -3,6 +3,7 @@ export type SecCompany = {
   name: string;
   ticker: string;
   cik: string;
+  fiscalYearEndMonth?: number;
   forms: string[];
   regimes: IssuerReportingRegime[];
 };
@@ -30,6 +31,7 @@ export const secCompanies: SecCompany[] = [
     name: "CoreWeave",
     ticker: "CRWV",
     cik: "0001769628",
+    fiscalYearEndMonth: 12,
     forms: ["10-K", "10-Q", "8-K"],
     regimes: [{ classification: "domestic", effectiveFrom: "0000-01-01", forms: ["10-K", "10-Q", "8-K"] }],
   },
@@ -38,6 +40,7 @@ export const secCompanies: SecCompany[] = [
     name: "Nebius",
     ticker: "NBIS",
     cik: "0001513845",
+    fiscalYearEndMonth: 12,
     forms: ["20-F", "20-F/A", "6-K"],
     regimes: [{ classification: "foreign-private", effectiveFrom: "0000-01-01", forms: ["20-F", "20-F/A", "6-K"] }],
   },
@@ -46,6 +49,7 @@ export const secCompanies: SecCompany[] = [
     name: "Applied Digital",
     ticker: "APLD",
     cik: "0001144879",
+    fiscalYearEndMonth: 5,
     forms: ["10-K", "10-Q", "8-K"],
     regimes: [{ classification: "domestic", effectiveFrom: "0000-01-01", forms: ["10-K", "10-Q", "8-K"] }],
   },
@@ -54,6 +58,7 @@ export const secCompanies: SecCompany[] = [
     name: "IREN",
     ticker: "IREN",
     cik: "0001878848",
+    fiscalYearEndMonth: 6,
     forms: ["10-K", "10-Q", "8-K", "20-F", "20-F/A", "6-K"],
     regimes: [
       { classification: "foreign-private", effectiveFrom: "0000-01-01", effectiveTo: "2025-06-30", forms: ["20-F", "20-F/A", "6-K"] },

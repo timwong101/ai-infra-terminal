@@ -250,6 +250,18 @@ async function currentSnapshot(sourceKind: ArtifactSourceKind, sourceDocumentId:
 }
 
 export async function reprocessSourceArtifact(sourceKind: ArtifactSourceKind, sourceDocumentId: string, auth: AuthContext) {
+  const { run } = await createSourceExtractionPreview(sourceKind, sourceDocumentId);
+  await recordAuditEvent(auth, {
+    action: "source_extraction.previewed",
+    entityType: "source_extraction_run",
+    entityId: run.id,
+    summary: `Reprocessed archived ${sourceKind.toUpperCase()} source without changing canonical evidence.`,
+    metadata: { sourceDocumentId, parserVersion: run.parserVersion, outputHash: run.outputHash },
+  });
+  return getSourceProvenance(sourceKind, sourceDocumentId);
+}
+
+export async function createSourceExtractionPreview(sourceKind: ArtifactSourceKind, sourceDocumentId: string) {
   const source = await getCurrentArchivedSource(sourceKind, sourceDocumentId);
   if (!source) throw new Error("Archive this source before requesting a parser replay.");
   const bytes = await getArtifactObjectStore().get(source.artifact.storageKey);
@@ -273,14 +285,7 @@ export async function reprocessSourceArtifact(sourceKind: ArtifactSourceKind, so
     diffSummary: diffExtractionSnapshots(current, preview),
     durationMs: Date.now() - startedAt,
   });
-  await recordAuditEvent(auth, {
-    action: "source_extraction.previewed",
-    entityType: "source_extraction_run",
-    entityId: run.id,
-    summary: `Reprocessed archived ${sourceKind.toUpperCase()} source without changing canonical evidence.`,
-    metadata: { sourceDocumentId, parserVersion: run.parserVersion, outputHash: run.outputHash },
-  });
-  return getSourceProvenance(sourceKind, sourceDocumentId);
+  return { source, current, preview, run };
 }
 
 async function capturePromotionImpact(sourceKind: ArtifactSourceKind, sourceDocumentId: string) {

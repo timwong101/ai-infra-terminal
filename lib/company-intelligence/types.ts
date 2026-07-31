@@ -105,5 +105,12 @@ export type CompanyIntelligenceResponse = {
   changeBrief: EarningsChangeBrief | null;
   earningsPackage: { id: string; label: string; documentCount: number; evidenceCount: number; documents: EarningsPackageDocument[] } | null;
   claims: Array<{ id: string; title: string; statement: string; supportScore: number; kind: string }>;
-  summary: { metrics: number; disclosures: number; highSignificance: number; evidenceSources: number };
+  summary: {
+    metrics: number;
+    metricObservations: number;
+    proposedMetrics: number;
+    disclosures: number;
+    highSignificance: number;
+    evidenceSources: number;
+  };
 };

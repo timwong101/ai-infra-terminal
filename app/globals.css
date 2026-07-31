@@ -1155,6 +1155,28 @@ input::placeholder, textarea::placeholder { color: #758791; opacity: 1; }
 .metric-quality-command h2 { margin: 3px 0 0; color: #d5e0e4; font-size: 14px; }
 .metric-quality-command p { margin: 4px 0 0; color: #6b818c; font-size: 10px; }
 .metric-quality-command .primary-button { min-width: 160px; justify-content: center; }
+.extraction-actions { display: flex; align-items: center; gap: 7px; }
+.parser-release { min-width: 78px; padding: 5px 7px; border: 1px solid #334b57; border-radius: 3px; color: #718791; font-size: 8px; text-align: center; text-transform: uppercase; }
+.parser-release.candidate { border-color: #796433; background: #18170e; color: #dfba60; }
+.parser-release.promoted { border-color: #286345; background: #092118; color: #6fd18f; }
+.parser-release.blocked { border-color: #653b39; background: #1d1112; color: #df7770; }
+.source-company-contracts { min-height: 51px; padding: 0 18px; border-bottom: 1px solid var(--border); background: #050e15; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.source-company-contracts > div { min-width: 0; padding: 8px 13px; border-right: 1px solid var(--border-soft); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 8px; }
+.source-company-contracts > div:last-child { border-right: 0; }
+.source-company-contracts span { color: #8da0a8; font-size: 9px; font-weight: 700; }
+.source-company-contracts strong { font-size: 11px; }
+.source-company-contracts strong.high { color: #70d18e; }
+.source-company-contracts strong.low { color: #df7770; }
+.source-company-contracts small { grid-column: 1 / -1; color: #566e79; font-size: 8px; }
+.extraction-quality-layout { min-height: calc(100vh - 347px); }
+.extraction-quality-layout .quality-history-list, .extraction-quality-layout .quality-result-list { max-height: calc(100vh - 405px); }
+.extraction-quality-detail { max-height: calc(100vh - 347px); }
+.extraction-provenance dt { display: flex; align-items: center; gap: 5px; }
+.extraction-provenance code { max-height: 210px !important; white-space: pre-wrap !important; }
+.operations-status-notice { min-height: 37px; padding: 7px 18px; border-bottom: 1px solid #5e3c35; background: #1a1111; color: #db776e; display: flex; align-items: center; gap: 8px; font-size: 9px; }
+.operations-status-notice strong { color: #e38a82; }
+.briefing-header .section-kicker em { margin-left: 7px; padding: 2px 5px; border: 1px solid #2c6546; border-radius: 2px; color: #70ce90; font-size: 7px; font-style: normal; }
+.briefing-header .section-kicker em.stale { border-color: #70582e; color: #dcb45c; }
 .metric-quality-layout { min-height: calc(100vh - 296px); display: grid; grid-template-columns: 210px minmax(330px, .95fr) minmax(330px, 1.05fr); }
 .metric-quality-detail { max-height: calc(100vh - 296px); overflow-y: auto; }
 .metric-quality-detail > header { min-height: 68px; padding: 12px 14px; border-bottom: 1px solid var(--border-soft); display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; gap: 9px; }
@@ -1707,9 +1729,15 @@ input::placeholder, textarea::placeholder { color: #758791; opacity: 1; }
 
 @media (max-width: 760px) {
   .quality-title-row, .metric-quality-command { align-items: stretch; flex-direction: column; }
+  .extraction-actions { width: 100%; flex-wrap: wrap; }
+  .extraction-actions .primary-button { flex: 1; }
+  .source-company-contracts { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0; }
+  .source-company-contracts > div:nth-child(2) { border-right: 0; }
   .quality-run-controls { align-items: stretch; flex-direction: column; }
-  .quality-engine, .quality-domain { width: 100%; }
+  .quality-engine, .quality-domain { width: 100%; display: flex; }
   .quality-engine button, .quality-domain button { min-width: 0; flex: 1; }
+  .quality-run-controls .primary-button { width: 100%; min-width: 0; padding: 0 12px; color: white; gap: 6px; }
+  .quality-run-controls .primary-button span { display: inline; }
   .metric-quality-layout { display: flex; flex-direction: column; }
   .metric-quality-layout .quality-history { display: none; }
   .company-intelligence-workspace .workspace-title-row { flex-direction: column; }

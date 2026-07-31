@@ -51,6 +51,7 @@ It does not insert synthetic research evidence. The seeded memo, answer, benchma
 | --- | --- |
 | SEC and official IR ingestion | Source-specific normalization, retry policy, caching, and idempotent persistence |
 | Immutable source archive | S3-compatible content-addressed storage, SHA-256 verification, parser versioning, and deterministic replay |
+| Real-document parser gate | Immutable SEC/IR benchmark corpus, expected-versus-actual diagnostics, fiscal-period checks, and controlled parser promotion |
 | Evidence review | Human-in-the-loop workflow with durable decisions and provenance |
 | KPI ledger and peer benchmark | SEC XBRL normalization, source conflict resolution, review state, and comparable time series |
 | Guidance and commitments | Stable domain identity, bitemporal revisions, human review, and actual-versus-target reconciliation |
@@ -75,6 +76,9 @@ flowchart LR
     SEC["SEC EDGAR"] --> ARCHIVE[("Immutable source artifacts")]
     IR["Official investor relations"] --> ARCHIVE
     ARCHIVE --> INGEST
+    ARCHIVE --> SOURCEBENCH["Real-document parser benchmark"]
+    SOURCEBENCH --> PARSERGATE["Parser release gate"]
+    PARSERGATE --> INGEST
     XBRL["SEC Company Facts / XBRL"] --> METRICS["Normalized KPI ledger"]
     GDELT["GDELT discovery"] --> EVENTS["Discovery event pipeline"]
 
@@ -166,6 +170,12 @@ The Research Assistant retrieves across one or more companies and returns a cite
 ### Production Failure To Evaluation
 
 An analyst can report wrong retrieval, unsupported claims, citation mismatches, incorrect metrics, stale sources, missing evidence, incorrect answers, or failures to abstain directly from a saved answer. The report freezes the complete generation trace separately from the analyst's judgment. In the Quality workspace, the analyst records expected behavior and executable company scope, then promotes the issue into a versioned production regression case. Future benchmark runs combine the 32 curated cases with all active production cases; saved runs can be compared for regressions and fixes without adding another top-level workflow.
+
+### Archived Source To Parser Release
+
+The source extraction benchmark reparses immutable official documents from all four covered companies and scores structure, section taxonomy, metric recall and precision, false-positive guards, management commitments, and fiscal-period resolution. Each result retains the archived SHA-256 hash, parser version, replay diff, expected contract, and actual output. A parser candidate cannot be promoted unless every case passes, the overall score is at least 90, metric recall is at least 90%, and false-positive plus fiscal-period safety remain at 100%.
+
+Local and portfolio runs use the eight-document real SEC/IR corpus. CI uses a deliberately smaller archived fixture to prove the same replay-and-gate contract without depending on external sites or checked-in proprietary source bytes.
 
 ### Evidence To Memo
 
@@ -319,6 +329,7 @@ Without `OPENAI_API_KEY`, memos and answers use the grounded deterministic engin
 | `pnpm worker:research` | Run the durable BullMQ cycle and stage workers |
 | `pnpm research:quality -- --gate` | Run the versioned benchmark and enforce CI thresholds |
 | `pnpm research:metric-quality -- --gate` | Verify extraction fixtures, anomaly safety, dimensions, and live canonical-fact contracts |
+| `pnpm research:extraction-quality -- --gate` | Replay immutable source documents and enforce parser-release thresholds |
 
 SEC refreshes preserve recurring quarterly and annual coverage before newer event filings. IR ingestion only follows configured official domains, requires publication dates, rejects SEC mirrors, deduplicates repeated cards, and queues unseen documents for bounded retries.
 
@@ -334,12 +345,13 @@ pnpm test
 
 The current suite includes:
 
-- **126 deterministic tests** covering ingestion, immutable source hashing, parser replay diffs, normalization, extraction, SEC Company Facts, metric reconciliation and anomaly policy, evidence policy, claim synthesis, numeric fidelity, content-bound review approval, citation verification, production regression contracts, report publishing, quality scoring, company intelligence, events, replay, and durable queue contracts.
+- **131 deterministic tests** covering ingestion, immutable source hashing, parser replay diffs, normalization, extraction, SEC Company Facts, metric reconciliation and anomaly policy, evidence policy, claim synthesis, numeric fidelity, content-bound review approval, citation verification, production regression contracts, report publishing, quality scoring, company intelligence, events, replay, and durable queue contracts.
 - **32 curated research-quality cases plus versioned production cases** covering four companies, topic retrieval, pairwise comparisons, source policy, synthesis, refusal behavior, and analyst-reported failures.
 - **11 metric-quality cases** covering golden extraction fixtures, value and unit normalization, scope and period dimensions, anomaly suppression, and live canonical-fact contracts.
+- **8 immutable real-document extraction cases** spanning all four Neoclouds, including production false-positive guards and issuer-specific fiscal calendars.
 - **19 Chromium journeys** covering login, the curated demo, responsive layouts, all four Neoclouds, immutable source download, parser replay and analyst promotion, evidence review, commitments, two-user memo approval, team roles, public report publishing and export, assistant persistence, failure-to-regression promotion, durable job retries, benchmarks, lineage, workspace isolation, and audit history.
 
-CI runs two quality gates. Research answers require at least 85 overall, at least an 85% case pass rate, and 100% citation precision and groundedness. Metrics require at least 90 overall with 100% anomaly safety and live-contract health.
+CI runs three quality gates. Research answers require at least 85 overall, at least an 85% case pass rate, and 100% citation precision and groundedness. Metrics require at least 90 overall with 100% anomaly safety and live-contract health. Source extraction requires every archived fixture to pass with 100% false-positive and fiscal-period safety.
 
 To run the browser suite against a dedicated local database:
 
@@ -356,6 +368,7 @@ The E2E fixture refuses to truncate a database whose name does not end in `_e2e`
 app/                    React workspaces and API routes
 lib/auth/               Sessions, roles, workspaces, and audit events
 lib/artifacts/          Raw source storage, checksums, versions, replay, and promotion
+lib/extraction-quality/ Real-document contracts, replay scoring, run history, and parser releases
 lib/sec/                SEC client, normalization, extraction, and persistence
 lib/ir/                 IR discovery, extraction, and queue processing
 lib/research/           Evidence retrieval, memo, assistant, and quality services

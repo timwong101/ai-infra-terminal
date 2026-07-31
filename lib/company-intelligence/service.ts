@@ -425,6 +425,7 @@ export async function getCompanyIntelligence(companyId?: string, currentPeriodId
     const comparisons = await db.select().from(periodComparisons).where(eq(periodComparisons.currentPeriodId, current.id)).orderBy(desc(periodComparisons.significance), asc(periodComparisons.category));
     const disclosures = comparisons.filter((item) => item.comparisonKind === "disclosure");
     const currentMetricRows = canonicalCompanyMetricRows.filter((metric) => metric.periodId === current.id);
+    const currentObservationRows = companyMetricRows.filter((metric) => metric.periodId === current.id && metric.reviewStatus !== "rejected");
     const previousMetricRows = previous ? canonicalCompanyMetricRows.filter((metric) => metric.periodId === previous.id) : [];
     const dynamicMetrics: IntelligenceComparison[] = [...new Set(currentMetricRows.map((item) => item.metricKey))].map((metricKey) => {
       const currentMetric = bestMetric(currentMetricRows, metricKey);
@@ -511,6 +512,8 @@ export async function getCompanyIntelligence(companyId?: string, currentPeriodId
       claims: claims.map((claim) => ({ id: claim.id, title: claim.title, statement: claim.statement, supportScore: claim.supportScore, kind: claim.kind })),
       summary: {
         metrics: mapped.filter((item) => item.comparisonKind === "metric").length,
+        metricObservations: currentObservationRows.length,
+        proposedMetrics: currentObservationRows.filter((item) => item.reviewStatus === "proposed").length,
         disclosures: mapped.filter((item) => item.comparisonKind === "disclosure").length,
         highSignificance: mapped.filter((item) => item.significance === "high").length,
         evidenceSources: new Set(evidence.map((item) => item.sourceDocumentId)).size,

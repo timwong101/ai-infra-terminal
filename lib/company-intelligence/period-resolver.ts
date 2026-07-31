@@ -1,3 +1,5 @@
+import { secCompanies } from "@/data/companies";
+
 export type PeriodKind = "quarter" | "annual" | "calendar-fallback";
 export type PeriodBasis = "reported" | "inferred" | "calendar-fallback";
 
@@ -31,7 +33,7 @@ export type ResolvedDocumentPeriod = PeriodDocument & {
 const QUARTERLY_FORM = /^SEC (?:10-Q|10-Q\/A)$/i;
 const ANNUAL_FORM = /^SEC (?:10-K|10-K\/A|20-F|20-F\/A)$/i;
 const QUARTER_PATTERN = /\bQ([1-4])\s*(?:\/\s*)?(?:FY\s*)?'?(\d{2,4})\b/i;
-const WORD_QUARTER_PATTERN = /\b(first|second|third|fourth)\s+quarter(?:\s+of)?\s+(?:FY\s*)?'?(\d{2,4})\b/i;
+const WORD_QUARTER_PATTERN = /\b(?:fiscal\s+)?(first|second|third|fourth)\s+quarter(?:\s+and\s+full\s+year)?(?:\s+of)?\s+(?:FY\s*)?'?(\d{2,4})\b/i;
 const ANNUAL_PATTERN = /\b(?:full\s+year|FY)\s*'?(\d{2,4})\b/i;
 
 function normalizeYear(value: string) {
@@ -52,6 +54,19 @@ function rangeEndingAt(value: string, months: number) {
 function formatPeriodEnd(value: string) {
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })
     .format(new Date(`${value}T00:00:00Z`));
+}
+
+function explicitFiscalRange(companyId: string, fiscalYear: number, fiscalQuarter: number | null) {
+  const fiscalYearEndMonth = secCompanies.find((company) => company.id === companyId)?.fiscalYearEndMonth ?? 12;
+  if (fiscalQuarter === null) {
+    return {
+      periodStart: new Date(Date.UTC(fiscalYear - 1, fiscalYearEndMonth, 1)).toISOString().slice(0, 10),
+      periodEnd: new Date(Date.UTC(fiscalYear, fiscalYearEndMonth, 0)).toISOString().slice(0, 10),
+    };
+  }
+  const end = new Date(Date.UTC(fiscalYear, fiscalYearEndMonth - (4 - fiscalQuarter) * 3, 0));
+  const start = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - 2, 1));
+  return { periodStart: start.toISOString().slice(0, 10), periodEnd: end.toISOString().slice(0, 10) };
 }
 
 export function calendarPeriodForDate(value: string) {
@@ -143,7 +158,7 @@ export function resolveDocumentPeriods(documents: PeriodDocument[]): ResolvedDoc
     }
 
     if (explicit) {
-      const calendar = calendarPeriodForDate(document.documentDate);
+      const range = explicitFiscalRange(document.companyId, explicit.fiscalYear, explicit.fiscalQuarter);
       return {
         ...document,
         periodKey: `fiscal:${explicit.fiscalYear}-${explicit.kind === "quarter" ? `Q${explicit.fiscalQuarter}` : "FY"}`,
@@ -152,8 +167,7 @@ export function resolveDocumentPeriods(documents: PeriodDocument[]): ResolvedDoc
         periodBasis: "inferred",
         fiscalYear: explicit.fiscalYear,
         fiscalQuarter: explicit.fiscalQuarter,
-        periodStart: calendar.periodStart,
-        periodEnd: calendar.periodEnd,
+        ...range,
         resolutionMethod: "explicit-document-label",
         resolutionConfidence: 90,
       };

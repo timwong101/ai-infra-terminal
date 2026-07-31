@@ -30,6 +30,8 @@ test("does not classify unrelated dollar figures as company metrics", () => {
 test("excludes offerings and component deltas from reported revenue", () => {
   assert.equal(extractMetricsFromText("The prospectus covers the offer and sale of up to $6,000,000,000 of securities. Revenue was discussed elsewhere.").length, 0);
   assert.equal(extractMetricsFromText("The decrease in revenue was attributable to a $25.8 million reduction in realized pricing.").length, 0);
+  assert.equal(extractMetricsFromText("The increase in revenue is primarily due to a $23.0 million pricing benefit.").length, 0);
+  assert.equal(extractMetricsFromText("A capitalization table assumes $1,000 per MW of debt capacity.").length, 0);
 });
 
 test("excludes financing table values from infrastructure power capacity", () => {
@@ -80,6 +82,15 @@ test("anchors earnings documents to the SEC period of report", () => {
   assert.equal(resolved[1].periodKey, resolved[0].periodKey);
   assert.equal(resolved[1].label, "Q3 FY2026");
   assert.equal(resolved[1].resolutionMethod, "matched-periodic-filing");
+});
+
+test("maps explicit fiscal quarters to each issuer's fiscal calendar", () => {
+  const [appliedDigital, iren] = resolveDocumentPeriods([
+    periodDocument({ companyId: "applied-digital", sourceKind: "ir", sourceDocumentId: "apld-q4", sourceType: "Earnings Release", documentTitle: "Applied Digital Fiscal Fourth Quarter and Full Year 2026 Results", documentDate: "2026-07-27", periodOfReport: null }),
+    periodDocument({ companyId: "iren", sourceKind: "ir", sourceDocumentId: "iren-q3", sourceType: "Presentation", documentTitle: "IREN Q3 FY26 Results Presentation", documentDate: "2026-05-07", periodOfReport: null }),
+  ]);
+  assert.deepEqual([appliedDigital.periodStart, appliedDigital.periodEnd], ["2026-03-01", "2026-05-31"]);
+  assert.deepEqual([iren.periodStart, iren.periodEnd], ["2026-01-01", "2026-03-31"]);
 });
 
 test("keeps annual periods separate and marks undated news as calendar fallback", () => {

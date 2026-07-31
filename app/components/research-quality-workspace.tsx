@@ -4,6 +4,7 @@ import { BarChart3, CheckCircle2, ChevronRight, CircleDollarSign, Clock3, Databa
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ResearchQualityCase, ResearchQualityFeedback, ResearchQualityResult, ResearchQualityRun } from "@/lib/research/types";
 import { MetricQualityWorkspace } from "@/app/components/metric-quality-workspace";
+import { ExtractionQualityWorkspace } from "@/app/components/extraction-quality-workspace";
 import { ResearchQualityFeedbackWorkspace } from "@/app/components/research-quality-feedback-workspace";
 
 type Catalog = {
@@ -39,7 +40,7 @@ export function ResearchQualityWorkspace({ initialRunId = "", onRunSelect }: Pro
   const [engine, setEngine] = useState<"deterministic" | "ai">("deterministic");
   const [status, setStatus] = useState<"loading" | "ready" | "running" | "error">("loading");
   const [notice, setNotice] = useState("");
-  const [qualityDomain, setQualityDomain] = useState<"research" | "metrics">("research");
+  const [qualityDomain, setQualityDomain] = useState<"research" | "metrics" | "sources">("research");
   const [researchView, setResearchView] = useState<"runs" | "feedback">("runs");
   const [baselineRunId, setBaselineRunId] = useState("");
   const [baselineRun, setBaselineRun] = useState<ResearchQualityRun | null>(null);
@@ -120,9 +121,9 @@ export function ResearchQualityWorkspace({ initialRunId = "", onRunSelect }: Pro
   return (
     <div className="research-quality-workspace">
       <header className="quality-title-row">
-        <div><p className="breadcrumb">Research workspace / Reliability</p><h1>Research Quality</h1><span>{qualityDomain === "research" ? "Grounding, retrieval, citation, and refusal benchmarks for the Research Assistant." : "Extraction correctness, anomaly safety, canonical facts, and live data contracts."}</span></div>
+        <div><p className="breadcrumb">Research workspace / Reliability</p><h1>Research Quality</h1><span>{qualityDomain === "research" ? "Grounding, retrieval, citation, and refusal benchmarks for the Research Assistant." : qualityDomain === "metrics" ? "Extraction correctness, anomaly safety, canonical facts, and live data contracts." : "Immutable source replay, real-document regression coverage, and controlled parser promotion."}</span></div>
         <div className="quality-run-controls">
-          <div className="quality-engine quality-domain" aria-label="Quality domain"><button className={qualityDomain === "research" ? "active" : ""} onClick={() => setQualityDomain("research")}>Research answers</button><button className={qualityDomain === "metrics" ? "active" : ""} onClick={() => setQualityDomain("metrics")}>Metric extraction</button></div>
+          <div className="quality-engine quality-domain" aria-label="Quality domain"><button className={qualityDomain === "research" ? "active" : ""} onClick={() => setQualityDomain("research")}>Research answers</button><button className={qualityDomain === "metrics" ? "active" : ""} onClick={() => setQualityDomain("metrics")}>Metric contracts</button><button className={qualityDomain === "sources" ? "active" : ""} onClick={() => setQualityDomain("sources")}>Source extraction</button></div>
           {qualityDomain === "research" && <>
           <div className="quality-engine" aria-label="Research quality workflow">
             <button className={researchView === "runs" ? "active" : ""} onClick={() => setResearchView("runs")}>Runs</button>
@@ -139,7 +140,7 @@ export function ResearchQualityWorkspace({ initialRunId = "", onRunSelect }: Pro
         </div>
       </header>
 
-      {qualityDomain === "metrics" ? <MetricQualityWorkspace /> : researchView === "feedback" ? <ResearchQualityFeedbackWorkspace feedback={catalog?.feedback ?? []} cases={catalog?.cases ?? []} onChanged={async () => { await loadCatalog(); }} /> : <>
+      {qualityDomain === "metrics" ? <MetricQualityWorkspace /> : qualityDomain === "sources" ? <ExtractionQualityWorkspace /> : researchView === "feedback" ? <ResearchQualityFeedbackWorkspace feedback={catalog?.feedback ?? []} cases={catalog?.cases ?? []} onChanged={async () => { await loadCatalog(); }} /> : <>
       {(notice || status === "running") && <div className={`quality-notice ${status}`}><FlaskConical size={15} /><span>{notice || "Running the complete benchmark against accepted evidence. This view will update when all cases are persisted."}</span></div>}
 
       <section className="quality-metrics" aria-label="Quality metrics">

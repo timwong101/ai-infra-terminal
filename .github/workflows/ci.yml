@@ -83,6 +83,7 @@ jobs:
           pnpm db:seed:e2e
           pnpm research:quality -- --gate
           pnpm research:metric-quality -- --gate
+          pnpm research:extraction-quality -- --gate
       - run: pnpm test:e2e
       - name: Upload browser diagnostics
         if: failure()
