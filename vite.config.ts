@@ -14,6 +14,11 @@ const localVars: Record<string, string> = process.env.E2E_TEST === "1"
   ? {
       E2E_TEST: "1",
       E2E_DATABASE_URL: process.env.E2E_DATABASE_URL || "",
+      ARTIFACT_STORAGE_ENDPOINT: process.env.ARTIFACT_STORAGE_ENDPOINT || "",
+      ARTIFACT_STORAGE_BUCKET: process.env.ARTIFACT_STORAGE_BUCKET || "",
+      ARTIFACT_STORAGE_REGION: process.env.ARTIFACT_STORAGE_REGION || "",
+      ARTIFACT_STORAGE_ACCESS_KEY: process.env.ARTIFACT_STORAGE_ACCESS_KEY || "",
+      ARTIFACT_STORAGE_SECRET_KEY: process.env.ARTIFACT_STORAGE_SECRET_KEY || "",
       ARTIFACT_STORAGE_PATH: process.env.ARTIFACT_STORAGE_PATH || "",
     }
   : {};
