@@ -1,5 +1,9 @@
 import { authorizeApi } from "@/lib/auth/session";
 import { listPublishedReports, publishComparisonMemo } from "@/lib/reports/service";
+import { entityId, parseJsonBody } from "@/lib/http/validation";
+import { z } from "zod";
+
+const publishSchema = z.object({ memoId: entityId, complianceMode: z.boolean().default(true) });
 
 export async function GET(request: Request) {
   const authorized = await authorizeApi(request);
@@ -19,9 +23,9 @@ export async function POST(request: Request) {
   const authorized = await authorizeApi(request, "analyst");
   if ("response" in authorized) return authorized.response;
   try {
-    const body = await request.json() as { memoId?: string; complianceMode?: boolean };
-    if (!body.memoId) return Response.json({ error: "A memo ID is required." }, { status: 400 });
-    const report = await publishComparisonMemo(body.memoId, body.complianceMode !== false, authorized.auth);
+    const parsed = await parseJsonBody(request, publishSchema);
+    if ("response" in parsed) return parsed.response;
+    const report = await publishComparisonMemo(parsed.data.memoId, parsed.data.complianceMode, authorized.auth);
     return Response.json({ report }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to publish this report.";

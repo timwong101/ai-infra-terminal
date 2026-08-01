@@ -1,4 +1,4 @@
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, asc, desc, eq, ne } from "drizzle-orm";
 import { sourceArtifacts, sourceDocumentVersions, sourceExtractionRuns } from "@/lib/artifacts/schema";
 import type { ArtifactIntegritySummary, ArtifactSourceKind, ExtractionDiffSummary, ExtractionSnapshot } from "@/lib/artifacts/types";
 import { artifactStorageConfig } from "@/lib/artifacts/storage";
@@ -176,6 +176,14 @@ export async function markArtifactVerified(id: string, valid: boolean) {
   if (!result) throw new Error("Postgres is required to record artifact verification.");
 }
 
+export async function listArtifactsForVerification(limit = 25) {
+  const rows = await withDatabase((db) => db.select().from(sourceArtifacts)
+    .orderBy(asc(sourceArtifacts.verifiedAt), asc(sourceArtifacts.createdAt))
+    .limit(Math.max(1, Math.min(limit, 500))));
+  if (!rows) throw new Error("Postgres is required to verify source artifacts.");
+  return rows;
+}
+
 export async function promoteExtractionRunRecord(id: string, userId: string) {
   const result = await withDatabase(async (db) => db.transaction(async (tx) => {
     const run = (await tx.select().from(sourceExtractionRuns).where(eq(sourceExtractionRuns.id, id)).limit(1))[0];
@@ -205,18 +213,21 @@ export async function getArtifactIntegritySummary(): Promise<ArtifactIntegritySu
     const sourceDocuments = new Set([...filingRows.map((item) => `sec:${item.id}`), ...irRows.map((item) => `ir:${item.id}`)]).size;
     const archivedDocuments = new Set(versionRows.map((item) => `${item.sourceKind}:${item.sourceDocumentId}`)).size;
     const latest = versionRows.map((item) => item.fetchedAt).sort((left, right) => right.valueOf() - left.valueOf())[0];
+    const latestVerified = artifactRows.flatMap((item) => item.verifiedAt ? [item.verifiedAt] : []).sort((left, right) => right.valueOf() - left.valueOf())[0];
     return {
       sourceDocuments,
       archivedDocuments,
       immutableArtifacts: artifactRows.length,
       archivedBytes: artifactRows.reduce((total, item) => total + item.byteLength, 0),
       verifiedArtifacts: artifactRows.filter((item) => item.verifiedAt && item.storageStatus === "available").length,
+      corruptArtifacts: artifactRows.filter((item) => item.storageStatus === "corrupt").length,
       previewRuns: runRows.filter((item) => item.status === "preview").length,
       failedRuns: runRows.filter((item) => item.status === "failed").length,
       latestArchivedAt: latest?.toISOString() ?? null,
+      latestVerifiedAt: latestVerified?.toISOString() ?? null,
     };
   });
-  const empty = { sourceDocuments: 0, archivedDocuments: 0, immutableArtifacts: 0, archivedBytes: 0, verifiedArtifacts: 0, previewRuns: 0, failedRuns: 0, latestArchivedAt: null };
+  const empty = { sourceDocuments: 0, archivedDocuments: 0, immutableArtifacts: 0, archivedBytes: 0, verifiedArtifacts: 0, corruptArtifacts: 0, previewRuns: 0, failedRuns: 0, latestArchivedAt: null, latestVerifiedAt: null };
   const values = result ?? empty;
   return {
     storageConfigured: storage.configured,

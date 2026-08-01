@@ -8,6 +8,12 @@ import { ensureDemoIdentity, recordAuditEvent } from "@/lib/auth/session";
 import { listResearchQualityCases } from "@/lib/research/quality-feedback";
 
 export const RESEARCH_QUALITY_SUITE_VERSION = "neocloud-grounding-v2";
+export const RESEARCH_QUALITY_GATES = {
+  overall: 85,
+  passRate: 85,
+  citationPrecision: 100,
+  groundedness: 100,
+} as const;
 
 const TRACKED_COMPANIES = [
   { id: "coreweave", name: "CoreWeave" },
@@ -272,9 +278,9 @@ export async function getResearchQualityRun(id: string, workspaceId: string) {
 export function researchQualityGate(run: ResearchQualityRun) {
   const metrics = run.metrics as Omit<ResearchQualityScores, "overall">;
   const reasons: string[] = [];
-  if ((run.overallScore ?? 0) < 85) reasons.push(`Overall score ${(run.overallScore ?? 0)} is below 85.`);
-  if ((run.passRate ?? 0) < 85) reasons.push(`Pass rate ${(run.passRate ?? 0)}% is below 85%.`);
-  if ((metrics.citationPrecision ?? 0) < 100) reasons.push("Citation precision must remain at 100%.");
-  if ((metrics.groundedness ?? 0) < 100) reasons.push("Groundedness must remain at 100%.");
+  if ((run.overallScore ?? 0) < RESEARCH_QUALITY_GATES.overall) reasons.push(`Overall score ${(run.overallScore ?? 0)} is below ${RESEARCH_QUALITY_GATES.overall}.`);
+  if ((run.passRate ?? 0) < RESEARCH_QUALITY_GATES.passRate) reasons.push(`Pass rate ${(run.passRate ?? 0)}% is below ${RESEARCH_QUALITY_GATES.passRate}%.`);
+  if ((metrics.citationPrecision ?? 0) < RESEARCH_QUALITY_GATES.citationPrecision) reasons.push(`Citation precision must remain at ${RESEARCH_QUALITY_GATES.citationPrecision}%.`);
+  if ((metrics.groundedness ?? 0) < RESEARCH_QUALITY_GATES.groundedness) reasons.push(`Groundedness must remain at ${RESEARCH_QUALITY_GATES.groundedness}%.`);
   return { passed: reasons.length === 0, reasons };
 }

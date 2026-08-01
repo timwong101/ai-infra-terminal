@@ -1,4 +1,4 @@
-import { desc, gte } from "drizzle-orm";
+import { desc, eq, gte } from "drizzle-orm";
 import { withDatabase } from "@/lib/db/client";
 import {
   companies,
@@ -9,6 +9,9 @@ import {
   researchBriefings,
   researchClaims,
   researchEvidence,
+  workspaceClaimStates,
+  workspaceEvidenceReviews,
+  workspaces,
 } from "@/lib/db/schema";
 import type { ResearchBriefing, ResearchBriefingEvidence, ResearchBriefingSection, ResearchBriefingStats } from "@/lib/operations/types";
 
@@ -58,6 +61,7 @@ export function buildBriefingContent(input: BriefingInput) {
 function rowToBriefing(row: typeof researchBriefings.$inferSelect): ResearchBriefing {
   return {
     id: row.id,
+    workspaceId: row.workspaceId,
     runId: row.runId,
     title: row.title,
     summary: row.summary,
@@ -70,21 +74,26 @@ function rowToBriefing(row: typeof researchBriefings.$inferSelect): ResearchBrie
   };
 }
 
-export async function createResearchBriefing(input: { runId?: string | null; since: Date; until?: Date }) {
+export async function createResearchBriefing(input: { workspaceId: string; runId?: string | null; since: Date; until?: Date }) {
   const until = input.until ?? new Date();
   const result = await withDatabase(async (db) => {
-    const [companyRows, evidenceRows, filingRows, irRows, staleMemoRows, staleClaimRows, failedIrRows] = await Promise.all([
+    const [companyRows, evidenceRows, reviewRows, filingRows, irRows, staleMemoRows, staleClaimRows, claimStateRows, failedIrRows] = await Promise.all([
       db.select().from(companies),
       db.select().from(researchEvidence).where(gte(researchEvidence.createdAt, input.since)),
+      db.select().from(workspaceEvidenceReviews).where(eq(workspaceEvidenceReviews.workspaceId, input.workspaceId)),
       db.select().from(filings).where(gte(filings.createdAt, input.since)),
       db.select().from(irDocuments).where(gte(irDocuments.createdAt, input.since)),
-      db.select().from(comparisonMemos),
+      db.select().from(comparisonMemos).where(eq(comparisonMemos.workspaceId, input.workspaceId)),
       db.select().from(researchClaims),
+      db.select().from(workspaceClaimStates).where(eq(workspaceClaimStates.workspaceId, input.workspaceId)),
       db.select().from(irSourceDocuments),
     ]);
     const companyById = new Map(companyRows.map((company) => [company.id, company]));
+    const reviewByEvidenceId = new Map(reviewRows.map((review) => [review.evidenceId, review]));
+    const claimStateByClaimId = new Map(claimStateRows.map((state) => [state.claimId, state]));
     const evidence: ResearchBriefingEvidence[] = evidenceRows.filter((item) => item.createdAt <= until).map((item) => {
       const company = companyById.get(item.companyId);
+      const review = reviewByEvidenceId.get(item.id);
       return {
         id: item.id,
         companyId: item.companyId,
@@ -99,9 +108,9 @@ export async function createResearchBriefing(input: { runId?: string | null; sin
         evidenceQualityScore: item.evidenceQualityScore,
         relevanceScore: item.relevanceScore,
         duplicateGroupId: item.duplicateGroupId,
-        reviewStatus: item.reviewStatus,
-        suggestionStatus: item.suggestionStatus,
-        suggestedImpact: item.suggestedImpact,
+        reviewStatus: review?.reviewStatus ?? "unreviewed",
+        suggestionStatus: review?.suggestionStatus ?? "pending",
+        suggestedImpact: review?.suggestedImpact ?? item.suggestedImpact,
       };
     });
     const content = buildBriefingContent({
@@ -110,13 +119,14 @@ export async function createResearchBriefing(input: { runId?: string | null; sin
       stats: {
         newDocuments: filingRows.filter((item) => item.createdAt <= until).length + irRows.filter((item) => item.createdAt <= until).length,
         staleMemos: staleMemoRows.filter((item) => item.isStale).length,
-        staleClaims: staleClaimRows.filter((item) => item.isStale).length,
+        staleClaims: staleClaimRows.filter((item) => claimStateByClaimId.get(item.id)?.isStale ?? item.isStale).length,
         ingestionFailures: failedIrRows.filter((item) => item.extractionStatus === "failed").length,
       },
     });
     const titleDate = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(until);
     const inserted = await db.insert(researchBriefings).values({
       id: `briefing:${crypto.randomUUID()}`,
+      workspaceId: input.workspaceId,
       runId: input.runId ?? null,
       title: `Research briefing · ${titleDate}`,
       summary: content.summary,
@@ -131,11 +141,19 @@ export async function createResearchBriefing(input: { runId?: string | null; sin
   return result;
 }
 
-export async function listResearchBriefings(limit = 12) {
+export async function listWorkspaceResearchBriefings(workspaceId: string, limit = 12) {
   const result = await withDatabase(async (db) => {
-    const rows = await db.select().from(researchBriefings).orderBy(desc(researchBriefings.createdAt)).limit(limit);
+    const rows = await db.select().from(researchBriefings)
+      .where(eq(researchBriefings.workspaceId, workspaceId))
+      .orderBy(desc(researchBriefings.createdAt)).limit(limit);
     return rows.map(rowToBriefing);
   });
   if (!result) throw new Error("Research briefings require a configured database.");
   return result;
+}
+
+export async function createResearchBriefingsForAllWorkspaces(input: { runId?: string | null; since: Date; until?: Date }) {
+  const rows = await withDatabase((db) => db.select({ id: workspaces.id }).from(workspaces));
+  if (!rows) throw new Error("Research briefings require a configured database.");
+  return Promise.all(rows.map((workspace) => createResearchBriefing({ ...input, workspaceId: workspace.id })));
 }

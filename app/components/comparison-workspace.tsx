@@ -15,6 +15,15 @@ type Props = {
 
 function scoreTone(score: number) { return score >= 75 ? "high" : score >= 55 ? "medium" : "low"; }
 
+function memoTimestamp(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 export function ComparisonWorkspace({ initialMemoId = "", onMemoSelect, onReviewEvidence }: Props) {
   const initialMemoIdRef = useRef(initialMemoId);
   const [evidence, setEvidence] = useState<EvidenceWorkspaceResponse | null>(null);
@@ -34,6 +43,15 @@ export function ComparisonWorkspace({ initialMemoId = "", onMemoSelect, onReview
   const [copiedReportId, setCopiedReportId] = useState("");
   const [reviewWorkspace, setReviewWorkspace] = useState<MemoReviewWorkspace | null>(null);
   const [commentTarget, setCommentTarget] = useState<ClaimCommentTarget>(null);
+  const [evidencePacketOpen, setEvidencePacketOpen] = useState(true);
+
+  useEffect(() => {
+    const mobileLayout = window.matchMedia("(max-width: 640px)");
+    const syncLayout = () => setEvidencePacketOpen(!mobileLayout.matches);
+    queueMicrotask(syncLayout);
+    mobileLayout.addEventListener("change", syncLayout);
+    return () => mobileLayout.removeEventListener("change", syncLayout);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -103,6 +121,7 @@ export function ComparisonWorkspace({ initialMemoId = "", onMemoSelect, onReview
       if (!response.ok || !result.memo) throw new Error(result.error || "Unable to generate memo.");
       setMemos((current) => [result.memo!, ...current]);
       setSelectedMemo(result.memo);
+      setEvidencePacketOpen(!window.matchMedia("(max-width: 640px)").matches);
       onMemoSelect?.(result.memo.id);
       setStatus("ready");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to generate memo."); setStatus("ready"); }
@@ -165,6 +184,14 @@ export function ComparisonWorkspace({ initialMemoId = "", onMemoSelect, onReview
     window.setTimeout(() => setCopiedReportId(""), 1800);
   };
 
+  const openCitation = (event: React.MouseEvent<HTMLAnchorElement>, citationNumber: number) => {
+    event.preventDefault();
+    setEvidencePacketOpen(true);
+    window.setTimeout(() => {
+      document.getElementById(`citation-${citationNumber}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  };
+
   if (status === "loading") return <div className="research-workspace"><div className="workspace-state full"><LoaderCircle className="drawer-spinner" size={26} /><strong>Loading comparison workspace</strong></div></div>;
 
   return (
@@ -182,7 +209,7 @@ export function ComparisonWorkspace({ initialMemoId = "", onMemoSelect, onReview
             {error && <div className="builder-error"><AlertTriangle size={14} /> {error}</div>}
             <button className="primary-button generate-button" disabled={status === "generating" || !companyA || !companyB || companyA === companyB} onClick={() => void generate()}>{status === "generating" ? <LoaderCircle className="drawer-spinner" size={16} /> : <Sparkles size={16} />} Generate grounded memo</button>
           </div>
-          <div className="saved-memos"><div className="saved-heading"><h3>Research history</h3><span>{memos.length}</span></div>{memos.map((memo) => <button className={`${selectedMemo?.id === memo.id ? "active" : ""} ${memo.isStale ? "stale" : ""}`} data-memo-id={memo.id} onClick={() => { setSelectedMemo(memo); onMemoSelect?.(memo.id); }} key={memo.id}>{memo.isStale ? <AlertTriangle size={15} /> : <FileText size={15} />}<span><strong>{memo.title}</strong><small>{memo.isStale ? "Evidence changed · regeneration needed" : `${memo.topic} · ${memo.citations.length} citations`}</small></span><ChevronRight size={14} /></button>)}{!memos.length && <p>No saved comparison memos yet.</p>}</div>
+          <div className="saved-memos"><div className="saved-heading"><h3>Research history</h3><span>{memos.length}</span></div>{memos.map((memo) => <button className={`${selectedMemo?.id === memo.id ? "active" : ""} ${memo.isStale ? "stale" : ""}`} data-memo-id={memo.id} onClick={() => { setSelectedMemo(memo); setEvidencePacketOpen(!window.matchMedia("(max-width: 640px)").matches); onMemoSelect?.(memo.id); }} key={memo.id}>{memo.isStale ? <AlertTriangle size={15} /> : <FileText size={15} />}<span><strong>{memo.title}</strong><small>{memo.isStale ? `Evidence changed · ${memoTimestamp(memo.createdAt)}` : `${memoTimestamp(memo.createdAt)} · ${memo.citations.length} citations`}</small></span><ChevronRight size={14} /></button>)}{!memos.length && <p>No saved comparison memos yet.</p>}</div>
         </aside>
 
         <section className={`memo-document panel ${selectedMemo ? `status-${selectedMemo.status}` : ""}`}>
@@ -202,8 +229,8 @@ export function ComparisonWorkspace({ initialMemoId = "", onMemoSelect, onReview
             <section className="memo-score-strip"><div><span>Confidence</span><strong className={scoreTone(selectedMemo.confidenceScore)}>{selectedMemo.confidenceScore}</strong></div><div><span>Evidence quality</span><strong>{selectedMemo.evidenceQualityScore}</strong></div><div><span>Source diversity</span><strong>{selectedMemo.sourceDiversityScore}</strong></div><div><span>Citations</span><strong>{selectedMemo.citations.length}</strong></div></section>
             {!!selectedMemo.metricSnapshot?.length && <section className="memo-metric-snapshot"><header><div><span className="section-kicker">Analyst-verified fundamentals</span><h3>KPI snapshot</h3></div><small>{selectedMemo.metricSnapshot.length} accepted observations</small></header><div>{selectedMemo.metricSnapshot.map((metric) => <a href={metric.sourceUrl ?? undefined} target={metric.sourceUrl ? "_blank" : undefined} rel="noreferrer" key={metric.id}><span>{metric.ticker} · {metric.label}</span><strong>{metric.displayValue}</strong><small>{metric.periodLabel} · {metric.sourceLabel}</small></a>)}</div></section>}
             <div className="memo-document-body">
-              {selectedMemo.sections.map((section) => <section className="grounded-section" key={section.key}><h3>{section.title}</h3>{section.claims.length ? <div className="grounded-claims">{section.claims.map((claim, index) => <article key={`${claim.companyId}-${index}`}><header><span>{companyName(claim.companyId)}</span>{claim.representation && claim.representation !== "question" && <em className={claim.synthesisStatus === "source-fallback" ? "fallback" : ""}>{claim.synthesisStatus === "source-fallback" ? "Source fallback" : claim.representation === "quote" ? "Source quote" : "Verified paraphrase"}</em>}</header><p>{claim.text} {claim.citationIds.map((id) => <a href={`#citation-${citationIndex.get(id)}`} key={id}>[{citationIndex.get(id)}]</a>)}</p>{claim.whyItMatters && <div className="claim-rationale"><strong>Why it matters</strong><span>{claim.whyItMatters}</span></div>}</article>)}</div> : <p className="missing-evidence">No accepted evidence matched this section. Treat it as an explicit research gap.</p>}</section>)}
-              <section className="memo-citations"><h3>Evidence packet</h3>{selectedMemo.citations.map((citation, index) => <article id={`citation-${index + 1}`} key={citation.id}><b>{index + 1}</b><div><strong>{citation.companyName} · {citation.sourceType}</strong><p>{citation.excerpt}</p><span>{citation.documentTitle} · {citation.documentDate}{citation.pageNumber ? ` · Page ${citation.pageNumber}` : ""}</span></div><a href={citation.pageNumber ? `${citation.sourceUrl}#page=${citation.pageNumber}` : citation.sourceUrl} target="_blank" rel="noreferrer" aria-label={`Open citation ${index + 1}`}><ExternalLink size={14} /></a></article>)}</section>
+              {selectedMemo.sections.map((section) => <section className="grounded-section" key={section.key}><h3>{section.title}</h3>{section.claims.length ? <div className="grounded-claims">{section.claims.map((claim, index) => <article key={`${claim.companyId}-${index}`}><header><span>{companyName(claim.companyId)}</span>{claim.representation && claim.representation !== "question" && <em className={claim.synthesisStatus === "source-fallback" ? "fallback" : ""}>{claim.synthesisStatus === "source-fallback" ? "Source fallback" : claim.representation === "quote" ? "Source quote" : "Verified paraphrase"}</em>}</header><p>{claim.text} {claim.citationIds.map((id) => { const citationNumber = citationIndex.get(id); return citationNumber ? <a href={`#citation-${citationNumber}`} onClick={(event) => openCitation(event, citationNumber)} key={id}>[{citationNumber}]</a> : null; })}</p>{claim.whyItMatters && <div className="claim-rationale"><strong>Why it matters</strong><span>{claim.whyItMatters}</span></div>}</article>)}</div> : <p className="missing-evidence">No accepted evidence matched this section. Treat it as an explicit research gap.</p>}</section>)}
+              <details className="memo-citations" open={evidencePacketOpen} onToggle={(event) => setEvidencePacketOpen(event.currentTarget.open)}><summary><span><h3>Evidence packet</h3><small>{selectedMemo.citations.length} source excerpts</small></span><ChevronRight size={15} /></summary><div>{selectedMemo.citations.map((citation, index) => <article id={`citation-${index + 1}`} key={citation.id}><b>{index + 1}</b><div><strong>{citation.companyName} · {citation.sourceType}</strong><p>{citation.excerpt}</p><span>{citation.documentTitle} · {citation.documentDate}{citation.pageNumber ? ` · Page ${citation.pageNumber}` : ""}</span></div><a href={citation.pageNumber ? `${citation.sourceUrl}#page=${citation.pageNumber}` : citation.sourceUrl} target="_blank" rel="noreferrer" aria-label={`Open citation ${index + 1}`}><ExternalLink size={14} /></a></article>)}</div></details>
             </div>
           </> : <div className="workspace-state full"><Scale size={28} /><strong>No memo selected</strong><span>Accept evidence for two companies, then generate a grounded comparison.</span><button className="command-button" onClick={onReviewEvidence}>Review evidence</button></div>}
         </section>

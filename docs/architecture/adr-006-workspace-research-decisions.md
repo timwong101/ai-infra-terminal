@@ -10,7 +10,7 @@ SEC filings, official IR documents, extracted passages, and reported metric obse
 
 ## Decision
 
-Source artifacts and deterministic extraction outputs remain global and immutable. Workspace-owned overlay tables store evidence reviews, analyst-approved claim links, claim-impact alerts, metric reviews, canonical metric selections, and thesis state. Retrieval joins through the active workspace decision, and a changed decision can stale only memos in that workspace.
+Source artifacts and deterministic extraction outputs remain global and immutable. Workspace-owned overlay tables store evidence reviews, analyst-approved claim links, claim-impact alerts, metric reviews, canonical metric selections, thesis state, and research briefings. Retrieval and briefing generation join through the active workspace decision, and a changed decision can stale only memos or briefings in that workspace.
 
 Legacy global review columns remain during the migration window. Existing decisions are copied into each current workspace once, and new writes target only workspace overlays.
 

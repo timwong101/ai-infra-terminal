@@ -40,6 +40,7 @@ export type ResearchBriefingSection = {
 
 export type ResearchBriefing = {
   id: string;
+  workspaceId: string;
   runId: string | null;
   title: string;
   summary: string;
@@ -70,6 +71,7 @@ export const RESEARCH_STAGE_NAMES = [
   "ingesting-sec",
   "ingesting-ir",
   "refreshing-events",
+  "verifying-artifacts",
   "syncing-evidence",
   "updating-company-intelligence",
   "embedding-evidence",

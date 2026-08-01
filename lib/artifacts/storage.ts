@@ -130,3 +130,12 @@ export function getArtifactObjectStore(): ArtifactObjectStore {
     ? new S3ArtifactStore(config.bucket, config.endpoint, config.region, config.accessKeyId, config.secretAccessKey)
     : new FileArtifactStore(config.path);
 }
+
+export function assertArtifactStorageReady(options: { durable?: boolean } = {}) {
+  const config = artifactStorageConfig();
+  if (!config.configured) throw new Error("Artifact storage is not configured. Set ARTIFACT_STORAGE_ENDPOINT or ARTIFACT_STORAGE_PATH.");
+  if (options.durable && config.backend !== "s3") {
+    throw new Error("Durable research ingestion requires S3-compatible artifact storage. Filesystem storage is development-only.");
+  }
+  return config;
+}

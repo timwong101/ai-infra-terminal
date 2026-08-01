@@ -20,6 +20,14 @@ const FORM_QUALITY: Record<string, number> = {
   "6-K": 86,
 };
 
+export function secFormSummary(formType: string) {
+  return FORM_SUMMARIES[formType] ?? "New regulatory filing";
+}
+
+export function secFormQuality(formType: string) {
+  return FORM_QUALITY[formType] ?? 82;
+}
+
 export function buildSecArchiveUrl(
   cik: string,
   accessionNumber: string,
@@ -83,12 +91,12 @@ export function normalizeSecSubmissions(
       acceptedAt: filing.acceptedAt,
       periodOfReport: filing.periodOfReport,
       headline: `${company.name} filed ${filing.formType}`,
-      summary: FORM_SUMMARIES[filing.formType] ?? filing.description ?? "New regulatory filing",
+      summary: FORM_SUMMARIES[filing.formType] ?? filing.description ?? secFormSummary(filing.formType),
       accessionNumber: filing.accessionNumber,
       primaryDocument: filing.primaryDocument,
       sourceUrl: buildSecArchiveUrl(company.cik, filing.accessionNumber, filing.primaryDocument),
       fetchedAt,
-      sourceQuality: FORM_QUALITY[filing.formType] ?? 82,
+      sourceQuality: secFormQuality(filing.formType),
       signal: "neutral" as const,
       issuerClassification: getIssuerRegime(company, filing.filedAt)?.classification ?? "domestic",
     }))

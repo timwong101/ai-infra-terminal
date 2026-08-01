@@ -14,7 +14,9 @@ Every extractable SEC or IR document is archived before parsing. Raw content is 
 
 Parser reprocessing creates an isolated preview containing its complete output snapshot and a passage-level diff. It cannot replace canonical evidence until an analyst promotes it. Promotion preserves unchanged review decisions, resets changed accepted passages to unreviewed, and marks dependent claims and memos stale.
 
-The storage interface also has a filesystem implementation for deterministic CI. Production and the Docker development environment use the same S3 API through MinIO or a managed object store.
+The storage interface also has a filesystem implementation for isolated local tests. Docker development, CI integration tests, and scheduled ingestion use the same S3 API through MinIO or a managed object store. Scheduled ingestion performs a startup preflight and fails closed when only filesystem storage is available.
+
+Every research cycle independently downloads and verifies a bounded batch of the least-recently checked objects. Missing objects and checksum mismatches are marked corrupt, fail the integrity stage, and remain visible in the Activity workspace rather than being treated as healthy uploads.
 
 Historical IR backfills distinguish raw captures from metadata recovery. If an official legacy URL is blocked or no longer matches the current source policy, the system archives a typed catalog snapshot and creates an isolated parser preview. It does not describe that object as the missing HTML or PDF, and it does not replace the previously extracted canonical evidence.
 

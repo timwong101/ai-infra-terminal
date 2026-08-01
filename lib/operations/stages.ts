@@ -7,13 +7,14 @@ import { refreshLiveEvents } from "@/lib/events/service";
 import { refreshIrEvidence } from "@/lib/ir/ingest";
 import { processIrExtractionQueue, syncIrCatalog } from "@/lib/ir/pipeline";
 import type { IrEvidenceCache } from "@/lib/ir/types";
-import { createResearchBriefing } from "@/lib/operations/briefing";
+import { createResearchBriefingsForAllWorkspaces } from "@/lib/operations/briefing";
 import type { ResearchStageJobData, ResearchStageName } from "@/lib/operations/types";
 import { syncResearchEvidence } from "@/lib/research/evidence";
 import { backfillResearchEmbeddings } from "@/lib/research/search";
 import { validateSecUserAgent } from "@/lib/sec/client";
 import { refreshSecEvidence } from "@/lib/sec/ingest";
 import { syncSecFilingEvidence } from "@/lib/sec/persist";
+import { verifyArtifactIntegrityBatch } from "@/lib/artifacts/service";
 
 const simulatedFailures = new Set<string>();
 
@@ -48,13 +49,14 @@ async function executeLiveStage(stage: ResearchStageName, data: ResearchStageJob
       return { documents: cache.documents.length, sourceErrors: cache.errors.length, ...summarize(catalog), ...summarize(extraction) };
     }
     case "refreshing-events": return summarize(await refreshLiveEvents());
+    case "verifying-artifacts": return summarize(await verifyArtifactIntegrityBatch(Number(process.env.ARTIFACT_VERIFY_BATCH_SIZE) || 25));
     case "syncing-evidence": return summarize(await syncResearchEvidence());
     case "updating-company-intelligence": return summarize(await syncCompanyIntelligence());
     case "embedding-evidence": return summarize(await backfillResearchEmbeddings(30));
     case "updating-theses": return summarize(await generateResearchAlerts());
     case "building-briefing": {
-      const briefing = await createResearchBriefing({ runId: data.runId, since: new Date(data.windowStartedAt) });
-      return { briefingId: briefing.id, ...briefing.stats };
+      const briefings = await createResearchBriefingsForAllWorkspaces({ runId: data.runId, since: new Date(data.windowStartedAt) });
+      return { briefings: briefings.length, newEvidence: briefings.reduce((total, briefing) => total + briefing.stats.newEvidence, 0) };
     }
   }
 }

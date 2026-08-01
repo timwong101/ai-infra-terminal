@@ -13,6 +13,16 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ARTIFACT_STORAGE_ENDPOINT: ${{ secrets.ARTIFACT_STORAGE_ENDPOINT }}
+      ARTIFACT_STORAGE_BUCKET: ${{ secrets.ARTIFACT_STORAGE_BUCKET }}
+      ARTIFACT_STORAGE_REGION: ${{ secrets.ARTIFACT_STORAGE_REGION }}
+      ARTIFACT_STORAGE_ACCESS_KEY: ${{ secrets.ARTIFACT_STORAGE_ACCESS_KEY }}
+      ARTIFACT_STORAGE_SECRET_KEY: ${{ secrets.ARTIFACT_STORAGE_SECRET_KEY }}
+      ARTIFACT_STORAGE_REQUIRED: "1"
     services:
       redis:
         image: redis:7.4-alpine
@@ -33,23 +43,23 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Validate durable ingestion configuration
+        if: ${{ env.DATABASE_URL != '' }}
+        run: |
+          test -n "$SEC_USER_AGENT" || { echo "SEC_USER_AGENT is required"; exit 1; }
+          test -n "$ARTIFACT_STORAGE_ENDPOINT" || { echo "ARTIFACT_STORAGE_ENDPOINT is required"; exit 1; }
+          test -n "$ARTIFACT_STORAGE_ACCESS_KEY" || { echo "ARTIFACT_STORAGE_ACCESS_KEY is required"; exit 1; }
+          test -n "$ARTIFACT_STORAGE_SECRET_KEY" || { echo "ARTIFACT_STORAGE_SECRET_KEY is required"; exit 1; }
       - name: Apply database migrations
         if: ${{ env.DATABASE_URL != '' }}
         run: pnpm db:migrate
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
       - name: Run evidence, thesis, and briefing pipeline
         if: ${{ env.DATABASE_URL != '' }}
         run: pnpm research:cycle
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           AI_MEMO_MODEL: gpt-5-mini
           AI_EMBEDDING_MODEL: text-embedding-3-small
           REDIS_URL: redis://127.0.0.1:6379
       - name: Explain missing configuration
         if: ${{ env.DATABASE_URL == '' }}
-        run: echo "Add DATABASE_URL and SEC_USER_AGENT as repository secrets to enable scheduled ingestion."
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: echo "Add DATABASE_URL, SEC_USER_AGENT, and ARTIFACT_STORAGE_* repository secrets to enable scheduled ingestion."

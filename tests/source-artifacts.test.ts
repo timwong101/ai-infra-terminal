@@ -8,6 +8,7 @@ import {
   stableJson,
 } from "@/lib/artifacts/policy";
 import type { SecFilingDetail } from "@/lib/evidence/types";
+import { assertArtifactStorageReady } from "@/lib/artifacts/storage";
 
 function snapshot(passages: Array<{ id: string; text: string }>, wordCount = 20): SecFilingDetail {
   return {
@@ -66,4 +67,18 @@ test("parser replay diff separates added, removed, changed, and unchanged passag
     unchangedPassages: 1,
     wordCountDelta: 4,
   });
+});
+
+test("durable ingestion refuses filesystem artifact storage", () => {
+  const previousEndpoint = process.env.ARTIFACT_STORAGE_ENDPOINT;
+  const previousPath = process.env.ARTIFACT_STORAGE_PATH;
+  delete process.env.ARTIFACT_STORAGE_ENDPOINT;
+  process.env.ARTIFACT_STORAGE_PATH = ".artifacts/test";
+  try {
+    assert.throws(() => assertArtifactStorageReady({ durable: true }), /requires S3-compatible artifact storage/i);
+    assert.equal(assertArtifactStorageReady().backend, "filesystem");
+  } finally {
+    if (previousEndpoint === undefined) delete process.env.ARTIFACT_STORAGE_ENDPOINT; else process.env.ARTIFACT_STORAGE_ENDPOINT = previousEndpoint;
+    if (previousPath === undefined) delete process.env.ARTIFACT_STORAGE_PATH; else process.env.ARTIFACT_STORAGE_PATH = previousPath;
+  }
 });

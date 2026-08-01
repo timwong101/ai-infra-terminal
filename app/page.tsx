@@ -270,6 +270,7 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
   const [liveSecCache, setLiveSecCache] = useState(secEvidenceCache);
   const [liveIrCache, setLiveIrCache] = useState(irEvidenceCache);
   const [secRefreshStatus, setSecRefreshStatus] = useState<SecUiStatus>("refreshing");
+  const [sourceStatusMessage, setSourceStatusMessage] = useState("Loading persisted source catalog.");
   const [selectedEvidence, setSelectedEvidence] = useState<Evidence | null>(null);
   const [filingDetail, setFilingDetail] = useState<SecFilingDetail | null>(null);
   const [irDocumentDetail, setIrDocumentDetail] = useState<IrDocumentDetail | null>(null);
@@ -329,11 +330,13 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
         const result = (await response.json()) as SecEvidenceResponse;
         setLiveSecCache(result.cache);
         setSecRefreshStatus(result.refresh.status);
+        setSourceStatusMessage(result.refresh.message ?? `Source catalog observed ${formatFilingDate(result.refresh.observedAt.slice(0, 10))}.`);
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           return;
         }
         setSecRefreshStatus("stale");
+        setSourceStatusMessage("Source catalog is unavailable.");
       }
     }
 
@@ -407,13 +410,7 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
     },
   ], [liveIrCache, liveSecCache, neocloudResearchView.coveredCompanyCount, secRefreshStatus, unreadAlertCount]);
 
-  const liveStatusLabel = secRefreshStatus === "refreshing"
-    ? "Refreshing SEC"
-    : secRefreshStatus === "fresh"
-      ? "SEC refreshed"
-      : secRefreshStatus === "cached"
-        ? "SEC cache current"
-        : "Using cached SEC";
+  const liveStatusLabel = secRefreshStatus === "refreshing" ? "Loading source catalog" : sourceStatusMessage;
 
   const selectTheme = (theme: string) => {
     setSelectedTheme(theme);

@@ -15,6 +15,7 @@ type Operations = ResearchRuntimeSnapshot & {
   schedule: { cadence: string; cron: string; source: string; nextAction: string };
   aiEnabled: boolean;
   artifactIntegrity: ArtifactIntegritySummary;
+  freshness: { status: "current" | "stale"; staleStages: string[]; latestSourceAt: string | null; latestRunAt: string | null; latestBriefingAt: string | null; thresholdHours: number };
   coverage: Array<{
     company: { id: string; name: string; ticker: string };
     counts: { accepted: number; latestAcceptedEvidence: number; latestGroundedComparisons: number };
@@ -173,6 +174,7 @@ export function OperationsWorkspace() {
     </header>
     {error && <div className="builder-error"><AlertTriangle size={15} />{error}</div>}
     {runtimeState.tone === "offline" && <div className="operations-status-notice"><WifiOff size={14} /><span><strong>{runtimeState.label}.</strong> {runtimeState.detail}</span></div>}
+    {data?.freshness.status === "stale" && <div className="operations-status-notice freshness-warning"><Clock3 size={14} /><span><strong>Research output is stale.</strong> The {data.freshness.staleStages.join(", ")} {data.freshness.staleStages.length === 1 ? "is" : "are"} older than the {data.freshness.thresholdHours}-hour operating target.</span></div>}
 
     <section className="runtime-metrics" aria-label="Research queue metrics">
       <QueueMetric label="Queued jobs" value={queue.waiting} detail="Awaiting workers" />
@@ -206,7 +208,7 @@ export function OperationsWorkspace() {
         <section className="panel worker-health"><div className="catalog-heading"><div><h2>Workers</h2><span>Process heartbeats</span></div>{onlineWorkers.length ? <Wifi size={15} /> : <WifiOff size={15} />}</div>{data?.workers.slice(0, 6).map((worker: ResearchWorkerItem) => <article key={worker.id}><span className={`worker-state ${worker.online ? "online" : "offline"}`} /><div><strong>{worker.queueName.replace("research-", "")}</strong><small>{worker.online ? `Concurrency ${worker.concurrency}` : "Heartbeat expired"}</small></div><em>{worker.currentRunId ? "busy" : worker.status}</em></article>)}{!data?.workers.length && <div className="workspace-state compact"><ServerCog size={19} /><strong>No worker heartbeat</strong><span>Run `pnpm worker:research`.</span></div>}</section>
         <section className="panel schedule-card"><div className="catalog-heading"><div><h2>Automation</h2><span>Scheduled queue trigger</span></div><CalendarClock size={16} /></div><div className="schedule-body"><strong>{data?.schedule.cadence}</strong><span>{data?.schedule.source}</span><code>{data?.schedule.cron}</code><p>{data?.schedule.nextAction}</p></div></section>
         <section className={`panel queue-health ${queue.available ? "available" : "unavailable"}`}><div><Database size={16} /><span><strong>{queue.available ? "Redis connected" : "Queue unavailable"}</strong><small>{queue.error || `${queue.completed} retained completions`}</small></span></div></section>
-        <section className="panel source-archive-health"><div className="catalog-heading"><div><h2>Source archive</h2><span>Immutable ingestion inputs</span></div><Archive size={16} /></div><div className="archive-coverage"><strong>{data?.artifactIntegrity.coveragePercent ?? 0}%</strong><span>document coverage</span><i><b style={{ width: `${data?.artifactIntegrity.coveragePercent ?? 0}%` }} /></i></div><dl><div><dt>Artifacts</dt><dd>{data?.artifactIntegrity.immutableArtifacts ?? 0}</dd></div><div><dt title="Hashes are verified when an artifact is replayed or explicitly checked">Verified on read</dt><dd>{data?.artifactIntegrity.verifiedArtifacts ?? 0} / {data?.artifactIntegrity.immutableArtifacts ?? 0}</dd></div><div><dt>Parser previews</dt><dd>{data?.artifactIntegrity.previewRuns ?? 0}</dd></div><div><dt>Storage</dt><dd>{data?.artifactIntegrity.storageBackend ?? "unconfigured"}</dd></div></dl></section>
+        <section className={`panel source-archive-health ${(data?.artifactIntegrity.corruptArtifacts ?? 0) > 0 ? "has-errors" : ""}`}><div className="catalog-heading"><div><h2>Source archive</h2><span>Immutable ingestion inputs</span></div><Archive size={16} /></div><div className="archive-coverage"><strong>{data?.artifactIntegrity.coveragePercent ?? 0}%</strong><span>document coverage</span><i><b style={{ width: `${data?.artifactIntegrity.coveragePercent ?? 0}%` }} /></i></div><dl><div><dt>Artifacts</dt><dd>{data?.artifactIntegrity.immutableArtifacts ?? 0}</dd></div><div><dt title="Artifacts are independently downloaded and checksum-verified during each research cycle">Integrity checked</dt><dd>{data?.artifactIntegrity.verifiedArtifacts ?? 0} / {data?.artifactIntegrity.immutableArtifacts ?? 0}</dd></div><div><dt>Corrupt</dt><dd>{data?.artifactIntegrity.corruptArtifacts ?? 0}</dd></div><div><dt>Storage</dt><dd>{data?.artifactIntegrity.storageBackend ?? "unconfigured"}</dd></div></dl></section>
       </aside>
     </div>
 

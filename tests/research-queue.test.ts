@@ -16,9 +16,10 @@ test("research stage graph covers every stage exactly once", () => {
   assert.equal(stages.length, RESEARCH_STAGE_NAMES.length);
 });
 
-test("source discovery runs in parallel before evidence synchronization", () => {
+test("source discovery and archive verification precede evidence synchronization", () => {
   assert.deepEqual(RESEARCH_STAGE_GROUPS[0], ["ingesting-sec", "ingesting-ir", "refreshing-events"]);
-  assert.deepEqual(RESEARCH_STAGE_GROUPS[1], ["syncing-evidence"]);
+  assert.deepEqual(RESEARCH_STAGE_GROUPS[1], ["verifying-artifacts"]);
+  assert.deepEqual(RESEARCH_STAGE_GROUPS[2], ["syncing-evidence"]);
 });
 
 test("queue job IDs are deterministic and BullMQ-safe", () => {
@@ -29,8 +30,8 @@ test("queue job IDs are deterministic and BullMQ-safe", () => {
 
 test("stage progress is bounded and reaches 100 percent", () => {
   assert.equal(stageProgress(0), 0);
-  assert.equal(stageProgress(4), 50);
-  assert.equal(stageProgress(8), 100);
+  assert.ok(stageProgress(4) > 0 && stageProgress(4) < 100);
+  assert.equal(stageProgress(RESEARCH_STAGE_NAMES.length), 100);
   assert.equal(stageProgress(20), 100);
 });
 

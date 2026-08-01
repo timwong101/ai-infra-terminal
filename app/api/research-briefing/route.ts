@@ -1,19 +1,27 @@
-import { createResearchBriefing } from "@/lib/operations/briefing";
+import { createResearchBriefing, createResearchBriefingsForAllWorkspaces } from "@/lib/operations/briefing";
 import { authorizeApi } from "@/lib/auth/session";
+import type { AuthContext } from "@/lib/auth/types";
+import { z } from "zod";
+
+const briefingSchema = z.object({ hours: z.coerce.number().int().min(1).max(168).default(24) });
 
 export async function POST(request: Request) {
   const secret = process.env.SCHEDULE_SECRET?.trim();
   const supplied = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || request.headers.get("x-schedule-secret");
+  let auth: AuthContext | null = null;
   if (!secret || supplied !== secret) {
     const authorized = await authorizeApi(request, "analyst");
     if ("response" in authorized) return authorized.response;
+    auth = authorized.auth;
   }
   try {
-    const body = await request.json().catch(() => ({})) as { hours?: number };
-    const hours = Math.max(1, Math.min(168, Number(body.hours) || 24));
+    const parsed = briefingSchema.safeParse(await request.json().catch(() => ({})));
+    if (!parsed.success) return Response.json({ error: "Hours must be between 1 and 168.", issues: z.treeifyError(parsed.error) }, { status: 400 });
+    const hours = parsed.data.hours;
     const until = new Date();
-    const briefing = await createResearchBriefing({ since: new Date(until.valueOf() - hours * 60 * 60 * 1_000), until });
-    return Response.json({ briefing }, { status: 201 });
+    const since = new Date(until.valueOf() - hours * 60 * 60 * 1_000);
+    if (auth) return Response.json({ briefing: await createResearchBriefing({ workspaceId: auth.workspace.id, since, until }) }, { status: 201 });
+    return Response.json({ briefings: await createResearchBriefingsForAllWorkspaces({ since, until }) }, { status: 201 });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Unable to create research briefing." }, { status: 500 });
   }

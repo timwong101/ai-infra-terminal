@@ -925,7 +925,7 @@ export const researchQualityRuns = pgTable("research_quality_runs", {
   startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [index("research_quality_runs_created_idx").on(table.createdAt)]);
+}, (table) => [index("research_quality_runs_workspace_created_idx").on(table.workspaceId, table.createdAt)]);
 
 export const researchQualityResults = pgTable("research_quality_results", {
   id: text("id").primaryKey(),
@@ -1126,6 +1126,7 @@ export const researchWorkers = pgTable("research_workers", {
 
 export const researchBriefings = pgTable("research_briefings", {
   id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   runId: text("run_id").references(() => researchCycleRuns.id, { onDelete: "set null" }),
   title: text("title").notNull(),
   summary: text("summary").notNull(),
@@ -1136,7 +1137,7 @@ export const researchBriefings = pgTable("research_briefings", {
   sections: jsonb("sections").default([]).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
-  index("research_briefings_created_idx").on(table.createdAt),
+  index("research_briefings_workspace_created_idx").on(table.workspaceId, table.createdAt),
   index("research_briefings_run_idx").on(table.runId),
 ]);
 

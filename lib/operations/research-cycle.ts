@@ -1,8 +1,8 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import { withDatabase } from "@/lib/db/client";
 import { getIrIngestionSummary } from "@/lib/db/ir-evidence-repository";
 import { researchCycleEvents, researchCycleRuns, researchWorkers } from "@/lib/db/schema";
-import { listResearchBriefings } from "@/lib/operations/briefing";
+import { listWorkspaceResearchBriefings } from "@/lib/operations/briefing";
 import { getCompanyFlowCoverage } from "@/lib/operations/company-coverage";
 import { enqueueResearchCycle, getResearchQueueStatus } from "@/lib/operations/queue";
 import type { ResearchCycleEventItem, ResearchCycleRunItem, ResearchRuntimeSnapshot, ResearchWorkerItem } from "@/lib/operations/types";
@@ -63,6 +63,12 @@ function workerItem(worker: typeof researchWorkers.$inferSelect): ResearchWorker
 
 export async function getResearchRuntimeSnapshot(): Promise<ResearchRuntimeSnapshot> {
   const stored = await withDatabase(async (db) => {
+    const heartbeatExpiredAt = new Date(Date.now() - 20_000);
+    const retentionCutoff = new Date(Date.now() - 24 * 60 * 60 * 1_000);
+    await db.update(researchWorkers).set({ status: "offline", currentRunId: null })
+      .where(and(eq(researchWorkers.status, "online"), lt(researchWorkers.lastHeartbeatAt, heartbeatExpiredAt)));
+    await db.delete(researchWorkers)
+      .where(and(eq(researchWorkers.status, "offline"), lt(researchWorkers.lastHeartbeatAt, retentionCutoff)));
     const runs = await db.select().from(researchCycleRuns).orderBy(desc(researchCycleRuns.createdAt)).limit(20);
     const runIds = runs.map((run) => run.id);
     const events = runIds.length
@@ -84,17 +90,31 @@ export async function getResearchRuntimeSnapshot(): Promise<ResearchRuntimeSnaps
 export async function getResearchOperations(workspaceId: string) {
   const [runtime, briefings, ingestion, coverage, artifactIntegrity] = await Promise.all([
     getResearchRuntimeSnapshot(),
-    listResearchBriefings(12),
+    listWorkspaceResearchBriefings(workspaceId, 12),
     getIrIngestionSummary(),
     getCompanyFlowCoverage(workspaceId),
     getArtifactIntegritySummary(),
   ]);
+  const latestRunAt = runtime.runs.find((run) => run.status === "completed")?.completedAt ?? null;
+  const latestBriefingAt = briefings[0]?.windowEndedAt ?? null;
+  const latestSourceAt = artifactIntegrity.latestArchivedAt;
+  const freshnessLimitMs = 12 * 60 * 60 * 1_000;
+  const stale = (value: string | null) => !value || Date.now() - new Date(value).valueOf() > freshnessLimitMs;
+  const staleStages = [stale(latestSourceAt) ? "source archive" : null, stale(latestRunAt) ? "research cycle" : null, stale(latestBriefingAt) ? "workspace briefing" : null].filter(Boolean) as string[];
   return {
     ...runtime,
     briefings,
     ingestion,
     coverage,
     artifactIntegrity,
+    freshness: {
+      status: staleStages.length ? "stale" : "current",
+      staleStages,
+      latestSourceAt,
+      latestRunAt,
+      latestBriefingAt,
+      thresholdHours: 12,
+    },
     schedule: {
       cadence: "Every 6 hours",
       cron: "17 */6 * * *",

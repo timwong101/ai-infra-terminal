@@ -11,7 +11,7 @@ type Catalog = {
   runs: ResearchQualityRun[];
   feedback: ResearchQualityFeedback[];
   cases: ResearchQualityCase[];
-  suite: { version: string; caseCount: number };
+  suite: { version: string; caseCount: number; gates: { overall: number; passRate: number; citationPrecision: number; groundedness: number } };
   aiAvailable: boolean;
 };
 
@@ -142,13 +142,14 @@ export function ResearchQualityWorkspace({ initialRunId = "", onRunSelect }: Pro
 
       {qualityDomain === "metrics" ? <MetricQualityWorkspace /> : qualityDomain === "sources" ? <ExtractionQualityWorkspace /> : researchView === "feedback" ? <ResearchQualityFeedbackWorkspace feedback={catalog?.feedback ?? []} cases={catalog?.cases ?? []} onChanged={async () => { await loadCatalog(); }} /> : <>
       {(notice || status === "running") && <div className={`quality-notice ${status}`}><FlaskConical size={15} /><span>{notice || "Running the complete benchmark against accepted evidence. This view will update when all cases are persisted."}</span></div>}
+      {!catalog?.runs.length && <div className="quality-notice ready"><ShieldCheck size={15} /><span>This workspace has no saved run yet. CI enforces the same {catalog?.suite.caseCount ?? 32}-case suite at ≥{catalog?.suite.gates.overall ?? 85} overall, ≥{catalog?.suite.gates.passRate ?? 85}% pass rate, and 100% citation precision and groundedness. Run it here to create a workspace-owned baseline.</span></div>}
 
       <section className="quality-metrics" aria-label="Quality metrics">
-        <Metric label="Overall quality" value={run?.overallScore ?? null} icon={BarChart3} />
-        <Metric label="Pass rate" value={run?.passRate ?? null} suffix="%" icon={CheckCircle2} />
+        <Metric label="Overall quality" value={run?.overallScore ?? null} gate={catalog?.suite.gates.overall} icon={BarChart3} />
+        <Metric label="Pass rate" value={run?.passRate ?? null} gate={catalog?.suite.gates.passRate} suffix="%" icon={CheckCircle2} />
         <Metric label="Retrieval coverage" value={metrics && "retrievalCoverage" in metrics ? metrics.retrievalCoverage : null} suffix="%" icon={Database} />
-        <Metric label="Citation precision" value={metrics && "citationPrecision" in metrics ? metrics.citationPrecision : null} suffix="%" icon={ShieldCheck} />
-        <Metric label="Groundedness" value={metrics && "groundedness" in metrics ? metrics.groundedness : null} suffix="%" icon={ShieldCheck} />
+        <Metric label="Citation precision" value={metrics && "citationPrecision" in metrics ? metrics.citationPrecision : null} gate={catalog?.suite.gates.citationPrecision} suffix="%" icon={ShieldCheck} />
+        <Metric label="Groundedness" value={metrics && "groundedness" in metrics ? metrics.groundedness : null} gate={catalog?.suite.gates.groundedness} suffix="%" icon={ShieldCheck} />
         <article><CircleDollarSign size={16} /><span><small>Estimated model cost</small><strong>${(totalCost / 1_000_000).toFixed(4)}</strong><em>{run?.engine ?? "No run"}</em></span></article>
       </section>
 
@@ -198,8 +199,8 @@ function compareRuns(current: ResearchQualityRun, baseline: ResearchQualityRun) 
   return { regressions, fixed };
 }
 
-function Metric({ label, value, suffix = "", icon: Icon }: { label: string; value: number | null; suffix?: string; icon: typeof BarChart3 }) {
-  return <article><Icon size={16} /><span><small>{label}</small><strong className={scoreTone(value)}>{value ?? "--"}{value !== null ? suffix : ""}</strong><em>{value === null ? "Awaiting baseline" : value >= 90 ? "Healthy" : value >= 75 ? "Review" : "Below gate"}</em></span></article>;
+function Metric({ label, value, suffix = "", gate, icon: Icon }: { label: string; value: number | null; suffix?: string; gate?: number; icon: typeof BarChart3 }) {
+  return <article><Icon size={16} /><span><small>{label}</small><strong className={scoreTone(value)}>{value ?? "--"}{value !== null ? suffix : ""}</strong><em>{value === null ? gate ? `CI gate ≥${gate}${suffix}` : "Run to measure" : value >= (gate ?? 90) ? "Gate met" : value >= 75 ? "Review" : "Below gate"}</em></span></article>;
 }
 
 function ResultRow({ result, baseline, active, onSelect }: { result: ResearchQualityResult; baseline: ResearchQualityResult | null; active: boolean; onSelect: () => void }) {

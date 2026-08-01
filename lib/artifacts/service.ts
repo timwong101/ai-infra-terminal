@@ -13,6 +13,7 @@ import {
   getCurrentArchivedSource,
   getSourceExtractionRun,
   listSourceExtractionRuns,
+  listArtifactsForVerification,
   markArtifactVerified,
   persistArchivedSource,
   persistExtractionRun,
@@ -185,6 +186,30 @@ export async function verifySourceArtifact(sourceKind: ArtifactSourceKind, sourc
   });
   if (!valid) throw new Error("Artifact checksum verification failed. The stored object was marked corrupt.");
   return getSourceProvenance(sourceKind, sourceDocumentId);
+}
+
+export async function verifyArtifactIntegrityBatch(limit = 25) {
+  const [store, artifacts] = [getArtifactObjectStore(), await listArtifactsForVerification(limit)];
+  let verified = 0;
+  let corrupt = 0;
+  const failures: Array<{ artifactId: string; message: string }> = [];
+  for (const artifact of artifacts) {
+    try {
+      const bytes = await store.get(artifact.storageKey);
+      const valid = sha256(bytes) === artifact.contentHash;
+      await markArtifactVerified(artifact.id, valid);
+      if (valid) verified += 1;
+      else {
+        corrupt += 1;
+        failures.push({ artifactId: artifact.id, message: "Checksum mismatch." });
+      }
+    } catch (error) {
+      corrupt += 1;
+      await markArtifactVerified(artifact.id, false);
+      failures.push({ artifactId: artifact.id, message: error instanceof Error ? error.message : "Artifact retrieval failed." });
+    }
+  }
+  return { checked: artifacts.length, verified, corrupt, failures };
 }
 
 export async function downloadSourceArtifact(sourceKind: ArtifactSourceKind, sourceDocumentId: string) {

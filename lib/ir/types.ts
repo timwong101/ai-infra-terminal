@@ -30,7 +30,12 @@ export type IrEvidenceCache = {
 
 export type IrEvidenceResponse = {
   cache: IrEvidenceCache;
-  refresh: { status: "fresh" | "cached" | "stale"; message?: string };
+  refresh: {
+    status: "fresh" | "cached" | "stale";
+    message?: string;
+    source: "postgres" | "bundled";
+    observedAt: string;
+  };
   ingestion?: IrIngestionSummary;
 };
 

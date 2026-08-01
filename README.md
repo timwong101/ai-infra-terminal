@@ -201,7 +201,7 @@ Point-in-time replay reconstructs the eligible packet at an earlier date and com
 
 ### Pipeline To Analyst Inbox
 
-The scheduled research cycle runs SEC, IR, live-event, evidence, intelligence, XBRL metric, embedding, thesis, and briefing stages. Each run records stage timing and failures under a trace ID. Upstream refresh and extraction belong to the independent worker; opening a page reads persisted snapshots and never initiates ingestion. Global pipeline controls require an administrator. The Activity workspace converts the result into a research briefing rather than forcing the analyst to inspect raw ingestion logs.
+The scheduled research cycle runs SEC, IR, live-event, artifact-integrity, evidence, intelligence, XBRL metric, embedding, thesis, and briefing stages. Each run records stage timing and failures under a trace ID. Upstream refresh and extraction belong to the independent worker; opening a page reads persisted PostgreSQL snapshots and never initiates ingestion. The checked-in JSON catalogs are explicitly stale-labeled fallbacks for an empty or unavailable database. Global pipeline controls require an administrator. The Activity workspace converts the result into a workspace-owned research briefing rather than forcing the analyst to inspect raw ingestion logs.
 
 ## Technology
 
@@ -328,6 +328,7 @@ Without `OPENAI_API_KEY`, memos and answers use the grounded deterministic engin
 | `pnpm db:backfill:ir` | Backfill official IR document passages |
 | `pnpm db:process:ir -- --all` | Drain the durable IR extraction queue |
 | `pnpm artifacts:backfill` | Archive existing raw documents and isolate parser differences as reviewable previews |
+| `pnpm artifacts:verify -- 25` | Retrieve and SHA-256 verify the least-recently checked source artifacts |
 | `pnpm research:intelligence` | Rebuild periods, earnings packages, metrics, and change briefs |
 | `pnpm research:events` | Refresh official and GDELT event discovery |
 | `pnpm research:briefing` | Build a briefing from the current research window |
@@ -339,7 +340,7 @@ Without `OPENAI_API_KEY`, memos and answers use the grounded deterministic engin
 
 SEC refreshes preserve recurring quarterly and annual coverage before newer event filings. IR ingestion only follows configured official domains, requires publication dates, rejects SEC mirrors, deduplicates repeated cards, and queues unseen documents for bounded retries.
 
-The six-hour GitHub Actions ingestion workflow requires repository secrets for `DATABASE_URL` and `SEC_USER_AGENT`; `OPENAI_API_KEY` is optional. The application keeps successful fallback data when an upstream source is unavailable.
+The six-hour GitHub Actions ingestion workflow fails closed unless durable storage is available. Configure repository secrets for `DATABASE_URL`, `SEC_USER_AGENT`, `ARTIFACT_STORAGE_ENDPOINT`, `ARTIFACT_STORAGE_ACCESS_KEY`, and `ARTIFACT_STORAGE_SECRET_KEY`. `ARTIFACT_STORAGE_BUCKET` and `ARTIFACT_STORAGE_REGION` are optional; `OPENAI_API_KEY` remains optional. A scheduled run never writes database pointers to a GitHub runner's temporary filesystem.
 
 ## Verification
 
@@ -351,7 +352,7 @@ pnpm test
 
 The current suite includes:
 
-- **134 deterministic tests** covering ingestion, immutable source hashing, parser replay diffs, normalization, extraction, SEC Company Facts, metric reconciliation and anomaly policy, evidence policy, claim synthesis, numeric fidelity, content-bound review approval, citation verification, production regression contracts, report publishing, quality scoring, company intelligence, events, replay, durable queue contracts, route contracts, rate-limit isolation, and bundle budgets.
+- **138 deterministic tests** covering ingestion, immutable source hashing, durable-storage policy, parser replay diffs, normalization, extraction, SEC Company Facts, metric reconciliation and anomaly policy, evidence policy, claim synthesis, numeric fidelity, content-bound review approval, citation verification, production regression contracts, report publishing, quality scoring, request validation, company intelligence, events, replay, durable queue contracts, route contracts, rate-limit isolation, and bundle budgets.
 - **32 curated research-quality cases plus versioned production cases** covering four companies, topic retrieval, pairwise comparisons, source policy, synthesis, refusal behavior, and analyst-reported failures.
 - **11 metric-quality cases** covering golden extraction fixtures, value and unit normalization, scope and period dimensions, anomaly suppression, and live canonical-fact contracts.
 - **8 immutable real-document extraction cases** spanning all four Neoclouds, including production false-positive guards and issuer-specific fiscal calendars.

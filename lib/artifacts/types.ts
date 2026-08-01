@@ -65,7 +65,9 @@ export type ArtifactIntegritySummary = {
   archivedBytes: number;
   coveragePercent: number;
   verifiedArtifacts: number;
+  corruptArtifacts: number;
   previewRuns: number;
   failedRuns: number;
   latestArchivedAt: string | null;
+  latestVerifiedAt: string | null;
 };

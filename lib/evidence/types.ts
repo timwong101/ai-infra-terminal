@@ -10,7 +10,7 @@ export type EvidenceEvent = {
   sourceType: "SEC";
   formType: string;
   filedAt: string;
-  acceptedAt: string;
+  acceptedAt: string | null;
   periodOfReport: string | null;
   headline: string;
   summary: string;
@@ -41,6 +41,8 @@ export type SecEvidenceResponse = {
   refresh: {
     status: SecRefreshStatus;
     message?: string;
+    source: "postgres" | "bundled";
+    observedAt: string;
   };
 };
 

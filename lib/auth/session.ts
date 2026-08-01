@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
 import { withDatabase } from "@/lib/db/client";
 import { apiRateLimits, auditEvents, authSessions, users, workspaceMembers, workspaces } from "@/lib/db/schema";
 import type { AuditEventItem, AuthContext, WorkspaceRole } from "@/lib/auth/types";
@@ -135,12 +135,18 @@ export async function authorizeApi(request: Request, minimumRole: WorkspaceRole 
       const windowStart = new Date();
       windowStart.setUTCSeconds(0, 0);
       const id = `${auth.user.id}:${rateLimit.key}:${windowStart.toISOString()}`;
-      const row = await withDatabase(async (db) => (await db.insert(apiRateLimits).values({
-        id, userId: auth.user.id, route: rateLimit.key, windowStart,
-      }).onConflictDoUpdate({
-        target: apiRateLimits.id,
-        set: { requestCount: sql`${apiRateLimits.requestCount} + 1`, updatedAt: new Date() },
-      }).returning({ count: apiRateLimits.requestCount }))[0]);
+      const row = await withDatabase(async (db) => {
+        const current = (await db.insert(apiRateLimits).values({
+          id, userId: auth.user.id, route: rateLimit.key, windowStart,
+        }).onConflictDoUpdate({
+          target: apiRateLimits.id,
+          set: { requestCount: sql`${apiRateLimits.requestCount} + 1`, updatedAt: new Date() },
+        }).returning({ count: apiRateLimits.requestCount }))[0];
+        if (windowStart.getUTCMinutes() % 15 === 0) {
+          await db.delete(apiRateLimits).where(lt(apiRateLimits.windowStart, new Date(Date.now() - 24 * 60 * 60 * 1_000)));
+        }
+        return current;
+      });
       if ((row?.count ?? 0) > rateLimit.limit) {
         return { response: Response.json({ error: "Rate limit exceeded. Try again in one minute." }, { status: 429, headers: { "Retry-After": "60", "Cache-Control": "no-store" } }) } as const;
       }

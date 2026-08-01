@@ -1,6 +1,10 @@
-import { listResearchQualityRuns, RESEARCH_QUALITY_BENCHMARKS, RESEARCH_QUALITY_SUITE_VERSION, runResearchQualitySuite } from "@/lib/research/research-quality";
+import { listResearchQualityRuns, RESEARCH_QUALITY_BENCHMARKS, RESEARCH_QUALITY_GATES, RESEARCH_QUALITY_SUITE_VERSION, runResearchQualitySuite } from "@/lib/research/research-quality";
 import { authorizeApi } from "@/lib/auth/session";
+import { parseJsonBody } from "@/lib/http/validation";
 import { listResearchQualityCases, listResearchQualityFeedback } from "@/lib/research/quality-feedback";
+import { z } from "zod";
+
+const qualityRunSchema = z.object({ engine: z.enum(["deterministic", "ai"]).default("deterministic") });
 
 export async function GET(request: Request) {
   const authorized = await authorizeApi(request);
@@ -15,7 +19,11 @@ export async function GET(request: Request) {
       runs,
       feedback,
       cases,
-      suite: { version: RESEARCH_QUALITY_SUITE_VERSION, caseCount: RESEARCH_QUALITY_BENCHMARKS.length + cases.filter((item) => item.status === "active").length },
+      suite: {
+        version: RESEARCH_QUALITY_SUITE_VERSION,
+        caseCount: RESEARCH_QUALITY_BENCHMARKS.length + cases.filter((item) => item.status === "active").length,
+        gates: RESEARCH_QUALITY_GATES,
+      },
       aiAvailable: Boolean(process.env.OPENAI_API_KEY?.trim()),
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
@@ -27,8 +35,9 @@ export async function POST(request: Request) {
   const authorized = await authorizeApi(request, "analyst");
   if ("response" in authorized) return authorized.response;
   try {
-    const body = await request.json() as { engine?: "deterministic" | "ai" };
-    const engine = body.engine === "ai" ? "ai" : "deterministic";
+    const parsed = await parseJsonBody(request, qualityRunSchema);
+    if ("response" in parsed) return parsed.response;
+    const engine = parsed.data.engine;
     const run = await runResearchQualitySuite(engine, authorized.auth);
     return Response.json({ run }, { status: 201 });
   } catch (error) {

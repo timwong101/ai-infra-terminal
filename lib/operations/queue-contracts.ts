@@ -9,6 +9,7 @@ export const RESEARCH_STAGE_BACKOFF_MS = 1_500;
 
 export const RESEARCH_STAGE_GROUPS: readonly (readonly ResearchStageName[])[] = [
   ["ingesting-sec", "ingesting-ir", "refreshing-events"],
+  ["verifying-artifacts"],
   ["syncing-evidence"],
   ["updating-company-intelligence", "embedding-evidence"],
   ["updating-theses"],
