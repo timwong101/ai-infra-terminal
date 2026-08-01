@@ -117,9 +117,9 @@ export type TerminalRoute = {
   researchQualityRunId?: string;
 };
 
-export function parseTerminalRoute(): TerminalRoute {
-  const parts = window.location.pathname.split("/").filter(Boolean).map(decodeURIComponent);
-  const search = new URLSearchParams(window.location.search);
+export function parseTerminalRoute(pathname: string, searchParams: URLSearchParams | Readonly<URLSearchParams> = new URLSearchParams()): TerminalRoute {
+  const parts = pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  const search = new URLSearchParams(searchParams.toString());
   if (parts[0] === "companies") return { activeNav: "Companies", companyId: parts[1] ?? "" };
   if (parts[0] === "evidence") return { activeNav: "Evidence Feed", evidenceCompanyId: search.get("company") ?? "" };
   if (parts[0] === "events") return { activeNav: "Live Events" };
@@ -141,21 +141,22 @@ export function parseTerminalRoute(): TerminalRoute {
 function safeClientReturnPath(value: string | null) {
   if (!value?.startsWith("/") || value.startsWith("//") || value.startsWith("/login")) return "/home";
   try {
-    const url = new URL(value, window.location.origin);
-    if (url.origin !== window.location.origin) return "/home";
+    const url = new URL(value, "https://app.local");
+    if (url.origin !== "https://app.local") return "/home";
     return `${url.pathname}${url.search}${url.hash}`;
   } catch {
     return "/home";
   }
 }
 
-export function resolveAuthPath(authenticated: boolean) {
-  const current = `${window.location.pathname}${window.location.search}`;
+export function resolveAuthPath(authenticated: boolean, pathname: string, searchParams: URLSearchParams | Readonly<URLSearchParams> = new URLSearchParams()) {
+  const query = searchParams.toString();
+  const current = `${pathname}${query ? `?${query}` : ""}`;
   if (authenticated) {
-    if (window.location.pathname === "/login") return safeClientReturnPath(new URLSearchParams(window.location.search).get("returnTo"));
-    return window.location.pathname === "/" ? "/home" : current;
+    if (pathname === "/login") return safeClientReturnPath(searchParams.get("returnTo"));
+    return pathname === "/" ? "/home" : current;
   }
-  if (window.location.pathname === "/login") return current;
-  if (window.location.pathname === "/") return "/login";
+  if (pathname === "/login") return current;
+  if (pathname === "/") return "/login";
   return `/login?returnTo=${encodeURIComponent(current)}`;
 }

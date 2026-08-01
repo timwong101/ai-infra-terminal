@@ -114,6 +114,8 @@ flowchart LR
 
 The application is a TypeScript monolith with clear service boundaries. React workspaces call App Router API handlers; domain services own retrieval, verification, replay, ingestion, and persistence; PostgreSQL stores both research data and operational history.
 
+Every workspace and detail view has an explicit App Router segment, so deep links, reloads, browser history, and unknown-route 404s use framework routing rather than a client-side catch-all. Large analysis workspaces are lazy-loaded behind a shared authenticated shell, and CI enforces entry-point and chunk-size budgets.
+
 ### Claim-To-Evidence Model
 
 ```mermaid
@@ -349,11 +351,11 @@ pnpm test
 
 The current suite includes:
 
-- **131 deterministic tests** covering ingestion, immutable source hashing, parser replay diffs, normalization, extraction, SEC Company Facts, metric reconciliation and anomaly policy, evidence policy, claim synthesis, numeric fidelity, content-bound review approval, citation verification, production regression contracts, report publishing, quality scoring, company intelligence, events, replay, and durable queue contracts.
+- **134 deterministic tests** covering ingestion, immutable source hashing, parser replay diffs, normalization, extraction, SEC Company Facts, metric reconciliation and anomaly policy, evidence policy, claim synthesis, numeric fidelity, content-bound review approval, citation verification, production regression contracts, report publishing, quality scoring, company intelligence, events, replay, durable queue contracts, route contracts, rate-limit isolation, and bundle budgets.
 - **32 curated research-quality cases plus versioned production cases** covering four companies, topic retrieval, pairwise comparisons, source policy, synthesis, refusal behavior, and analyst-reported failures.
 - **11 metric-quality cases** covering golden extraction fixtures, value and unit normalization, scope and period dimensions, anomaly suppression, and live canonical-fact contracts.
 - **8 immutable real-document extraction cases** spanning all four Neoclouds, including production false-positive guards and issuer-specific fiscal calendars.
-- **19 Chromium journeys** covering login, the curated demo, responsive layouts, all four Neoclouds, immutable source download, parser replay and analyst promotion, evidence review, commitments, two-user memo approval, team roles, public report publishing and export, assistant persistence, failure-to-regression promotion, durable job retries, benchmarks, lineage, workspace isolation, and audit history.
+- **20 Chromium journeys** covering login, explicit routes and browser history, real 404 handling, the curated demo, responsive layouts, all four Neoclouds, immutable source download, parser replay and analyst promotion, evidence review, commitments, two-user memo approval, team roles, public report publishing and export, assistant persistence, failure-to-regression promotion, durable job retries, benchmarks, lineage, workspace isolation, and audit history.
 
 CI runs three quality gates. Research answers require at least 85 overall, at least an 85% case pass rate, and 100% citation precision and groundedness. Metrics require at least 90 overall with 100% anomaly safety and live-contract health. Source extraction requires every archived fixture to pass with 100% false-positive and fiscal-period safety.
 

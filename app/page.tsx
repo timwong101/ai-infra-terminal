@@ -18,22 +18,9 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertsWorkspace } from "@/app/components/alerts-workspace";
-import { ComparisonWorkspace } from "@/app/components/comparison-workspace";
-import { CompanyIntelligenceWorkspace } from "@/app/components/company-intelligence-workspace";
-import { ResearchAssistantWorkspace } from "@/app/components/research-assistant-workspace";
-import { ResearchQualityWorkspace } from "@/app/components/research-quality-workspace";
-import { AuditWorkspace } from "@/app/components/audit-workspace";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { SignInScreen, UserMenu, type AuthSession, type PublicAuthState } from "@/app/components/auth-controls";
-import { InvitationAcceptance } from "@/app/components/invitation-acceptance";
-import { EvidenceWorkspace } from "@/app/components/evidence-workspace";
-import { OperationsWorkspace } from "@/app/components/operations-workspace";
-import { ThesisWorkspace } from "@/app/components/thesis-workspace";
-import { EventIntelligenceWorkspace } from "@/app/components/event-intelligence-workspace";
-import { ResearchReplayWorkspace } from "@/app/components/research-replay-workspace";
-import { LineageWorkspace } from "@/app/components/lineage-workspace";
-import { PublishedReportWorkspace } from "@/app/components/published-report-workspace";
 import secEvidenceCacheJson from "@/data/generated/sec-evidence.json";
 import irEvidenceCacheJson from "@/data/generated/ir-evidence.json";
 import type {
@@ -57,6 +44,21 @@ import {
   slugify,
   themeGroups,
 } from "@/app/terminal-navigation";
+
+const AlertsWorkspace = lazy(() => import("@/app/components/alerts-workspace").then((module) => ({ default: module.AlertsWorkspace })));
+const AuditWorkspace = lazy(() => import("@/app/components/audit-workspace").then((module) => ({ default: module.AuditWorkspace })));
+const ComparisonWorkspace = lazy(() => import("@/app/components/comparison-workspace").then((module) => ({ default: module.ComparisonWorkspace })));
+const CompanyIntelligenceWorkspace = lazy(() => import("@/app/components/company-intelligence-workspace").then((module) => ({ default: module.CompanyIntelligenceWorkspace })));
+const EventIntelligenceWorkspace = lazy(() => import("@/app/components/event-intelligence-workspace").then((module) => ({ default: module.EventIntelligenceWorkspace })));
+const EvidenceWorkspace = lazy(() => import("@/app/components/evidence-workspace").then((module) => ({ default: module.EvidenceWorkspace })));
+const InvitationAcceptance = lazy(() => import("@/app/components/invitation-acceptance").then((module) => ({ default: module.InvitationAcceptance })));
+const LineageWorkspace = lazy(() => import("@/app/components/lineage-workspace").then((module) => ({ default: module.LineageWorkspace })));
+const OperationsWorkspace = lazy(() => import("@/app/components/operations-workspace").then((module) => ({ default: module.OperationsWorkspace })));
+const PublishedReportWorkspace = lazy(() => import("@/app/components/published-report-workspace").then((module) => ({ default: module.PublishedReportWorkspace })));
+const ResearchAssistantWorkspace = lazy(() => import("@/app/components/research-assistant-workspace").then((module) => ({ default: module.ResearchAssistantWorkspace })));
+const ResearchQualityWorkspace = lazy(() => import("@/app/components/research-quality-workspace").then((module) => ({ default: module.ResearchQualityWorkspace })));
+const ResearchReplayWorkspace = lazy(() => import("@/app/components/research-replay-workspace").then((module) => ({ default: module.ResearchReplayWorkspace })));
+const ThesisWorkspace = lazy(() => import("@/app/components/thesis-workspace").then((module) => ({ default: module.ThesisWorkspace })));
 
 type Signal = EvidenceSignal;
 type SecUiStatus = SecRefreshStatus | "refreshing";
@@ -217,38 +219,49 @@ function AppLogo() {
 }
 
 export default function Home() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [auth, setAuth] = useState<AuthSession | PublicAuthState | null>(null);
   const [publicReportToken, setPublicReportToken] = useState<string | null>(null);
 
   const loadAuth = useCallback(async () => {
     const response = await fetch("/api/auth/session", { cache: "no-store" });
     const result = await response.json() as AuthSession | PublicAuthState;
-    const nextPath = resolveAuthPath(result.authenticated);
-    if (`${window.location.pathname}${window.location.search}` !== nextPath) window.history.replaceState({}, "", nextPath);
+    const nextPath = resolveAuthPath(result.authenticated, pathname, searchParams);
+    const currentPath = `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
+    if (currentPath !== nextPath) router.replace(nextPath);
     setAuth(result);
-  }, []);
+  }, [pathname, router, searchParams]);
 
   useEffect(() => {
     queueMicrotask(() => {
-      const parts = window.location.pathname.split("/").filter(Boolean);
+      const parts = pathname.split("/").filter(Boolean);
       const token = parts.length === 2 && parts[0] === "reports" && /^[a-f0-9]{64}$/.test(parts[1]) ? parts[1] : "";
       setPublicReportToken(token);
       if (!token) void loadAuth();
     });
-  }, [loadAuth]);
+  }, [loadAuth, pathname]);
 
   if (publicReportToken === null) return <div className="workspace-state full-page"><LoaderCircle className="drawer-spinner" size={25} /><strong>Opening research workspace</strong></div>;
-  if (publicReportToken) return <PublishedReportWorkspace token={publicReportToken} />;
+  if (publicReportToken) return <Suspense fallback={<RouteLoading label="Opening published report" />}><PublishedReportWorkspace token={publicReportToken} /></Suspense>;
   if (!auth) return <div className="workspace-state full-page"><LoaderCircle className="drawer-spinner" size={25} /><strong>Opening analyst workspace</strong><span>Validating your session and active workspace.</span></div>;
   if (!auth.authenticated) return <SignInScreen state={auth} onSignedIn={loadAuth} />;
-  const invitationParts = window.location.pathname.split("/").filter(Boolean);
+  const invitationParts = pathname.split("/").filter(Boolean);
   if (invitationParts.length === 2 && invitationParts[0] === "invite") {
-    return <InvitationAcceptance token={invitationParts[1]} auth={auth} onAccepted={loadAuth} />;
+    return <Suspense fallback={<RouteLoading label="Opening invitation" />}><InvitationAcceptance token={invitationParts[1]} auth={auth} onAccepted={loadAuth} /></Suspense>;
   }
   return <Terminal auth={auth} onAuthChange={loadAuth} />;
 }
 
+function RouteLoading({ label = "Opening workspace" }: { label?: string }) {
+  return <div className="workspace-state full-page route-loading"><LoaderCircle className="drawer-spinner" size={25} /><strong>{label}</strong><span>Loading only the tools required for this view.</span></div>;
+}
+
 function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () => Promise<void> }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [selectedTheme, setSelectedTheme] = useState("Neoclouds");
   const [activeThemeGroup, setActiveThemeGroup] = useState("Cloud & Capacity");
   const [activeNav, setActiveNav] = useState("AI Infra Map");
@@ -275,7 +288,7 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
   const detailRequest = useRef<AbortController | null>(null);
 
   const syncRoute = useCallback(() => {
-    const route = parseTerminalRoute();
+    const route = parseTerminalRoute(pathname, searchParams);
     setActiveNav(route.activeNav);
     setRouteCompanyId(route.companyId ?? "");
     setRouteEvidenceCompanyId(route.evidenceCompanyId ?? "");
@@ -288,18 +301,16 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
       const matchingGroup = themeGroups.find((group) => (group.items as readonly string[]).includes(routeTheme));
       if (matchingGroup) setActiveThemeGroup(matchingGroup.title);
     }
-  }, []);
+  }, [pathname, searchParams]);
 
   const navigate = useCallback((path: string) => {
-    if (`${window.location.pathname}${window.location.search}` !== path) window.history.pushState({}, "", path);
-    syncRoute();
+    const currentPath = `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
+    if (currentPath !== path) router.push(path);
     setSidebarOpen(false);
-  }, [syncRoute]);
+  }, [pathname, router, searchParams]);
 
   useEffect(() => {
     queueMicrotask(syncRoute);
-    window.addEventListener("popstate", syncRoute);
-    return () => window.removeEventListener("popstate", syncRoute);
   }, [syncRoute]);
 
   useEffect(() => {
@@ -600,6 +611,7 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
           </nav>
         )}
 
+        <Suspense fallback={<RouteLoading label={`Opening ${activeToolLabel}`} />}>
         {activeNav === "Alerts" ? (
           <AlertsWorkspace onOpenFiling={openAlertFiling} onUnreadChange={setUnreadAlertCount} />
         ) : activeNav === "Live Events" ? (
@@ -758,6 +770,7 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
           </section>
         </div>
         )}
+        </Suspense>
       </section>
 
       {toast && <div className="toast"><span><ShieldCheck size={16} /></span>{toast}</div>}

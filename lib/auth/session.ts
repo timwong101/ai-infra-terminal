@@ -68,6 +68,18 @@ export function readOAuthCookie(request: Request, name: string) {
   return cookieValue(request, name);
 }
 
+export function apiRateLimitPolicy(request: Request) {
+  const method = request.method.toUpperCase();
+  const mutating = !["GET", "HEAD", "OPTIONS"].includes(method);
+  const pathname = new URL(request.url).pathname;
+  const expensive = /\/(comparison-memos|research-assistant|research-quality|metric-quality|extraction-quality|research-cycle|ir-ingestion)(?:\/|$)/.test(pathname);
+  return {
+    enabled: mutating || expensive,
+    key: `${method}:${pathname}`,
+    limit: mutating && expensive ? 30 : 120,
+  };
+}
+
 export async function createSession(userId: string, workspaceId: string) {
   const token = randomToken();
   const tokenHash = await hashToken(token);
@@ -118,19 +130,18 @@ export async function authorizeApi(request: Request, minimumRole: WorkspaceRole 
       return { response: Response.json({ error: "Request body exceeds the 256 KB limit." }, { status: 413 }) } as const;
     }
     const auth = await authenticateRequest(request, minimumRole);
-    const expensive = /\/(comparison-memos|research-assistant|research-quality|metric-quality|extraction-quality|research-cycle|ir-ingestion)(?:\/|$)/.test(url.pathname);
-    if (mutating || expensive) {
-      const limit = expensive ? 30 : 120;
+    const rateLimit = apiRateLimitPolicy(request);
+    if (rateLimit.enabled) {
       const windowStart = new Date();
       windowStart.setUTCSeconds(0, 0);
-      const id = `${auth.user.id}:${url.pathname}:${windowStart.toISOString()}`;
+      const id = `${auth.user.id}:${rateLimit.key}:${windowStart.toISOString()}`;
       const row = await withDatabase(async (db) => (await db.insert(apiRateLimits).values({
-        id, userId: auth.user.id, route: url.pathname, windowStart,
+        id, userId: auth.user.id, route: rateLimit.key, windowStart,
       }).onConflictDoUpdate({
         target: apiRateLimits.id,
         set: { requestCount: sql`${apiRateLimits.requestCount} + 1`, updatedAt: new Date() },
       }).returning({ count: apiRateLimits.requestCount }))[0]);
-      if ((row?.count ?? 0) > limit) {
+      if ((row?.count ?? 0) > rateLimit.limit) {
         return { response: Response.json({ error: "Rate limit exceeded. Try again in one minute." }, { status: 429, headers: { "Retry-After": "60", "Cache-Control": "no-store" } }) } as const;
       }
     }

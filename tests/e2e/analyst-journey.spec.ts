@@ -96,6 +96,12 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await researchTools.getByRole("button", { name: "Evidence", exact: true }).click();
     await expect(page).toHaveURL(/\/evidence$/);
     await expect(page.getByRole("heading", { name: "Evidence Review" })).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(/\/companies$/);
+    await expect(page.getByRole("heading", { name: "Company Intelligence" })).toBeVisible();
+    await page.goForward();
+    await expect(page).toHaveURL(/\/evidence$/);
+    await expect(page.getByRole("heading", { name: "Evidence Review" })).toBeVisible();
 
     await page.goto("/research-quality");
     const systemTools = page.getByRole("navigation", { name: "System tools" });
@@ -112,6 +118,15 @@ test.describe.serial("evidence-grounded analyst journey", () => {
       const toolNavigation = page.getByRole("navigation", { name: `${section.label} tools` });
       await expect(toolNavigation.getByText(section.label, { exact: true })).toHaveCount(0);
     }
+  });
+
+  test("unknown UI routes render the explicit not-found screen", async ({ page }) => {
+    const response = await page.goto("/not-a-research-route");
+    expect(response?.status()).toBe(404);
+    await expect(page.getByRole("heading", { name: "This workspace does not exist" })).toBeVisible();
+    await page.getByRole("link", { name: "Return to market map" }).click();
+    await expect(page).toHaveURL(/\/home$/);
+    await expect(page.getByRole("heading", { name: "AI Infrastructure Map" })).toBeVisible();
   });
 
   test("portfolio demo opens with a complete, evidence-grounded analyst story", async ({ page }) => {

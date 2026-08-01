@@ -27,4 +27,5 @@ The terminal combines an interactive React application with PostgreSQL, Redis qu
 - Worker availability can affect freshness without taking the research UI offline.
 - Local Docker mirrors the stateful service boundaries used by CI and the intended deployment.
 - Web requests avoid cross-request socket reuse, while worker jobs amortize connections through a process pool.
-- A future routing migration can replace the current client shell without changing ingestion ownership.
+- Explicit App Router segments provide reloadable, bookmarkable workspace and detail URLs while sharing one authenticated terminal shell.
+- Heavy workspaces load as independent client chunks; a bundle-budget regression test protects the initial page from absorbing them again.

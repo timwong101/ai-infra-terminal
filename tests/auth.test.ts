@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { GET as startGitHubOAuth } from "@/app/api/auth/github/route";
-import { authorizeApi, clearSessionCookie, oauthCookie, redirectResponse, safeReturnPath, sessionCookie } from "@/lib/auth/session";
+import { apiRateLimitPolicy, authorizeApi, clearSessionCookie, oauthCookie, redirectResponse, safeReturnPath, sessionCookie } from "@/lib/auth/session";
 
 test("auth return paths reject external and protocol-relative redirects", () => {
   assert.equal(safeReturnPath("/memos?company=coreweave"), "/memos?company=coreweave");
@@ -45,6 +45,24 @@ test("API authorization rejects cross-origin and oversized mutations before data
   const oversizedResponse = "response" in oversized ? oversized.response : null;
   assert.ok(oversizedResponse);
   assert.equal(oversizedResponse.status, 413);
+});
+
+test("rate limits isolate reads from expensive mutations", () => {
+  assert.deepEqual(apiRateLimitPolicy(new Request("http://localhost/api/research-quality")), {
+    enabled: true,
+    key: "GET:/api/research-quality",
+    limit: 120,
+  });
+  assert.deepEqual(apiRateLimitPolicy(new Request("http://localhost/api/research-quality", { method: "POST" })), {
+    enabled: true,
+    key: "POST:/api/research-quality",
+    limit: 30,
+  });
+  assert.deepEqual(apiRateLimitPolicy(new Request("http://localhost/api/evidence")), {
+    enabled: false,
+    key: "GET:/api/evidence",
+    limit: 120,
+  });
 });
 
 test("OAuth redirects retain mutable headers for state cookies", async () => {
