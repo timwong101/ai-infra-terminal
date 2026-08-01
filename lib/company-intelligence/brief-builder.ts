@@ -1,6 +1,7 @@
 export type BriefSection = "change" | "bull" | "bear" | "question";
 export type BriefSentiment = "positive" | "negative" | "neutral" | "open";
-export type ThesisImpact = "strengthened" | "weakened" | "mixed" | "unchanged";
+export type ThesisImpact = "strengthened" | "weakened" | "mixed" | "unchanged" | "not_assessed";
+export type BriefReadinessStatus = "ready" | "review_required" | "insufficient_evidence" | "not_comparable";
 
 export type BriefComparisonInput = {
   id: string;
@@ -35,6 +36,7 @@ export type BuiltEarningsChangeBrief = {
   headline: string;
   summary: string;
   thesisImpact: ThesisImpact;
+  readinessStatus: BriefReadinessStatus;
   confidenceScore: number;
   evidenceQualityScore: number;
   sourceDiversityScore: number;
@@ -126,10 +128,6 @@ export function buildEarningsChangeBrief(input: {
   const classified = grounded.map((item) => ({ item, sentiment: comparisonSentiment(item) }));
   const positive = classified.filter((entry) => entry.sentiment === "positive");
   const negative = classified.filter((entry) => entry.sentiment === "negative");
-  const thesisImpact: ThesisImpact = positive.length && negative.length ? "mixed"
-    : positive.length ? "strengthened"
-      : negative.length ? "weakened"
-        : "unchanged";
   const citedEvidence = [...new Set(grounded.flatMap((item) => item.evidenceIds))].map((id) => evidenceById.get(id)!);
   const evidenceQualityScore = citedEvidence.length
     ? Math.round(citedEvidence.reduce((sum, item) => sum + item.sourceQuality, 0) / citedEvidence.length)
@@ -139,6 +137,15 @@ export function buildEarningsChangeBrief(input: {
     + new Set(citedEvidence.map((item) => item.sourceType)).size * 8,
   );
   const coverageScore = Math.min(100, grounded.length * 14);
+  const readinessStatus: BriefReadinessStatus = !input.previousLabel ? "not_comparable"
+    : grounded.length === 0 ? "insufficient_evidence"
+      : grounded.length < 2 || input.periodResolutionConfidence < 70 || evidenceQualityScore < 60 ? "review_required"
+        : "ready";
+  const thesisImpact: ThesisImpact = readinessStatus !== "ready" ? "not_assessed"
+    : positive.length && negative.length ? "mixed"
+      : positive.length ? "strengthened"
+        : negative.length ? "weakened"
+          : "unchanged";
   const confidenceScore = Math.round(
     input.periodResolutionConfidence * .25 + evidenceQualityScore * .35 + sourceDiversityScore * .2 + coverageScore * .2,
   );
@@ -160,14 +167,24 @@ export function buildEarningsChangeBrief(input: {
     })),
   ];
   const previous = input.previousLabel ?? "the prior comparable period";
-  const headline = grounded.length
+  const headline = readinessStatus === "not_comparable"
+    ? `${input.companyName}'s ${input.currentLabel} package has no prior comparable period.`
+    : readinessStatus === "insufficient_evidence"
+      ? `${input.companyName}'s ${input.currentLabel} package does not contain enough grounded evidence to assess thesis impact.`
+      : readinessStatus === "review_required"
+        ? `${input.companyName}'s ${input.currentLabel} evidence requires review before thesis impact can be assessed.`
+        : grounded.length
     ? `${input.companyName}'s ${input.currentLabel} evidence ${thesisImpact === "unchanged" ? "did not materially change" : `has a ${thesisImpact} thesis impact`}.`
-    : `No grounded material changes were identified for ${input.companyName} in ${input.currentLabel}.`;
-  const summary = grounded.length
+    : `${input.companyName}'s ${input.currentLabel} evidence is ready for assessment.`;
+  const summary = readinessStatus === "insufficient_evidence"
+    ? `No cited comparison met the grounding policy versus ${previous}; this is a data sufficiency result, not an unchanged thesis conclusion.`
+    : readinessStatus === "not_comparable"
+      ? "A thesis-impact conclusion requires a prior period with compatible disclosures or metrics."
+      : grounded.length
     ? `${grounded.length} cited changes were identified versus ${previous}: ${positive.length} supportive, ${negative.length} risk-oriented, and ${grounded.length - positive.length - negative.length} neutral.`
     : `The available evidence did not support a material change brief versus ${previous}.`;
   return {
-    headline, summary, thesisImpact, confidenceScore, evidenceQualityScore, sourceDiversityScore,
+    headline, summary, thesisImpact, readinessStatus, confidenceScore, evidenceQualityScore, sourceDiversityScore,
     changeCount: grounded.length, claims: [...changeClaims, ...implicationClaims, ...openQuestions(grounded)],
   };
 }

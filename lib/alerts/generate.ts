@@ -1,4 +1,4 @@
-import { asc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { withDatabase } from "@/lib/db/client";
 import {
   claimEvidence,
@@ -7,7 +7,6 @@ import {
   filings,
   researchAlerts,
   researchClaims,
-  researchEvidence,
   thesisSnapshots,
 } from "@/lib/db/schema";
 
@@ -66,12 +65,6 @@ function groupKey(filingId: string, eventKey: string, changeType: string, catego
   return `${filingId}:${eventKey}:${changeType}:${category}`;
 }
 
-function evidenceScore(quality: number, documentDate: string) {
-  const ageDays = Math.max(0, (Date.now() - new Date(`${documentDate}T00:00:00Z`).valueOf()) / 86_400_000);
-  const base = quality >= 90 ? 10 : quality >= 80 ? 8 : quality >= 70 ? 6 : 4;
-  return Math.max(2, Math.round(base * (ageDays <= 180 ? 1 : ageDays <= 365 ? 0.8 : 0.55)));
-}
-
 export async function seedResearchClaims() {
   return withDatabase(async (db) => {
     const companyRows = await db.select().from(companies);
@@ -115,7 +108,7 @@ export async function generateResearchAlerts() {
     const statusByGroup = new Map(existing.map(({ alert, change }) => [groupKey(alert.filingId ?? "", change.eventCode ?? change.sectionTitle, change.changeType, alert.category), alert.status]));
     await db.delete(claimEvidence).where(isNotNull(claimEvidence.filingChangeId));
     await db.delete(researchAlerts).where(eq(researchAlerts.alertType, "filing_change"));
-    await db.delete(researchAlerts).where(eq(researchAlerts.alertType, "claim_impact"));
+    await db.delete(researchAlerts).where(and(eq(researchAlerts.alertType, "claim_impact"), isNull(researchAlerts.workspaceId)));
 
     type ChangeRow = (typeof changes)[number];
     const groups = new Map<string, { category: string; rows: Array<ChangeRow & { impact: "strengthens" | "weakens" | "watch" }> }>();
@@ -158,31 +151,9 @@ export async function generateResearchAlerts() {
       });
     }
 
-    await db.execute(sql`DELETE FROM claim_evidence ce USING research_evidence re WHERE ce.research_evidence_id = re.id AND (re.review_status <> 'accepted' OR re.suggestion_status <> 'accepted' OR re.suggested_claim_id IS NULL OR ce.claim_id <> re.suggested_claim_id)`);
-    const accepted = await db.select().from(researchEvidence).where(eq(researchEvidence.reviewStatus, "accepted"));
-    const suggestionClaims = await db.select().from(researchClaims);
-    const suggestionClaimsById = new Map(suggestionClaims.map((claim) => [claim.id, claim]));
-    for (const evidence of accepted) {
-      if (evidence.suggestionStatus !== "accepted" || !evidence.suggestedClaimId || !evidence.suggestedImpact) continue;
-      const claim = suggestionClaimsById.get(evidence.suggestedClaimId);
-      if (!claim || claim.companyId !== evidence.companyId) continue;
-      const category = classifyAlertCategory(`${evidence.topic} ${evidence.sectionTitle} ${evidence.excerpt}`);
-      const impact = evidence.suggestedImpact as "supports" | "weakens" | "watch";
-      const base = Math.max(2, Math.round(evidenceScore(evidence.evidenceQualityScore || evidence.sourceQuality, evidence.documentDate) * Math.max(50, evidence.suggestionConfidence) / 100));
-      const signed = impact === "supports" ? base : impact === "weakens" ? -base : 0;
-      const rationale = evidence.suggestionRationale ?? `Analyst-approved ${impact} link to ${claim.title}.`;
-      await db.insert(claimEvidence).values({
-        id: `${claim.id}:${evidence.id}`, claimId: claim.id, researchEvidenceId: evidence.id, impact, impactScore: signed, rationale,
-      }).onConflictDoUpdate({ target: [claimEvidence.claimId, claimEvidence.researchEvidenceId], set: { impact, impactScore: signed, rationale } });
-      linkedEvidence += 1;
-      if (Math.abs(signed) >= 6) await db.insert(researchAlerts).values({
-        id: `claim-alert:${claim.id}:${evidence.id}`, companyId: evidence.companyId, claimId: claim.id, researchEvidenceId: evidence.id,
-        alertType: "claim_impact", category, significance: Math.abs(signed) >= 9 ? "high" : "medium",
-        impact: impact === "supports" ? "strengthens" : impact === "weakens" ? "weakens" : "watch",
-        title: `${claim.title} ${impact}`,
-        summary: `${evidence.documentTitle}: ${evidence.excerpt.slice(0, 240)}`,
-      }).onConflictDoNothing();
-    }
+    // Analyst-approved evidence links are workspace decisions and are maintained
+    // by the evidence review transaction, not this global source refresh.
+    await db.delete(claimEvidence).where(isNotNull(claimEvidence.researchEvidenceId));
 
     await db.delete(thesisSnapshots);
     const claims = await db.select().from(researchClaims);

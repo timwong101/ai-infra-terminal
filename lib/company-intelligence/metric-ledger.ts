@@ -1,9 +1,9 @@
-import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import type { AuthContext } from "@/lib/auth/types";
 import { recordAuditEvent } from "@/lib/auth/session";
 import { METRIC_DEFINITIONS } from "@/lib/company-intelligence/company-facts";
 import { withDatabase } from "@/lib/db/client";
-import { canonicalMetrics, companies, companyMetrics, comparisonMemos, metricConflicts, reportingPeriods, researchAlerts } from "@/lib/db/schema";
+import { canonicalMetrics, companies, companyMetrics, comparisonMemos, metricConflicts, reportingPeriods, workspaceCanonicalMetrics, workspaceMetricReviews } from "@/lib/db/schema";
 import { metricCompatibilityKey, metricSourceRank } from "@/lib/company-intelligence/metric-policy";
 
 export type MetricReviewStatus = "proposed" | "accepted" | "rejected";
@@ -54,6 +54,48 @@ export type MetricSnapshotItem = Pick<MetricObservation,
 
 const definitionOrder = new Map(METRIC_DEFINITIONS.map((item, index) => [item.metricKey, index]));
 
+async function ensureWorkspaceMetricDefaults(workspaceId: string) {
+  await withDatabase(async (db) => {
+    const [metricRows, legacyCanonicalRows, reviewRows, canonicalRows] = await Promise.all([
+      db.select().from(companyMetrics),
+      db.select().from(canonicalMetrics),
+      db.select({ metricId: workspaceMetricReviews.metricId }).from(workspaceMetricReviews).where(eq(workspaceMetricReviews.workspaceId, workspaceId)),
+      db.select({ metricId: workspaceCanonicalMetrics.metricId }).from(workspaceCanonicalMetrics).where(eq(workspaceCanonicalMetrics.workspaceId, workspaceId)),
+    ]);
+    const reviewed = new Set(reviewRows.map((item) => item.metricId));
+    for (const item of metricRows) {
+      if (reviewed.has(item.id) || (item.reviewStatus === "proposed" && !item.reviewedAt)) continue;
+      await db.insert(workspaceMetricReviews).values({
+        id: `${workspaceId}:metric-review:${item.id}`,
+        workspaceId,
+        metricId: item.id,
+        reviewStatus: item.reviewStatus,
+        reviewNote: item.reviewNote,
+        reviewedByUserId: item.reviewedByUserId,
+        reviewedAt: item.reviewedAt,
+      }).onConflictDoNothing({ target: [workspaceMetricReviews.workspaceId, workspaceMetricReviews.metricId] });
+    }
+    const selected = new Set(canonicalRows.map((item) => item.metricId));
+    for (const item of legacyCanonicalRows) {
+      if (selected.has(item.metricId)) continue;
+      await db.insert(workspaceCanonicalMetrics).values({
+        id: `${workspaceId}:canonical:${item.metricId}`,
+        workspaceId,
+        companyId: item.companyId,
+        periodId: item.periodId,
+        metricKey: item.metricKey,
+        scopeType: item.scopeType,
+        periodType: item.periodType,
+        metricId: item.metricId,
+        resolutionMethod: "legacy_bootstrap",
+        rationale: item.rationale,
+        selectedByUserId: item.selectedByUserId,
+        selectedAt: item.selectedAt,
+      }).onConflictDoNothing({ target: [workspaceCanonicalMetrics.workspaceId, workspaceCanonicalMetrics.periodId, workspaceCanonicalMetrics.metricKey, workspaceCanonicalMetrics.scopeType, workspaceCanonicalMetrics.periodType] });
+    }
+  });
+}
+
 export function hasMetricConflict(values: Array<number | string>, tolerance = 0.02) {
   const numeric = values.map(Number).filter(Number.isFinite);
   if (numeric.length < 2) return false;
@@ -89,7 +131,7 @@ export function choosePreferredObservation<T extends { reviewStatus: MetricRevie
 
 export async function rebuildMetricConflicts() {
   const result = await withDatabase(async (db) => {
-    const rows = await db.select().from(companyMetrics).where(ne(companyMetrics.reviewStatus, "rejected"));
+    const rows = await db.select().from(companyMetrics);
     const existing = await db.select().from(metricConflicts);
     const existingByKey = new Map(existing.map((item) => [`${item.periodId}:${item.metricKey}:${item.scopeType}:${item.periodType}:${"reported"}`, item]));
     await db.delete(metricConflicts).where(eq(metricConflicts.status, "open"));
@@ -128,7 +170,8 @@ export async function rebuildMetricConflicts() {
   return result;
 }
 
-async function loadObservations() {
+async function loadObservations(workspaceId: string) {
+  await ensureWorkspaceMetricDefaults(workspaceId);
   const result = await withDatabase(async (db) => {
     const rows = await db.select({ metric: companyMetrics, company: companies, period: reportingPeriods })
       .from(companyMetrics)
@@ -136,11 +179,14 @@ async function loadObservations() {
       .innerJoin(reportingPeriods, eq(companyMetrics.periodId, reportingPeriods.id))
       .orderBy(desc(reportingPeriods.periodEnd), asc(companies.name), asc(companyMetrics.metricKey));
     const conflicts = await db.select().from(metricConflicts);
-    const canonicalRows = await db.select().from(canonicalMetrics);
+    const reviewRows = await db.select().from(workspaceMetricReviews).where(eq(workspaceMetricReviews.workspaceId, workspaceId));
+    const reviewsByMetricId = new Map(reviewRows.map((item) => [item.metricId, item]));
+    const canonicalRows = await db.select().from(workspaceCanonicalMetrics).where(eq(workspaceCanonicalMetrics.workspaceId, workspaceId));
     const canonicalIds = new Set(canonicalRows.map((item) => item.metricId));
     const conflictByKey = new Map(conflicts.map((item) => [`${item.periodId}:${item.metricKey}:${item.scopeType}:${item.periodType}`, item]));
     return rows.map(({ metric, company, period }): MetricObservation => {
       const conflict = conflictByKey.get(`${metric.periodId}:${metric.metricKey}:${metric.scopeType}:${metric.periodType}`);
+      const review = reviewsByMetricId.get(metric.id);
       return {
         id: metric.id, companyId: company.id, companyName: company.name, ticker: company.ticker,
         periodId: period.id, periodLabel: period.label, periodEnd: period.periodEnd,
@@ -153,9 +199,9 @@ async function loadObservations() {
         scopeLabel: metric.scopeLabel, periodType: metric.periodType, periodStart: metric.periodStart,
         anomalyFlags: metric.anomalyFlags as string[], anomalyScore: metric.anomalyScore,
         canonicalEligible: metric.canonicalEligible, isCanonical: canonicalIds.has(metric.id),
-        reviewStatus: metric.reviewStatus as MetricReviewStatus,
-        reviewNote: metric.reviewNote, reviewedAt: metric.reviewedAt?.toISOString() ?? null,
-        conflictId: conflict?.id ?? null, conflictStatus: conflict?.status ?? null,
+        reviewStatus: (review?.reviewStatus ?? "proposed") as MetricReviewStatus,
+        reviewNote: review?.reviewNote ?? null, reviewedAt: review?.reviewedAt?.toISOString() ?? null,
+        conflictId: conflict?.id ?? null, conflictStatus: conflict ? (canonicalIds.has(metric.id) ? "resolved" : "open") : null,
       };
     });
   });
@@ -163,8 +209,8 @@ async function loadObservations() {
   return result;
 }
 
-export async function getMetricLedger() {
-  const observations = await loadObservations();
+export async function getMetricLedger(workspaceId: string) {
+  const observations = await loadObservations(workspaceId);
   const companyList = [...new Map(observations.map((item) => [item.companyId, { id: item.companyId, name: item.companyName, ticker: item.ticker }])).values()];
   const keys = [...new Set(observations.map((item) => item.metricKey))].sort((left, right) =>
     (definitionOrder.get(left) ?? 100) - (definitionOrder.get(right) ?? 100) || left.localeCompare(right),
@@ -194,9 +240,9 @@ export async function getMetricLedger() {
   };
 }
 
-export async function getAcceptedMetricSnapshot(companyIds: string[]): Promise<MetricSnapshotItem[]> {
+export async function getAcceptedMetricSnapshot(workspaceId: string, companyIds: string[]): Promise<MetricSnapshotItem[]> {
   if (!companyIds.length) return [];
-  const observations = (await loadObservations()).filter((item) => companyIds.includes(item.companyId) && item.isCanonical);
+  const observations = (await loadObservations(workspaceId)).filter((item) => companyIds.includes(item.companyId) && item.isCanonical);
   const selected: MetricObservation[] = [];
   for (const companyId of companyIds) {
     for (const metricKey of new Set(observations.filter((item) => item.companyId === companyId).map((item) => item.metricKey))) {
@@ -214,59 +260,57 @@ export async function reviewMetricObservation(id: string, status: MetricReviewSt
     const metric = (await db.select().from(companyMetrics).where(eq(companyMetrics.id, id)).limit(1))[0];
     if (!metric) throw new Error("Metric observation not found.");
     if (status === "accepted" && !metric.canonicalEligible && !note?.trim()) throw new Error("Flagged observations require an analyst rationale before they can become canonical.");
-    const previousCanonical = (await db.select().from(canonicalMetrics).where(and(
-      eq(canonicalMetrics.periodId, metric.periodId), eq(canonicalMetrics.metricKey, metric.metricKey),
-      eq(canonicalMetrics.scopeType, metric.scopeType), eq(canonicalMetrics.periodType, metric.periodType),
+    const previousCanonical = (await db.select().from(workspaceCanonicalMetrics).where(and(
+      eq(workspaceCanonicalMetrics.workspaceId, auth.workspace.id),
+      eq(workspaceCanonicalMetrics.periodId, metric.periodId), eq(workspaceCanonicalMetrics.metricKey, metric.metricKey),
+      eq(workspaceCanonicalMetrics.scopeType, metric.scopeType), eq(workspaceCanonicalMetrics.periodType, metric.periodType),
     )).limit(1))[0];
     const canonicalChanged = status === "accepted" ? previousCanonical?.metricId !== id : previousCanonical?.metricId === id;
-    await db.update(companyMetrics).set({ reviewStatus: status, reviewNote: note?.trim() || null, reviewedByUserId: auth.user.id, reviewedAt: new Date(), updatedAt: new Date() }).where(eq(companyMetrics.id, id));
+    const now = new Date();
+    await db.insert(workspaceMetricReviews).values({
+      id: `${auth.workspace.id}:metric-review:${id}`,
+      workspaceId: auth.workspace.id,
+      metricId: id,
+      reviewStatus: status,
+      reviewNote: note?.trim() || null,
+      reviewedByUserId: auth.user.id,
+      reviewedAt: now,
+    }).onConflictDoUpdate({
+      target: [workspaceMetricReviews.workspaceId, workspaceMetricReviews.metricId],
+      set: { reviewStatus: status, reviewNote: note?.trim() || null, reviewedByUserId: auth.user.id, reviewedAt: now, updatedAt: now },
+    });
     if (status === "accepted") {
-      await db.insert(canonicalMetrics).values({
-        id: `canonical:${id}`, companyId: metric.companyId, periodId: metric.periodId, metricKey: metric.metricKey,
+      await db.insert(workspaceCanonicalMetrics).values({
+        id: `${auth.workspace.id}:canonical:${id}`, workspaceId: auth.workspace.id, companyId: metric.companyId, periodId: metric.periodId, metricKey: metric.metricKey,
         scopeType: metric.scopeType, periodType: metric.periodType, metricId: id, resolutionMethod: "analyst_review",
         rationale: note?.trim() || "Accepted after source review.", selectedByUserId: auth.user.id,
       }).onConflictDoUpdate({
-        target: [canonicalMetrics.periodId, canonicalMetrics.metricKey, canonicalMetrics.scopeType, canonicalMetrics.periodType],
+        target: [workspaceCanonicalMetrics.workspaceId, workspaceCanonicalMetrics.periodId, workspaceCanonicalMetrics.metricKey, workspaceCanonicalMetrics.scopeType, workspaceCanonicalMetrics.periodType],
         set: { metricId: id, resolutionMethod: "analyst_review", rationale: note?.trim() || "Accepted after source review.", selectedByUserId: auth.user.id, selectedAt: new Date(), updatedAt: new Date() },
       });
     } else {
-      await db.delete(canonicalMetrics).where(eq(canonicalMetrics.metricId, id));
+      await db.delete(workspaceCanonicalMetrics).where(and(eq(workspaceCanonicalMetrics.workspaceId, auth.workspace.id), eq(workspaceCanonicalMetrics.metricId, id)));
     }
     const conflict = (await db.select().from(metricConflicts).where(and(eq(metricConflicts.periodId, metric.periodId), eq(metricConflicts.metricKey, metric.metricKey), eq(metricConflicts.scopeType, metric.scopeType), eq(metricConflicts.periodType, metric.periodType))).limit(1))[0];
     if (status === "accepted" && conflict) {
       const siblingIds = (conflict.metricIds as string[]).filter((metricId) => metricId !== id);
-      if (siblingIds.length) await db.update(companyMetrics).set({ reviewStatus: "rejected", updatedAt: new Date() }).where(inArray(companyMetrics.id, siblingIds));
-      await db.update(metricConflicts).set({ status: "resolved", resolvedMetricId: id, resolutionNote: note?.trim() || "Accepted as the canonical observation.", resolvedByUserId: auth.user.id, resolvedAt: new Date(), updatedAt: new Date() }).where(eq(metricConflicts.id, conflict.id));
-    }
-    if (status === "accepted") {
-      const periodRows = await db.select().from(reportingPeriods).where(eq(reportingPeriods.companyId, metric.companyId));
-      const periodById = new Map(periodRows.map((period) => [period.id, period]));
-      const currentPeriod = periodById.get(metric.periodId);
-      const canonicalRows = await db.select({ metric: companyMetrics }).from(canonicalMetrics).innerJoin(companyMetrics, eq(canonicalMetrics.metricId, companyMetrics.id)).where(and(
-        eq(canonicalMetrics.companyId, metric.companyId), eq(canonicalMetrics.metricKey, metric.metricKey),
-        eq(canonicalMetrics.scopeType, metric.scopeType), eq(canonicalMetrics.periodType, metric.periodType),
-      ));
-      const acceptedRows = canonicalRows.map((item) => item.metric);
-      const previous = acceptedRows.filter((item) => item.id !== id && currentPeriod && (periodById.get(item.periodId)?.periodEnd ?? "") < currentPeriod.periodEnd)
-        .sort((left, right) => (periodById.get(right.periodId)?.periodEnd ?? "").localeCompare(periodById.get(left.periodId)?.periodEnd ?? ""))[0];
-      if (previous && currentPeriod) {
-        const previousValue = Number(previous.normalizedValue);
-        const currentValue = Number(metric.normalizedValue);
-        const deltaPercent = previousValue === 0 ? 0 : Math.round((currentValue - previousValue) / Math.abs(previousValue) * 100);
-        if (Math.abs(deltaPercent) >= 10) {
-          await db.insert(researchAlerts).values({
-            id: `metric-alert:${id}`, companyId: metric.companyId, researchEvidenceId: metric.sourceEvidenceId,
-            alertType: "metric_change", category: metric.category,
-            significance: Math.abs(deltaPercent) >= 20 ? "high" : "medium",
-            impact: deltaPercent > 0 ? "strengthens" : "weakens",
-            title: `${metric.label} ${deltaPercent > 0 ? "increased" : "decreased"} ${Math.abs(deltaPercent)}%`,
-            summary: `${metric.displayValue} in ${currentPeriod.label}, compared with ${previous.displayValue} in ${periodById.get(previous.periodId)?.label ?? "the prior period"}. This alert was created only after analyst acceptance.`,
-          }).onConflictDoUpdate({ target: researchAlerts.id, set: { significance: Math.abs(deltaPercent) >= 20 ? "high" : "medium", impact: deltaPercent > 0 ? "strengthens" : "weakens", summary: `${metric.displayValue} in ${currentPeriod.label}, compared with ${previous.displayValue} in ${periodById.get(previous.periodId)?.label ?? "the prior period"}. This alert was created only after analyst acceptance.`, updatedAt: new Date() } });
-        }
+      for (const siblingId of siblingIds) {
+        await db.insert(workspaceMetricReviews).values({
+          id: `${auth.workspace.id}:metric-review:${siblingId}`,
+          workspaceId: auth.workspace.id,
+          metricId: siblingId,
+          reviewStatus: "rejected",
+          reviewNote: "Superseded by the workspace canonical selection.",
+          reviewedByUserId: auth.user.id,
+          reviewedAt: now,
+        }).onConflictDoUpdate({
+          target: [workspaceMetricReviews.workspaceId, workspaceMetricReviews.metricId],
+          set: { reviewStatus: "rejected", reviewNote: "Superseded by the workspace canonical selection.", reviewedByUserId: auth.user.id, reviewedAt: now, updatedAt: now },
+        });
       }
     }
     if (canonicalChanged) {
-      const memos = await db.select().from(comparisonMemos);
+      const memos = await db.select().from(comparisonMemos).where(eq(comparisonMemos.workspaceId, auth.workspace.id));
       for (const memo of memos) {
         const snapshot = memo.metricSnapshot as Array<{ companyId?: string; metricKey?: string }>;
         if (!snapshot.some((item) => item.companyId === metric.companyId && item.metricKey === metric.metricKey)) continue;

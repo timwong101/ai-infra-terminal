@@ -4,7 +4,6 @@ import { recordAuditEvent } from "@/lib/auth/session";
 import type { AuthContext } from "@/lib/auth/types";
 import { withDatabase } from "@/lib/db/client";
 import {
-  canonicalMetrics,
   commitmentOutcomes,
   commitmentRevisions,
   companies,
@@ -13,6 +12,8 @@ import {
   reportingPeriods,
   researchEvidence,
   users,
+  workspaceCanonicalMetrics,
+  workspaceEvidenceReviews,
 } from "@/lib/db/schema";
 import {
   calculateCommitmentVariance,
@@ -54,8 +55,12 @@ function candidateFromRevision(revision: typeof commitmentRevisions.$inferSelect
 
 export async function syncCommitmentCandidates(auth: AuthContext) {
   const result = await withDatabase(async (db) => {
-    const evidenceRows = await db.select().from(researchEvidence).where(and(
-      eq(researchEvidence.reviewStatus, "accepted"),
+    const evidenceRows = await db.select({ evidence: researchEvidence }).from(researchEvidence)
+      .innerJoin(workspaceEvidenceReviews, and(
+        eq(workspaceEvidenceReviews.evidenceId, researchEvidence.id),
+        eq(workspaceEvidenceReviews.workspaceId, auth.workspace.id),
+      )).where(and(
+      eq(workspaceEvidenceReviews.reviewStatus, "accepted"),
       gte(researchEvidence.evidenceQualityScore, 60),
     )).orderBy(asc(researchEvidence.documentDate), asc(researchEvidence.id));
     const existingCommitments = await db.select().from(companyCommitments).where(eq(companyCommitments.workspaceId, auth.workspace.id));
@@ -72,7 +77,7 @@ export async function syncCommitmentCandidates(auth: AuthContext) {
 
     let created = 0;
     let revised = 0;
-    for (const evidence of evidenceRows) {
+    for (const { evidence } of evidenceRows) {
       for (const candidate of extractCommitmentCandidates(evidence.excerpt)) {
         const key = commitmentIdentityKey(candidate);
         const identity = `${evidence.companyId}:${key}`;
@@ -223,8 +228,8 @@ export async function getCommitmentLedger(auth: AuthContext, companyId?: string)
     ].filter(Boolean) as string[])];
     const reviewerRows = reviewerIds.length ? await db.select().from(users).where(inArray(users.id, reviewerIds)) : [];
     const metricRows = await db.select({
-      companyId: canonicalMetrics.companyId,
-      metricKey: canonicalMetrics.metricKey,
+      companyId: workspaceCanonicalMetrics.companyId,
+      metricKey: workspaceCanonicalMetrics.metricKey,
       metricId: companyMetrics.id,
       displayValue: companyMetrics.displayValue,
       normalizedValue: companyMetrics.normalizedValue,
@@ -233,10 +238,13 @@ export async function getCommitmentLedger(auth: AuthContext, companyId?: string)
       sourceLabel: companyMetrics.sourceLabel,
       scopeType: companyMetrics.scopeType,
       scopeLabel: companyMetrics.scopeLabel,
-    }).from(canonicalMetrics)
-      .innerJoin(companyMetrics, eq(canonicalMetrics.metricId, companyMetrics.id))
+    }).from(workspaceCanonicalMetrics)
+      .innerJoin(companyMetrics, eq(workspaceCanonicalMetrics.metricId, companyMetrics.id))
       .innerJoin(reportingPeriods, eq(companyMetrics.periodId, reportingPeriods.id))
-      .where(eq(canonicalMetrics.companyId, company.id))
+      .where(and(
+        eq(workspaceCanonicalMetrics.workspaceId, auth.workspace.id),
+        eq(workspaceCanonicalMetrics.companyId, company.id),
+      ))
       .orderBy(desc(reportingPeriods.periodEnd));
     return { company, commitmentRows, revisionRows, outcomeRows, evidenceRows, reviewerRows, metricRows };
   });

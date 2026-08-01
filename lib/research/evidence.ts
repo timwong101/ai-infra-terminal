@@ -3,7 +3,6 @@ import { withDatabase } from "@/lib/db/client";
 import {
   companies,
   comparisonMemos,
-  claimEvidence,
   evidencePassages,
   filings,
   filingSections,
@@ -12,8 +11,14 @@ import {
   irEvidencePassages,
   researchEvidence,
   researchClaims,
+  researchAlerts,
   users,
+  workspaces,
+  workspaceClaimEvidence,
+  workspaceClaimStates,
+  workspaceEvidenceReviews,
 } from "@/lib/db/schema";
+import { classifyAlertCategory } from "@/lib/alerts/generate";
 import { assessEvidenceQuality } from "@/lib/research/quality";
 import type { EvidenceFilters, EvidenceReviewStatus, EvidenceSuggestionStatus, ResearchEvidenceItem } from "@/lib/research/types";
 import type { AuthContext } from "@/lib/auth/types";
@@ -30,6 +35,38 @@ const TOPIC_RULES: Array<[string, RegExp]> = [
   ["Risk factors", /risk|uncertain|adverse|depend|concentrat|could harm|may not/i],
 ];
 const BASELINE_ACCEPTED_PER_COMPANY = 3;
+
+function linkedEvidenceScore(quality: number, confidence: number, documentDate: string) {
+  const ageDays = Math.max(0, (Date.now() - new Date(`${documentDate}T00:00:00Z`).valueOf()) / 86_400_000);
+  const qualityScore = quality >= 90 ? 10 : quality >= 80 ? 8 : quality >= 70 ? 6 : 4;
+  const recencyScore = qualityScore * (ageDays <= 180 ? 1 : ageDays <= 365 ? 0.8 : 0.55);
+  return Math.max(2, Math.round(recencyScore * Math.max(50, confidence) / 100));
+}
+
+async function ensureWorkspaceEvidenceDefaults(workspaceId: string) {
+  await withDatabase(async (db) => {
+    const [evidenceRows, reviewRows] = await Promise.all([
+      db.select().from(researchEvidence),
+      db.select({ evidenceId: workspaceEvidenceReviews.evidenceId }).from(workspaceEvidenceReviews).where(eq(workspaceEvidenceReviews.workspaceId, workspaceId)),
+    ]);
+    const decided = new Set(reviewRows.map((item) => item.evidenceId));
+    for (const item of evidenceRows) {
+      if (decided.has(item.id) || (item.reviewStatus === "unreviewed" && item.suggestionStatus === "pending")) continue;
+      await db.insert(workspaceEvidenceReviews).values({
+        id: `${workspaceId}:evidence-review:${item.id}`,
+        workspaceId,
+        evidenceId: item.id,
+        reviewStatus: item.reviewStatus,
+        reviewNote: item.reviewNote,
+        suggestionStatus: item.suggestionStatus,
+        suggestedClaimId: item.suggestedClaimId,
+        suggestedImpact: item.suggestedImpact,
+        reviewedByUserId: item.reviewedByUserId,
+        reviewedAt: item.reviewedAt,
+      }).onConflictDoNothing({ target: [workspaceEvidenceReviews.workspaceId, workspaceEvidenceReviews.evidenceId] });
+    }
+  });
+}
 
 type BaselineEvidenceCandidate = {
   id: string;
@@ -249,15 +286,18 @@ export async function syncResearchEvidence() {
       const missing = activePassageIds.length
         ? and(eq(researchEvidence.sourceKind, sourceKind), notInArray(researchEvidence.sourcePassageId, activePassageIds))
         : eq(researchEvidence.sourceKind, sourceKind);
-      await db.update(researchEvidence).set({
+      await db.update(workspaceEvidenceReviews).set({
         reviewStatus: "rejected",
         suggestionStatus: "rejected",
         reviewNote: "Superseded by the current source extraction; retained for audit history.",
         updatedAt: new Date(),
-      }).where(and(missing, eq(researchEvidence.reviewStatus, "accepted")));
+      }).where(and(
+        eq(workspaceEvidenceReviews.reviewStatus, "accepted"),
+        sql`EXISTS (SELECT 1 FROM research_evidence WHERE research_evidence.id = ${workspaceEvidenceReviews.evidenceId} AND ${missing})`,
+      ));
       await db.delete(researchEvidence).where(and(
         missing,
-        eq(researchEvidence.reviewStatus, "unreviewed"),
+        sql`NOT EXISTS (SELECT 1 FROM workspace_evidence_reviews wer WHERE wer.evidence_id = ${researchEvidence.id})`,
         sql`NOT EXISTS (SELECT 1 FROM company_commitments WHERE company_commitments.source_evidence_id = ${researchEvidence.id})`,
         sql`NOT EXISTS (SELECT 1 FROM commitment_revisions WHERE commitment_revisions.source_evidence_id = ${researchEvidence.id})`,
       ));
@@ -271,24 +311,38 @@ export async function syncResearchEvidence() {
     for (const [groupId, duplicateCount] of duplicateCounts) {
       await db.update(researchEvidence).set({ duplicateCount }).where(eq(researchEvidence.duplicateGroupId, groupId));
     }
-    await db.update(researchEvidence).set({ reviewStatus: "unreviewed", reviewNote: null, reviewedByUserId: null, reviewedAt: null, updatedAt: new Date() }).where(and(
-      eq(researchEvidence.reviewStatus, "accepted"),
-      sql`${researchEvidence.reviewNote} LIKE 'System baseline:%'`,
-      sql`(${researchEvidence.evidenceQualityScore} < 65 OR ${researchEvidence.boilerplateRisk} >= 60)`,
+    await db.delete(workspaceEvidenceReviews).where(and(
+      sql`${workspaceEvidenceReviews.reviewNote} LIKE 'System baseline:%'`,
+      sql`EXISTS (
+        SELECT 1 FROM research_evidence re
+        WHERE re.id = ${workspaceEvidenceReviews.evidenceId}
+          AND (re.evidence_quality_score < 65 OR re.boilerplate_risk >= 60)
+      )`,
     ));
     const reviewRows = await db.select().from(researchEvidence);
+    const workspaceRows = await db.select({ id: workspaces.id }).from(workspaces);
     let baselineAccepted = 0;
-    for (const companyId of new Set(reviewRows.map((item) => item.companyId))) {
-      const selected = selectBaselineEvidenceCandidates(reviewRows.filter((item) => item.companyId === companyId));
-      if (!selected.length) continue;
-      const now = new Date();
-      const updated = await db.update(researchEvidence).set({
-        reviewStatus: "accepted",
-        reviewNote: "System baseline: high-quality official evidence accepted to enable grounded company comparisons.",
-        reviewedAt: now,
-        updatedAt: now,
-      }).where(inArray(researchEvidence.id, selected.map((item) => item.id))).returning({ id: researchEvidence.id });
-      baselineAccepted += updated.length;
+    for (const workspace of workspaceRows) {
+      const existingReviews = await db.select().from(workspaceEvidenceReviews).where(eq(workspaceEvidenceReviews.workspaceId, workspace.id));
+      const statusByEvidenceId = new Map(existingReviews.map((review) => [review.evidenceId, review.reviewStatus]));
+      for (const companyId of new Set(reviewRows.map((item) => item.companyId))) {
+        const selected = selectBaselineEvidenceCandidates(reviewRows.filter((item) => item.companyId === companyId).map((item) => ({
+          ...item,
+          reviewStatus: statusByEvidenceId.get(item.id) ?? "unreviewed",
+        })));
+        for (const item of selected) {
+          const now = new Date();
+          await db.insert(workspaceEvidenceReviews).values({
+            id: `${workspace.id}:evidence-review:${item.id}`,
+            workspaceId: workspace.id,
+            evidenceId: item.id,
+            reviewStatus: "accepted",
+            reviewNote: "System baseline: high-quality official evidence accepted to enable grounded company comparisons.",
+            reviewedAt: now,
+          }).onConflictDoNothing({ target: [workspaceEvidenceReviews.workspaceId, workspaceEvidenceReviews.evidenceId] });
+          baselineAccepted += 1;
+        }
+      }
     }
 
     return { sec: researchGradeSecRows.length, ir: researchGradeIrRows.length, baselineAccepted };
@@ -297,7 +351,13 @@ export async function syncResearchEvidence() {
   return result;
 }
 
-function toItem(row: { evidence: typeof researchEvidence.$inferSelect; company: typeof companies.$inferSelect; reviewer?: typeof users.$inferSelect | null }, claimTitle?: string | null): ResearchEvidenceItem {
+function toItem(row: {
+  evidence: typeof researchEvidence.$inferSelect;
+  company: typeof companies.$inferSelect;
+  review?: typeof workspaceEvidenceReviews.$inferSelect | null;
+  reviewer?: typeof users.$inferSelect | null;
+}, claimTitle?: string | null): ResearchEvidenceItem {
+  const review = row.review;
   return {
     id: row.evidence.id,
     companyId: row.company.id,
@@ -324,26 +384,31 @@ function toItem(row: { evidence: typeof researchEvidence.$inferSelect; company: 
     qualityReasons: row.evidence.qualityReasons as string[],
     duplicateGroupId: row.evidence.duplicateGroupId,
     duplicateCount: row.evidence.duplicateCount,
-    suggestedClaimId: row.evidence.suggestedClaimId,
+    suggestedClaimId: review?.suggestedClaimId ?? row.evidence.suggestedClaimId,
     suggestedClaimTitle: claimTitle ?? null,
-    suggestedImpact: row.evidence.suggestedImpact as ResearchEvidenceItem["suggestedImpact"],
+    suggestedImpact: (review?.suggestedImpact ?? row.evidence.suggestedImpact) as ResearchEvidenceItem["suggestedImpact"],
     suggestionConfidence: row.evidence.suggestionConfidence,
     suggestionRationale: row.evidence.suggestionRationale,
-    suggestionStatus: row.evidence.suggestionStatus as EvidenceSuggestionStatus,
+    suggestionStatus: (review?.suggestionStatus ?? "pending") as EvidenceSuggestionStatus,
     qualityScoredAt: row.evidence.qualityScoredAt?.toISOString() ?? null,
-    reviewStatus: row.evidence.reviewStatus as EvidenceReviewStatus,
-    reviewNote: row.evidence.reviewNote,
-    reviewedAt: row.evidence.reviewedAt?.toISOString() ?? null,
+    reviewStatus: (review?.reviewStatus ?? "unreviewed") as EvidenceReviewStatus,
+    reviewNote: review?.reviewNote ?? null,
+    reviewedAt: review?.reviewedAt?.toISOString() ?? null,
     reviewedBy: row.reviewer ? { id: row.reviewer.id, name: row.reviewer.name, email: row.reviewer.email } : null,
   };
 }
 
-export async function listResearchEvidence(filters: EvidenceFilters = {}) {
+export async function listResearchEvidence(workspaceId: string, filters: EvidenceFilters = {}) {
+  await ensureWorkspaceEvidenceDefaults(workspaceId);
   const result = await withDatabase(async (db) => {
-    const rows = await db.select({ evidence: researchEvidence, company: companies, reviewer: users })
+    const rows = await db.select({ evidence: researchEvidence, company: companies, review: workspaceEvidenceReviews, reviewer: users })
       .from(researchEvidence)
       .innerJoin(companies, eq(researchEvidence.companyId, companies.id))
-      .leftJoin(users, eq(researchEvidence.reviewedByUserId, users.id))
+      .leftJoin(workspaceEvidenceReviews, and(
+        eq(workspaceEvidenceReviews.evidenceId, researchEvidence.id),
+        eq(workspaceEvidenceReviews.workspaceId, workspaceId),
+      ))
+      .leftJoin(users, eq(workspaceEvidenceReviews.reviewedByUserId, users.id))
       .orderBy(desc(researchEvidence.documentDate), desc(researchEvidence.sourceQuality));
     const claimRows = await db.select().from(researchClaims);
     const claimsById = new Map(claimRows.map((claim) => [claim.id, claim.title]));
@@ -388,28 +453,117 @@ export async function listResearchEvidence(filters: EvidenceFilters = {}) {
 
 export async function updateEvidenceReview(ids: string[], status: EvidenceReviewStatus, note: string | undefined, suggestion: { status: EvidenceSuggestionStatus; claimId?: string; impact?: ResearchEvidenceItem["suggestedImpact"] } | undefined, auth: AuthContext) {
   if (!ids.length) return 0;
-  const result = await withDatabase(async (db) => {
+  const result = await withDatabase((database) => database.transaction(async (db) => {
     const existing = await db.select().from(researchEvidence).where(inArray(researchEvidence.id, ids));
-    const rows = await db.update(researchEvidence).set({
-      reviewStatus: status,
-      reviewNote: note?.trim() || null,
-      reviewedByUserId: auth.user.id,
-      ...(suggestion ? {
-        suggestionStatus: suggestion.status,
-        ...(suggestion.claimId ? { suggestedClaimId: suggestion.claimId } : {}),
-        ...(suggestion.impact ? { suggestedImpact: suggestion.impact } : {}),
-      } : status === "rejected" ? { suggestionStatus: "rejected" } : {}),
-      reviewedAt: new Date(),
-      updatedAt: new Date(),
-    }).where(inArray(researchEvidence.id, ids)).returning({ id: researchEvidence.id });
-    const affectedClaimIds = new Set(existing.flatMap((item) => item.suggestedClaimId ? [item.suggestedClaimId] : []));
-    if (suggestion?.claimId) affectedClaimIds.add(suggestion.claimId);
-    const linked = await db.select().from(claimEvidence).where(inArray(claimEvidence.researchEvidenceId, ids));
-    for (const item of linked) affectedClaimIds.add(item.claimId);
-    if (affectedClaimIds.size) await db.update(researchClaims).set({ isStale: true, staleReason: "Evidence review changed; rerun thesis scoring.", staleAt: new Date() }).where(inArray(researchClaims.id, [...affectedClaimIds]));
+    const existingLinks = await db.select().from(workspaceClaimEvidence).where(and(
+      eq(workspaceClaimEvidence.workspaceId, auth.workspace.id),
+      inArray(workspaceClaimEvidence.researchEvidenceId, ids),
+    ));
+    const affectedClaimIds = new Set(existingLinks.map((item) => item.claimId));
+    await db.delete(workspaceClaimEvidence).where(and(
+      eq(workspaceClaimEvidence.workspaceId, auth.workspace.id),
+      inArray(workspaceClaimEvidence.researchEvidenceId, ids),
+    ));
+    await db.delete(researchAlerts).where(and(
+      eq(researchAlerts.workspaceId, auth.workspace.id),
+      eq(researchAlerts.alertType, "claim_impact"),
+      inArray(researchAlerts.researchEvidenceId, ids),
+    ));
+    const now = new Date();
+    for (const item of existing) {
+      const decision = {
+        reviewStatus: status,
+        reviewNote: note?.trim() || null,
+        reviewedByUserId: auth.user.id,
+        reviewedAt: now,
+        updatedAt: now,
+        ...(suggestion ? {
+          suggestionStatus: suggestion.status,
+          ...(suggestion.claimId ? { suggestedClaimId: suggestion.claimId } : {}),
+          ...(suggestion.impact ? { suggestedImpact: suggestion.impact } : {}),
+        } : status === "rejected" ? { suggestionStatus: "rejected" } : {}),
+      };
+      await db.insert(workspaceEvidenceReviews).values({
+        id: `${auth.workspace.id}:evidence-review:${item.id}`,
+        workspaceId: auth.workspace.id,
+        evidenceId: item.id,
+        ...decision,
+      }).onConflictDoUpdate({
+        target: [workspaceEvidenceReviews.workspaceId, workspaceEvidenceReviews.evidenceId],
+        set: decision,
+      });
+
+      if (status === "accepted" && suggestion?.status === "accepted" && suggestion.claimId && suggestion.impact) {
+        const claim = (await db.select().from(researchClaims).where(and(
+          eq(researchClaims.id, suggestion.claimId),
+          eq(researchClaims.companyId, item.companyId),
+        )).limit(1))[0];
+        if (!claim) throw new Error("The selected thesis does not belong to this evidence company.");
+        const impact = suggestion.impact;
+        const base = linkedEvidenceScore(item.evidenceQualityScore || item.sourceQuality, item.suggestionConfidence, item.documentDate);
+        const impactScore = impact === "supports" ? base : impact === "weakens" ? -base : 0;
+        const rationale = item.suggestionRationale ?? `Analyst-approved ${impact} link to ${claim.title}.`;
+        await db.insert(workspaceClaimEvidence).values({
+          id: `${auth.workspace.id}:claim-evidence:${claim.id}:${item.id}`,
+          workspaceId: auth.workspace.id,
+          claimId: claim.id,
+          researchEvidenceId: item.id,
+          impact,
+          impactScore,
+          rationale,
+          createdByUserId: auth.user.id,
+        }).onConflictDoUpdate({
+          target: [workspaceClaimEvidence.workspaceId, workspaceClaimEvidence.claimId, workspaceClaimEvidence.researchEvidenceId],
+          set: { impact, impactScore, rationale, createdByUserId: auth.user.id, updatedAt: now },
+        });
+        if (Math.abs(impactScore) >= 6) {
+          const category = classifyAlertCategory(`${item.topic} ${item.sectionTitle} ${item.excerpt}`);
+          await db.insert(researchAlerts).values({
+            id: `workspace-claim-alert:${auth.workspace.id}:${claim.id}:${item.id}`,
+            workspaceId: auth.workspace.id,
+            companyId: item.companyId,
+            claimId: claim.id,
+            researchEvidenceId: item.id,
+            alertType: "claim_impact",
+            category,
+            significance: Math.abs(impactScore) >= 9 ? "high" : "medium",
+            impact: impact === "supports" ? "strengthens" : impact === "weakens" ? "weakens" : "watch",
+            title: `${claim.title} ${impact}`,
+            summary: `${item.documentTitle}: ${item.excerpt.slice(0, 240)}`,
+          }).onConflictDoUpdate({
+            target: [researchAlerts.workspaceId, researchAlerts.claimId, researchAlerts.researchEvidenceId],
+            set: { category, significance: Math.abs(impactScore) >= 9 ? "high" : "medium", impact: impact === "supports" ? "strengthens" : impact === "weakens" ? "weakens" : "watch", title: `${claim.title} ${impact}`, summary: `${item.documentTitle}: ${item.excerpt.slice(0, 240)}`, updatedAt: now },
+          });
+        }
+        affectedClaimIds.add(claim.id);
+      }
+    }
+
+    for (const claimId of affectedClaimIds) {
+      const claim = (await db.select().from(researchClaims).where(eq(researchClaims.id, claimId)).limit(1))[0];
+      if (!claim) continue;
+      const links = await db.select({ impactScore: workspaceClaimEvidence.impactScore }).from(workspaceClaimEvidence).where(and(
+        eq(workspaceClaimEvidence.workspaceId, auth.workspace.id),
+        eq(workspaceClaimEvidence.claimId, claimId),
+      ));
+      const supportScore = Math.max(10, Math.min(90, claim.supportScore + links.reduce((sum, link) => sum + link.impactScore, 0)));
+      await db.insert(workspaceClaimStates).values({
+        id: `${auth.workspace.id}:claim-state:${claimId}`,
+        workspaceId: auth.workspace.id,
+        claimId,
+        supportScore,
+        isStale: false,
+        staleReason: null,
+        staleAt: null,
+        createdByUserId: auth.user.id,
+      }).onConflictDoUpdate({
+        target: [workspaceClaimStates.workspaceId, workspaceClaimStates.claimId],
+        set: { supportScore, isStale: false, staleReason: null, staleAt: null, updatedAt: now },
+      });
+    }
 
     let staleMemos = 0;
-    const memos = await db.select().from(comparisonMemos);
+    const memos = await db.select().from(comparisonMemos).where(eq(comparisonMemos.workspaceId, auth.workspace.id));
     const idSet = new Set(ids);
     for (const memo of memos) {
       const snapshot = memo.evidenceSnapshot as Array<{ id?: string }>;
@@ -417,21 +571,22 @@ export async function updateEvidenceReview(ids: string[], status: EvidenceReview
       await db.update(comparisonMemos).set({ status: "changes_requested", isStale: true, staleReason: "A cited evidence passage was re-reviewed. Regenerate to use the current approved packet.", staleAt: new Date(), updatedAt: new Date() }).where(eq(comparisonMemos.id, memo.id));
       staleMemos += 1;
     }
-    return { updated: rows.length, staleMemos, staleClaims: affectedClaimIds.size };
-  });
+    return { updated: existing.length, staleMemos, staleClaims: affectedClaimIds.size };
+  }));
   if (result === null) throw new Error("Postgres is required for evidence review.");
   await recordAuditEvent(auth, { action: "evidence.reviewed", entityType: "research_evidence", entityId: ids[0], summary: `${status === "accepted" ? "Accepted" : status === "rejected" ? "Rejected" : "Reset"} ${result.updated} evidence passage${result.updated === 1 ? "" : "s"}.`, metadata: { evidenceIds: ids, status, suggestionStatus: suggestion?.status ?? null } });
   return result;
 }
 
-export async function getAcceptedEvidence(companyIds: string[], topic?: string, filters?: {
+export async function getAcceptedEvidence(workspaceId: string, companyIds: string[], topic?: string, filters?: {
   sourceKinds?: Array<"sec" | "ir">;
   dateFrom?: string;
   dateTo?: string;
   knownAt?: string;
 }) {
+  await ensureWorkspaceEvidenceDefaults(workspaceId);
   const result = await withDatabase(async (db) => {
-    const conditions = [eq(researchEvidence.reviewStatus, "accepted"), gte(researchEvidence.evidenceQualityScore, 45), lt(researchEvidence.boilerplateRisk, 60), inArray(researchEvidence.companyId, companyIds)];
+    const conditions = [eq(workspaceEvidenceReviews.workspaceId, workspaceId), eq(workspaceEvidenceReviews.reviewStatus, "accepted"), gte(researchEvidence.evidenceQualityScore, 45), lt(researchEvidence.boilerplateRisk, 60), inArray(researchEvidence.companyId, companyIds)];
     if (topic && topic !== "All topics") conditions.push(eq(researchEvidence.topic, topic));
     if (filters?.sourceKinds?.length) conditions.push(inArray(researchEvidence.sourceKind, filters.sourceKinds));
     if (filters?.dateFrom) conditions.push(gte(researchEvidence.documentDate, filters.dateFrom));
@@ -439,11 +594,12 @@ export async function getAcceptedEvidence(companyIds: string[], topic?: string, 
     if (filters?.knownAt) {
       const knownAt = new Date(`${filters.knownAt}T23:59:59.999Z`);
       conditions.push(lte(researchEvidence.createdAt, knownAt));
-      conditions.push(sql`COALESCE(${researchEvidence.reviewedAt}, ${researchEvidence.createdAt}) <= ${knownAt}`);
+      conditions.push(sql`COALESCE(${workspaceEvidenceReviews.reviewedAt}, ${researchEvidence.createdAt}) <= ${knownAt}`);
     }
-    const rows = await db.select({ evidence: researchEvidence, company: companies })
+    const rows = await db.select({ evidence: researchEvidence, company: companies, review: workspaceEvidenceReviews })
       .from(researchEvidence)
       .innerJoin(companies, eq(researchEvidence.companyId, companies.id))
+      .innerJoin(workspaceEvidenceReviews, eq(workspaceEvidenceReviews.evidenceId, researchEvidence.id))
       .where(and(...conditions))
       .orderBy(desc(researchEvidence.sourceQuality), desc(researchEvidence.documentDate));
     return rows.map((row) => toItem(row));

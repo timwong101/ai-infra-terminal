@@ -20,7 +20,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const authorized = await authorizeApi(request, "analyst");
+  const authorized = await authorizeApi(request, "admin");
   if ("response" in authorized) return authorized.response;
   try {
     const refresh = await refreshLiveEvents();
@@ -29,4 +29,3 @@ export async function POST(request: Request) {
     return Response.json({ error: error instanceof Error ? error.message : "Unable to refresh event intelligence." }, { status: 500 });
   }
 }
-

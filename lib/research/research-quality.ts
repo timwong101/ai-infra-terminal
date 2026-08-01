@@ -175,7 +175,7 @@ export async function runResearchQualitySuite(engine: Exclude<ResearchAssistantE
   try {
     const results: ResearchQualityResult[] = [];
     for (const benchmark of benchmarks) {
-      const pipeline = await runResearchAssistantPipeline(benchmark.question, benchmark.filters, engine);
+      const pipeline = await runResearchAssistantPipeline(benchmark.question, benchmark.filters, owner.workspaceId, engine);
       const scored = scoreResearchQualityCase({ benchmark, evidence: pipeline.selected, claims: pipeline.claims, rawClaimCount: pipeline.rawClaimCount, rejectedClaims: pipeline.verification.rejectedClaims });
       const result: ResearchQualityResult = {
         id: `research-quality-result:${crypto.randomUUID()}`,

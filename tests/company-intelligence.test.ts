@@ -123,6 +123,7 @@ test("builds a mixed change brief with claim-level citations", () => {
     ],
   });
   assert.equal(brief.thesisImpact, "mixed");
+  assert.equal(brief.readinessStatus, "ready");
   assert.equal(brief.changeCount, 2);
   assert.ok(brief.confidenceScore >= 70);
   assert.ok(brief.claims.some((claim) => claim.section === "bull"));
@@ -140,7 +141,9 @@ test("withholds unsupported factual claims from change briefs", () => {
     evidence: [],
   });
   assert.equal(brief.changeCount, 0);
-  assert.equal(brief.thesisImpact, "unchanged");
+  assert.equal(brief.thesisImpact, "not_assessed");
+  assert.equal(brief.readinessStatus, "insufficient_evidence");
+  assert.match(brief.summary, /not an unchanged thesis conclusion/i);
   assert.equal(brief.claims.filter((claim) => claim.section !== "question").length, 0);
 });
 

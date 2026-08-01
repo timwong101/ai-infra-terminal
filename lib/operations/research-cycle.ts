@@ -81,12 +81,12 @@ export async function getResearchRuntimeSnapshot(): Promise<ResearchRuntimeSnaps
   };
 }
 
-export async function getResearchOperations() {
+export async function getResearchOperations(workspaceId: string) {
   const [runtime, briefings, ingestion, coverage, artifactIntegrity] = await Promise.all([
     getResearchRuntimeSnapshot(),
     listResearchBriefings(12),
     getIrIngestionSummary(),
-    getCompanyFlowCoverage(),
+    getCompanyFlowCoverage(workspaceId),
     getArtifactIntegritySummary(),
   ]);
   return {

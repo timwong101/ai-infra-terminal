@@ -31,7 +31,10 @@ export async function backfillResearchEmbeddings(limit = 40) {
   if (!process.env.OPENAI_API_KEY?.trim()) return { embedded: 0, skipped: true };
   const rows = await withDatabase((db) => db.execute(sql`
     SELECT id, excerpt FROM research_evidence
-    WHERE review_status = 'accepted' AND evidence_quality_score >= 45 AND boilerplate_risk < 60 AND embedding IS NULL
+    WHERE EXISTS (
+      SELECT 1 FROM workspace_evidence_reviews wer
+      WHERE wer.evidence_id = research_evidence.id AND wer.review_status = 'accepted'
+    ) AND evidence_quality_score >= 45 AND boilerplate_risk < 60 AND embedding IS NULL
     ORDER BY evidence_quality_score DESC, document_date DESC
     LIMIT ${Math.max(1, Math.min(limit, 100))}
   `));
@@ -57,6 +60,7 @@ export async function backfillResearchEmbeddings(limit = 40) {
 }
 
 export async function searchAcceptedEvidence(input: {
+  workspaceId: string;
   companyIds: string[];
   topic?: string;
   query: string;
@@ -65,7 +69,7 @@ export async function searchAcceptedEvidence(input: {
   dateFrom?: string;
   dateTo?: string;
 }) {
-  const all = await getAcceptedEvidence(input.companyIds, input.topic, input);
+  const all = await getAcceptedEvidence(input.workspaceId, input.companyIds, input.topic, input);
   const query = `${input.topic === "All topics" ? "" : input.topic ?? ""} ${input.query}`.trim();
   if (!query) return { items: all.slice(0, input.limit ?? 20), mode: "quality" as const };
 
@@ -86,12 +90,14 @@ export async function searchAcceptedEvidence(input: {
       ? sql`CASE WHEN embedding IS NULL THEN 0 ELSE 1 - (embedding <=> ${JSON.stringify(embedding)}::vector) END`
       : sql`0`;
     const result = await withDatabase((db) => db.execute(sql`
-      SELECT id,
+      SELECT re.id,
         (0.58 * ts_rank_cd(to_tsvector('english', excerpt), websearch_to_tsquery('english', ${query})))
         + (0.42 * ${vectorScore})
         + (evidence_quality_score / 10000.0) AS score
-      FROM research_evidence
-      WHERE review_status = 'accepted' AND evidence_quality_score >= 45 AND boilerplate_risk < 60 AND company_id IN (${ids}) ${topicFilter} ${sourceFilter} ${dateFromFilter} ${dateToFilter}
+      FROM research_evidence re
+      INNER JOIN workspace_evidence_reviews wer ON wer.evidence_id = re.id
+      WHERE wer.workspace_id = ${input.workspaceId} AND wer.review_status = 'accepted'
+        AND evidence_quality_score >= 45 AND boilerplate_risk < 60 AND company_id IN (${ids}) ${topicFilter} ${sourceFilter} ${dateFromFilter} ${dateToFilter}
       ORDER BY score DESC, document_date DESC
       LIMIT ${Math.max(1, Math.min(input.limit ?? 20, 50))}
     `));

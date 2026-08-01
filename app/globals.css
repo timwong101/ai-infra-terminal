@@ -719,6 +719,8 @@ input::placeholder, textarea::placeholder { color: #758791; opacity: 1; }
 .thesis-impact.strengthened { border-color: #2d6946; background: #0b291b; color: #7fde99; }
 .thesis-impact.weakened { border-color: #6b3934; background: #2b1918; color: #f38b7e; }
 .thesis-impact.mixed { border-color: #6b5934; background: #292416; color: #edc46f; }
+.thesis-impact.insufficient_evidence, .thesis-impact.not_comparable { border-color: #52616a; background: #182126; color: #b8c4c9; }
+.thesis-impact.review_required { border-color: #6b5934; background: #292416; color: #edc46f; }
 .change-brief-summary h3 { margin: 11px 0 6px; color: #e0e8eb; font-size: 13px; line-height: 1.4; }
 .change-brief-summary p { margin: 0; color: #9aabb2; font-size: 10px; line-height: 1.55; }
 .change-brief-summary small { margin-top: 7px; color: #657b86; display: block; font-size: 9px; text-transform: capitalize; }

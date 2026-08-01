@@ -54,5 +54,7 @@ flowchart LR
 - [ADR-003: Human-reviewed reconciliation](adr-003-human-reviewed-reconciliation.md)
 - [ADR-004: Immutable source artifacts and versioned extraction](adr-004-immutable-source-artifacts.md)
 - [ADR-005: Real-document parser release gates](adr-005-real-document-parser-gates.md)
+- [ADR-006: Global source facts and workspace research decisions](adr-006-workspace-research-decisions.md)
+- [ADR-007: Runtime and deployment boundaries](adr-007-runtime-topology.md)
 
 The legacy Drizzle schema remains a central table registry. New bounded contexts can own a separate schema module and merge it in `lib/db/client.ts`; artifact and extraction-quality tables follow that pattern. Domain behavior does not live in schema files.

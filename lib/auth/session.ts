@@ -1,6 +1,6 @@
-import { and, desc, eq, gt } from "drizzle-orm";
+import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { withDatabase } from "@/lib/db/client";
-import { auditEvents, authSessions, users, workspaceMembers, workspaces } from "@/lib/db/schema";
+import { apiRateLimits, auditEvents, authSessions, users, workspaceMembers, workspaces } from "@/lib/db/schema";
 import type { AuditEventItem, AuthContext, WorkspaceRole } from "@/lib/auth/types";
 
 export const SESSION_COOKIE = "ai_infra_session";
@@ -108,7 +108,34 @@ export async function authenticateRequest(request: Request, minimumRole: Workspa
 }
 
 export async function authorizeApi(request: Request, minimumRole: WorkspaceRole = "viewer") {
-  try { return { auth: await authenticateRequest(request, minimumRole) } as const; }
+  try {
+    const url = new URL(request.url);
+    const mutating = !["GET", "HEAD", "OPTIONS"].includes(request.method.toUpperCase());
+    const origin = request.headers.get("origin");
+    if (mutating && origin && origin !== url.origin) throw new AuthError("Cross-origin mutations are not allowed.", 403);
+    const contentLength = Number(request.headers.get("content-length") || "0");
+    if (contentLength > 256 * 1024) {
+      return { response: Response.json({ error: "Request body exceeds the 256 KB limit." }, { status: 413 }) } as const;
+    }
+    const auth = await authenticateRequest(request, minimumRole);
+    const expensive = /\/(comparison-memos|research-assistant|research-quality|metric-quality|extraction-quality|research-cycle|ir-ingestion)(?:\/|$)/.test(url.pathname);
+    if (mutating || expensive) {
+      const limit = expensive ? 30 : 120;
+      const windowStart = new Date();
+      windowStart.setUTCSeconds(0, 0);
+      const id = `${auth.user.id}:${url.pathname}:${windowStart.toISOString()}`;
+      const row = await withDatabase(async (db) => (await db.insert(apiRateLimits).values({
+        id, userId: auth.user.id, route: url.pathname, windowStart,
+      }).onConflictDoUpdate({
+        target: apiRateLimits.id,
+        set: { requestCount: sql`${apiRateLimits.requestCount} + 1`, updatedAt: new Date() },
+      }).returning({ count: apiRateLimits.requestCount }))[0]);
+      if ((row?.count ?? 0) > limit) {
+        return { response: Response.json({ error: "Rate limit exceeded. Try again in one minute." }, { status: 429, headers: { "Retry-After": "60", "Cache-Control": "no-store" } }) } as const;
+      }
+    }
+    return { auth } as const;
+  }
   catch (error) {
     const status = error instanceof AuthError ? error.status : 401;
     return { response: Response.json({ error: error instanceof Error ? error.message : "Unauthorized." }, { status, headers: { "Cache-Control": "no-store" } }) } as const;

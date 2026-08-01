@@ -24,7 +24,7 @@ import type { ArtifactSourceKind, ExtractionDiffSummary, ExtractionSnapshot, Sou
 import { getPersistedFilingDetail, persistFilingDetail } from "@/lib/db/evidence-repository";
 import { getIrSourceDocument, getPersistedIrDocumentDetail, persistIrDocumentDetail } from "@/lib/db/ir-evidence-repository";
 import { withDatabase } from "@/lib/db/client";
-import { claimEvidence, comparisonMemos, researchClaims, researchEvidence } from "@/lib/db/schema";
+import { comparisonMemos, researchAlerts, researchEvidence, workspaceClaimEvidence, workspaceClaimStates, workspaceEvidenceReviews } from "@/lib/db/schema";
 import { extractSecFilingDetail } from "@/lib/sec/extract";
 import { buildCatalogOnlyIrDetail, extractIrHtmlDetail, extractIrPdfDetail } from "@/lib/ir/extract";
 import type { IrDocument } from "@/lib/ir/types";
@@ -290,46 +290,72 @@ export async function createSourceExtractionPreview(sourceKind: ArtifactSourceKi
 
 async function capturePromotionImpact(sourceKind: ArtifactSourceKind, sourceDocumentId: string) {
   return withDatabase(async (db) => {
-    const accepted = await db.select().from(researchEvidence).where(and(
+    const accepted = await db.select({ evidence: researchEvidence, review: workspaceEvidenceReviews })
+      .from(researchEvidence)
+      .innerJoin(workspaceEvidenceReviews, eq(workspaceEvidenceReviews.evidenceId, researchEvidence.id))
+      .where(and(
       eq(researchEvidence.sourceKind, sourceKind),
       eq(researchEvidence.sourceDocumentId, sourceDocumentId),
-      eq(researchEvidence.reviewStatus, "accepted"),
+      eq(workspaceEvidenceReviews.reviewStatus, "accepted"),
     ));
-    const ids = accepted.map((item) => item.id);
-    const linkedClaims = ids.length ? await db.select({ claimId: claimEvidence.claimId }).from(claimEvidence).where(inArray(claimEvidence.researchEvidenceId, ids)) : [];
     const memos = await db.select().from(comparisonMemos);
-    const idSet = new Set(ids);
     return {
-      accepted: new Map(accepted.map((item) => [item.id, item.contentHash])),
-      claimIds: [...new Set(linkedClaims.map((item) => item.claimId))],
-      memoIds: memos.filter((memo) => (memo.evidenceSnapshot as Array<{ id?: string }>).some((item) => item.id && idSet.has(item.id))).map((memo) => memo.id),
+      accepted: accepted.map(({ evidence, review }) => ({ workspaceId: review.workspaceId, evidenceId: evidence.id, contentHash: evidence.contentHash })),
+      memos: memos.map((memo) => ({ id: memo.id, workspaceId: memo.workspaceId, evidenceIds: (memo.evidenceSnapshot as Array<{ id?: string }>).flatMap((item) => item.id ? [item.id] : []) })),
     };
   });
 }
 
 async function applyPromotionImpact(sourceKind: ArtifactSourceKind, sourceDocumentId: string, impact: NonNullable<Awaited<ReturnType<typeof capturePromotionImpact>>>) {
   await syncResearchEvidence();
-  await withDatabase(async (db) => {
+  await withDatabase((database) => database.transaction(async (db) => {
     const current = await db.select().from(researchEvidence).where(and(
       eq(researchEvidence.sourceKind, sourceKind),
       eq(researchEvidence.sourceDocumentId, sourceDocumentId),
     ));
-    const changedIds = current.filter((item) => impact.accepted.has(item.id) && impact.accepted.get(item.id) !== item.contentHash).map((item) => item.id);
-    const removedIds = [...impact.accepted.keys()].filter((id) => {
-      const item = current.find((candidate) => candidate.id === id);
-      return !item || (item.reviewStatus === "rejected" && item.reviewNote === "Superseded by the current source extraction; retained for audit history.");
+    const currentById = new Map(current.map((item) => [item.id, item]));
+    const reviewIds = [...new Set(impact.accepted.map((item) => item.evidenceId))];
+    const reviews = reviewIds.length ? await db.select().from(workspaceEvidenceReviews).where(inArray(workspaceEvidenceReviews.evidenceId, reviewIds)) : [];
+    const reviewByScope = new Map(reviews.map((review) => [`${review.workspaceId}:${review.evidenceId}`, review]));
+    const affected = impact.accepted.flatMap((item) => {
+      const evidence = currentById.get(item.evidenceId);
+      const review = reviewByScope.get(`${item.workspaceId}:${item.evidenceId}`);
+      const removed = !evidence || (review?.reviewStatus === "rejected" && review.reviewNote?.startsWith("Superseded by the current source extraction"));
+      const changed = Boolean(evidence && evidence.contentHash !== item.contentHash);
+      return removed || changed ? [{ ...item, removed }] : [];
     });
-    if (changedIds.length) await db.update(researchEvidence).set({
-      reviewStatus: "unreviewed",
-      reviewNote: "Parser replay changed this passage; analyst review is required again.",
-      reviewedByUserId: null,
-      reviewedAt: null,
-      updatedAt: new Date(),
-    }).where(inArray(researchEvidence.id, changedIds));
-    if (impact.claimIds.length) await db.update(researchClaims).set({ isStale: true, staleReason: "A promoted parser replay changed source evidence.", staleAt: new Date() }).where(inArray(researchClaims.id, impact.claimIds));
-    if (impact.memoIds.length) await db.update(comparisonMemos).set({ status: "changes_requested", isStale: true, staleReason: "A promoted parser replay changed the cited source extraction.", staleAt: new Date(), updatedAt: new Date() }).where(inArray(comparisonMemos.id, impact.memoIds));
-    return { changed: changedIds.length, removed: removedIds.length };
-  });
+    const now = new Date();
+    for (const item of affected) {
+      if (!item.removed) {
+        await db.update(workspaceEvidenceReviews).set({
+          reviewStatus: "unreviewed",
+          suggestionStatus: "pending",
+          reviewNote: "Parser replay changed this passage; analyst review is required again.",
+          reviewedByUserId: null,
+          reviewedAt: null,
+          updatedAt: now,
+        }).where(and(eq(workspaceEvidenceReviews.workspaceId, item.workspaceId), eq(workspaceEvidenceReviews.evidenceId, item.evidenceId)));
+      }
+      const claimLinks = await db.select({ claimId: workspaceClaimEvidence.claimId }).from(workspaceClaimEvidence).where(and(
+        eq(workspaceClaimEvidence.workspaceId, item.workspaceId),
+        eq(workspaceClaimEvidence.researchEvidenceId, item.evidenceId),
+      ));
+      await db.delete(workspaceClaimEvidence).where(and(eq(workspaceClaimEvidence.workspaceId, item.workspaceId), eq(workspaceClaimEvidence.researchEvidenceId, item.evidenceId)));
+      await db.delete(researchAlerts).where(and(eq(researchAlerts.workspaceId, item.workspaceId), eq(researchAlerts.researchEvidenceId, item.evidenceId)));
+      const claimIds = [...new Set(claimLinks.map((link) => link.claimId))];
+      if (claimIds.length) await db.update(workspaceClaimStates).set({
+        isStale: true,
+        staleReason: "A promoted parser replay changed source evidence.",
+        staleAt: now,
+        updatedAt: now,
+      }).where(and(eq(workspaceClaimStates.workspaceId, item.workspaceId), inArray(workspaceClaimStates.claimId, claimIds)));
+    }
+    const affectedByWorkspace = new Map<string, Set<string>>();
+    for (const item of affected) affectedByWorkspace.set(item.workspaceId, new Set([...(affectedByWorkspace.get(item.workspaceId) ?? []), item.evidenceId]));
+    const memoIds = impact.memos.filter((memo) => memo.evidenceIds.some((id) => affectedByWorkspace.get(memo.workspaceId)?.has(id))).map((memo) => memo.id);
+    if (memoIds.length) await db.update(comparisonMemos).set({ status: "changes_requested", isStale: true, staleReason: "A promoted parser replay changed the cited source extraction.", staleAt: now, updatedAt: now }).where(inArray(comparisonMemos.id, memoIds));
+    return { changed: affected.filter((item) => !item.removed).length, removed: affected.filter((item) => item.removed).length };
+  }));
 }
 
 export async function promoteSourceExtraction(runId: string, auth: AuthContext) {

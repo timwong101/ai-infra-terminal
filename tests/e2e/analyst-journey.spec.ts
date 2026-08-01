@@ -553,9 +553,29 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await expect(page.getByRole("heading", { name: "Comparison Memos" })).toBeVisible();
     await expect(page.getByText("No memo selected", { exact: true })).toBeVisible();
 
+    const secondEvidenceReview = await page.request.patch("/api/research-evidence", {
+      data: { ids: ["e2e:coreweave:capacity"], status: "rejected", note: "Second workspace decision." },
+    });
+    expect(secondEvidenceReview.status()).toBe(200);
+    const secondMetricLedger = await page.request.get("/api/company-metrics");
+    const secondMetrics = await secondMetricLedger.json() as { observations: Array<{ id: string; companyId: string; metricKey: string; normalizedValue: number }> };
+    const secondCapacity = secondMetrics.observations.find((item) => item.companyId === "coreweave" && item.metricKey === "active_power_capacity" && item.normalizedValue === 320);
+    expect(secondCapacity).toBeDefined();
+    expect((await page.request.patch("/api/company-metrics", { data: { id: secondCapacity!.id, status: "rejected", note: "Second workspace metric decision." } })).status()).toBe(200);
+    const secondAlerts = await (await page.request.get("/api/alerts?significance=all")).json() as { alerts: Array<{ title: string }> };
+    expect(secondAlerts.alerts.some((item) => item.title === "Capacity growth supports")).toBe(false);
+
     await page.getByRole("button", { name: "Open profile and workspace menu" }).click();
     await page.getByRole("button", { name: /Neocloud Research/ }).click();
     await expect(page.getByRole("heading", { name: "AI Infrastructure Map" })).toBeVisible();
+    const originalEvidence = await (await page.request.get("/api/research-evidence?sync=0")).json() as { items: Array<{ id: string; reviewStatus: string }> };
+    expect(originalEvidence.items.find((item) => item.id === "e2e:coreweave:capacity")?.reviewStatus).toBe("accepted");
+    const originalMetricLedger = await (await page.request.get("/api/company-metrics")).json() as { observations: Array<{ id: string; reviewStatus: string; isCanonical: boolean }> };
+    const originalCapacity = originalMetricLedger.observations.find((item) => item.id === secondCapacity!.id);
+    expect(originalCapacity?.reviewStatus).toBe("accepted");
+    expect(originalCapacity?.isCanonical).toBe(true);
+    const originalAlerts = await (await page.request.get("/api/alerts?significance=all")).json() as { alerts: Array<{ title: string }> };
+    expect(originalAlerts.alerts.some((item) => item.title === "Capacity growth supports")).toBe(true);
     await page.goto("/memos");
     await page.getByRole("button", { name: /CoreWeave vs\. Nebius/ }).first().click();
     await expect(page.getByRole("heading", { name: "CoreWeave vs. Nebius" })).toBeVisible();

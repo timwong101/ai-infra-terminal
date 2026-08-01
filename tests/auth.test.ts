@@ -29,6 +29,24 @@ test("API authorization rejects requests without a session before database acces
   assert.deepEqual(await response.json(), { error: "Sign in is required." });
 });
 
+test("API authorization rejects cross-origin and oversized mutations before database access", async () => {
+  const crossOrigin = await authorizeApi(new Request("http://localhost/api/protected", {
+    method: "POST",
+    headers: { Origin: "https://evil.example" },
+  }));
+  const crossOriginResponse = "response" in crossOrigin ? crossOrigin.response : null;
+  assert.ok(crossOriginResponse);
+  assert.equal(crossOriginResponse.status, 403);
+
+  const oversized = await authorizeApi(new Request("http://localhost/api/protected", {
+    method: "POST",
+    headers: { "Content-Length": String(256 * 1024 + 1) },
+  }));
+  const oversizedResponse = "response" in oversized ? oversized.response : null;
+  assert.ok(oversizedResponse);
+  assert.equal(oversizedResponse.status, 413);
+});
+
 test("OAuth redirects retain mutable headers for state cookies", async () => {
   const response = redirectResponse("https://github.com/login/oauth/authorize");
   response.headers.append("Set-Cookie", "oauth_state=test");

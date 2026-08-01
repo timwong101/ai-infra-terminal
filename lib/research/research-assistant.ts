@@ -118,6 +118,7 @@ function normalizeFilters(filters: Partial<ResearchAssistantFilters>, availableC
 export async function runResearchAssistantPipeline(
   questionValue: string,
   inputFilters: Partial<ResearchAssistantFilters>,
+  workspaceId: string,
   requestedEngine: ResearchAssistantEngine = "auto",
 ) {
   const startedAt = performance.now();
@@ -131,7 +132,7 @@ export async function runResearchAssistantPipeline(
   const canUseAi = Boolean(process.env.OPENAI_API_KEY?.trim());
   if (requestedEngine === "ai" && !canUseAi) throw new Error("OPENAI_API_KEY is required for an AI quality run.");
   const useAi = requestedEngine === "ai" || (requestedEngine === "auto" && canUseAi);
-  const retrieval = await searchAcceptedEvidence({ ...filters, query: question, limit: RESEARCH_ASSISTANT_CONFIG.retrievalLimit });
+  const retrieval = await searchAcceptedEvidence({ workspaceId, ...filters, query: question, limit: RESEARCH_ASSISTANT_CONFIG.retrievalLimit });
   const selected = filters.companyIds
     .flatMap((companyId) => retrieval.items.filter((item) => item.companyId === companyId).slice(0, RESEARCH_ASSISTANT_CONFIG.perCompanyLimit))
     .slice(0, RESEARCH_ASSISTANT_CONFIG.evidencePacketLimit);
@@ -270,8 +271,8 @@ export async function answerResearchAssistantQuestion(sessionId: string, questio
   await withDatabase((db) => db.insert(researchAssistantMessages).values({ id, sessionId, question, engine: hasAi ? "ai" : "deterministic", model: hasAi ? process.env.AI_RESEARCH_ASSISTANT_MODEL?.trim() || "gpt-5-mini" : "deterministic-v1", filters: inputFilters }));
 
   try {
-    const result = await runResearchAssistantPipeline(question, inputFilters, requestedEngine);
-    const metricSnapshot = await getAcceptedMetricSnapshot(result.filters.companyIds);
+    const result = await runResearchAssistantPipeline(question, inputFilters, auth.workspace.id, requestedEngine);
+    const metricSnapshot = await getAcceptedMetricSnapshot(auth.workspace.id, result.filters.companyIds);
     await withDatabase(async (db) => {
       await db.update(researchAssistantMessages).set({
         answerMarkdown: result.markdown,

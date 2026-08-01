@@ -10,6 +10,9 @@ import {
   liveEvents,
   researchClaims,
   researchEvidence,
+  workspaceClaimEvidence,
+  workspaceClaimStates,
+  workspaceEvidenceReviews,
 } from "@/lib/db/schema";
 import type { ComparisonMemoSection, ResearchEvidenceItem } from "@/lib/research/types";
 import type { LineageEdge, LineageGraph, LineageNode } from "@/lib/lineage/types";
@@ -58,7 +61,7 @@ function addEvidencePacket(nodes: Map<string, LineageNode>, edges: Map<string, L
 
 export async function buildLineageGraph(workspaceId: string): Promise<LineageGraph> {
   const result = await withDatabase(async (db) => {
-    const [companyRows, claimRows, linkRows, eventRows, memoRows] = await Promise.all([
+    const [companyRows, claimRows, linkRows, workspaceLinkRows, claimStateRows, reviewRows, eventRows, memoRows] = await Promise.all([
       db.select().from(companies),
       db.select().from(researchClaims),
       db.select({ link: claimEvidence, evidence: researchEvidence, change: filingChanges, filing: filings })
@@ -66,6 +69,12 @@ export async function buildLineageGraph(workspaceId: string): Promise<LineageGra
         .leftJoin(researchEvidence, eq(claimEvidence.researchEvidenceId, researchEvidence.id))
         .leftJoin(filingChanges, eq(claimEvidence.filingChangeId, filingChanges.id))
         .leftJoin(filings, eq(filingChanges.currentFilingId, filings.id)),
+      db.select({ link: workspaceClaimEvidence, evidence: researchEvidence })
+        .from(workspaceClaimEvidence)
+        .innerJoin(researchEvidence, eq(workspaceClaimEvidence.researchEvidenceId, researchEvidence.id))
+        .where(eq(workspaceClaimEvidence.workspaceId, workspaceId)),
+      db.select().from(workspaceClaimStates).where(eq(workspaceClaimStates.workspaceId, workspaceId)),
+      db.select().from(workspaceEvidenceReviews).where(eq(workspaceEvidenceReviews.workspaceId, workspaceId)),
       db.select({ event: liveEvents, impact: eventClaimImpacts })
         .from(liveEvents)
         .leftJoin(eventClaimImpacts, eq(eventClaimImpacts.eventId, liveEvents.id))
@@ -74,6 +83,8 @@ export async function buildLineageGraph(workspaceId: string): Promise<LineageGra
       db.select().from(comparisonMemos).where(eq(comparisonMemos.workspaceId, workspaceId)).orderBy(desc(comparisonMemos.updatedAt)).limit(20),
     ]);
     const companyById = new Map(companyRows.map((item) => [item.id, item]));
+    const claimStateById = new Map(claimStateRows.map((item) => [item.claimId, item]));
+    const reviewByEvidenceId = new Map(reviewRows.map((item) => [item.evidenceId, item]));
     const evidenceRows = await db.select().from(researchEvidence);
     const evidenceById = new Map(evidenceRows.map((item) => [item.id, item]));
     const nodes = new Map<string, LineageNode>();
@@ -92,18 +103,21 @@ export async function buildLineageGraph(workspaceId: string): Promise<LineageGra
     });
 
     for (const claim of claimRows) {
+      const state = claimStateById.get(claim.id);
+      if ((claim.kind.startsWith("custom:") && !state) || (state?.status ?? claim.status) !== "active") continue;
       const links = linkRows.filter((item) => item.link.claimId === claim.id);
-      const compliant = links.some((item) => item.evidence?.reviewStatus === "accepted" || Boolean(item.filing));
+      const analystLinks = workspaceLinkRows.filter((item) => item.link.claimId === claim.id);
+      const compliant = links.some((item) => Boolean(item.filing)) || analystLinks.some((item) => reviewByEvidenceId.get(item.evidence.id)?.reviewStatus === "accepted");
       addNode(nodes, {
         id: `claim:${claim.id}`,
         kind: "claim",
-        label: claim.title,
-        subtitle: claim.statement,
+        label: state?.title ?? claim.title,
+        subtitle: state?.statement ?? claim.statement,
         compliant,
-        status: claim.isStale ? "stale" : compliant ? "supported" : "unsupported",
-        score: claim.supportScore,
+        status: (state?.isStale ?? claim.isStale) ? "stale" : compliant ? "supported" : "unsupported",
+        score: state?.supportScore ?? claim.supportScore,
         url: null,
-        details: { theme: claim.theme, kind: claim.kind, evidenceLinks: links.length },
+        details: { theme: claim.theme, kind: claim.kind, evidenceLinks: links.length + analystLinks.length },
       });
       addEdge(edges, { source: `company:${claim.companyId}`, target: `claim:${claim.id}`, label: "tracks", compliant });
     }
@@ -113,6 +127,7 @@ export async function buildLineageGraph(workspaceId: string): Promise<LineageGra
       if (evidence) {
         const company = companyById.get(evidence.companyId);
         if (!company) continue;
+        const review = reviewByEvidenceId.get(evidence.id);
         const packet = {
           ...evidence,
           companyName: company.name,
@@ -121,11 +136,11 @@ export async function buildLineageGraph(workspaceId: string): Promise<LineageGra
           suggestedClaimTitle: null,
           reviewedBy: null,
           sourceKind: evidence.sourceKind as "sec" | "ir",
-          reviewStatus: evidence.reviewStatus as "accepted" | "unreviewed" | "rejected",
-          suggestionStatus: evidence.suggestionStatus as "pending" | "accepted" | "rejected",
-          suggestedImpact: evidence.suggestedImpact as "supports" | "weakens" | "watch" | null,
+          reviewStatus: (review?.reviewStatus ?? "unreviewed") as "accepted" | "unreviewed" | "rejected",
+          suggestionStatus: (review?.suggestionStatus ?? "pending") as "pending" | "accepted" | "rejected",
+          suggestedImpact: (review?.suggestedImpact ?? evidence.suggestedImpact) as "supports" | "weakens" | "watch" | null,
           qualityScoredAt: evidence.qualityScoredAt?.toISOString() ?? null,
-          reviewedAt: evidence.reviewedAt?.toISOString() ?? null,
+          reviewedAt: review?.reviewedAt?.toISOString() ?? null,
         } satisfies ResearchEvidenceItem;
         addEvidencePacket(nodes, edges, packet);
         const compliant = packet.reviewStatus === "accepted" && packet.evidenceQualityScore >= 45 && packet.boilerplateRisk < 60;
@@ -161,6 +176,29 @@ export async function buildLineageGraph(workspaceId: string): Promise<LineageGra
       }
     }
 
+    for (const { link, evidence } of workspaceLinkRows) {
+      const company = companyById.get(evidence.companyId);
+      const review = reviewByEvidenceId.get(evidence.id);
+      if (!company || !review) continue;
+      const packet = {
+        ...evidence,
+        companyName: company.name,
+        ticker: company.ticker,
+        qualityReasons: evidence.qualityReasons as string[],
+        suggestedClaimTitle: null,
+        reviewedBy: null,
+        sourceKind: evidence.sourceKind as "sec" | "ir",
+        reviewStatus: review.reviewStatus as "accepted" | "unreviewed" | "rejected",
+        suggestionStatus: review.suggestionStatus as "pending" | "accepted" | "rejected",
+        suggestedImpact: (review.suggestedImpact ?? evidence.suggestedImpact) as "supports" | "weakens" | "watch" | null,
+        qualityScoredAt: evidence.qualityScoredAt?.toISOString() ?? null,
+        reviewedAt: review.reviewedAt?.toISOString() ?? null,
+      } satisfies ResearchEvidenceItem;
+      addEvidencePacket(nodes, edges, packet);
+      const compliant = packet.reviewStatus === "accepted" && packet.evidenceQualityScore >= 45 && packet.boilerplateRisk < 60;
+      addEdge(edges, { source: `evidence:${evidence.id}`, target: `claim:${link.claimId}`, label: link.impact, compliant });
+    }
+
     for (const { event, impact } of eventRows) {
       const compliant = event.evidenceStatus === "official" && Boolean(impact?.status === "accepted");
       addNode(nodes, {
@@ -192,7 +230,7 @@ export async function buildLineageGraph(workspaceId: string): Promise<LineageGra
       const memoCompliant = !memo.isStale && factualClaims.every(({ claim }) =>
         claim.citationIds.length > 0 && claim.citationIds.every((id) => {
           const evidence = evidenceById.get(id);
-          return evidence?.reviewStatus === "accepted" && evidence.evidenceQualityScore >= 45 && evidence.boilerplateRisk < 60;
+          return reviewByEvidenceId.get(id)?.reviewStatus === "accepted" && Boolean(evidence && evidence.evidenceQualityScore >= 45 && evidence.boilerplateRisk < 60);
         })
       );
       addNode(nodes, {
@@ -208,7 +246,7 @@ export async function buildLineageGraph(workspaceId: string): Promise<LineageGra
       });
       for (const { section, claim, index } of generatedClaims) {
         const generatedId = `claim:memo:${memo.id}:${section.key}:${index}`;
-        const compliant = section.key === "questions" || (claim.citationIds.length > 0 && claim.citationIds.every((id) => evidenceById.get(id)?.reviewStatus === "accepted"));
+        const compliant = section.key === "questions" || (claim.citationIds.length > 0 && claim.citationIds.every((id) => reviewByEvidenceId.get(id)?.reviewStatus === "accepted"));
         addNode(nodes, {
           id: generatedId,
           kind: "claim",
@@ -225,7 +263,7 @@ export async function buildLineageGraph(workspaceId: string): Promise<LineageGra
           source: `evidence:${citationId}`,
           target: generatedId,
           label: "supports",
-          compliant: evidenceById.get(citationId)?.reviewStatus === "accepted",
+          compliant: reviewByEvidenceId.get(citationId)?.reviewStatus === "accepted",
         });
         addEdge(edges, { source: generatedId, target: `memo:${memo.id}`, label: "included in", compliant });
       }
@@ -249,4 +287,3 @@ export async function buildLineageGraph(workspaceId: string): Promise<LineageGra
   if (!result) throw new Error("Evidence lineage requires Postgres.");
   return result;
 }
-

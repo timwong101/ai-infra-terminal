@@ -91,11 +91,11 @@ export async function createResearchReplay(input: {
   const mode: ReplayMode = input.mode === "publication-time" ? "publication-time" : "system-known";
   const question = input.question.trim() || "What did the available evidence support at this point in time, and what changed afterward?";
   const [historicalAll, currentAll] = await Promise.all([
-    getAcceptedEvidence(companyIds, topic, {
+    getAcceptedEvidence(auth.workspace.id, companyIds, topic, {
       dateTo: input.asOfDate,
       ...(mode === "system-known" ? { knownAt: input.asOfDate } : {}),
     }),
-    getAcceptedEvidence(companyIds, topic),
+    getAcceptedEvidence(auth.workspace.id, companyIds, topic),
   ]);
   const historicalEvidence = selectPacket(historicalAll, companyIds);
   const currentEvidence = selectPacket(currentAll, companyIds);

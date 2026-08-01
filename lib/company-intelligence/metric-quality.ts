@@ -4,8 +4,9 @@ import { recordAuditEvent } from "@/lib/auth/session";
 import { extractCompanyFactObservations } from "@/lib/company-intelligence/company-facts";
 import { extractMetricsFromText } from "@/lib/company-intelligence/extract";
 import { analyzeMetricObservation } from "@/lib/company-intelligence/metric-policy";
+import { getMetricLedger } from "@/lib/company-intelligence/metric-ledger";
 import { withDatabase } from "@/lib/db/client";
-import { canonicalMetrics, companyMetrics, metricQualityResults, metricQualityRuns } from "@/lib/db/schema";
+import { companyMetrics, metricQualityResults, metricQualityRuns, workspaceCanonicalMetrics, workspaceMetricReviews } from "@/lib/db/schema";
 
 export const METRIC_QUALITY_SUITE_VERSION = "neocloud-metric-quality-v1";
 
@@ -106,13 +107,15 @@ export async function runMetricQualitySuite(auth: AuthContext) {
   await withDatabase((db) => db.insert(metricQualityRuns).values({ id, workspaceId: auth.workspace.id, ownerUserId: auth.user.id, suiteVersion: METRIC_QUALITY_SUITE_VERSION, caseCount: METRIC_QUALITY_FIXTURES.length + 1 }));
   try {
     const fixtureResults = METRIC_QUALITY_FIXTURES.map(evaluateMetricQualityFixture);
+    await getMetricLedger(auth.workspace.id);
     const live = await withDatabase(async (db) => {
       const metrics = await db.select().from(companyMetrics);
-      const canonical = await db.select().from(canonicalMetrics);
+      const canonical = await db.select().from(workspaceCanonicalMetrics).where(eq(workspaceCanonicalMetrics.workspaceId, auth.workspace.id));
+      const reviews = await db.select().from(workspaceMetricReviews).where(eq(workspaceMetricReviews.workspaceId, auth.workspace.id));
       const canonicalIds = new Set(canonical.map((item) => item.metricId));
       return {
         observations: metrics.length,
-        autoAccepted: metrics.filter((item) => item.reviewStatus === "accepted" && !item.reviewedAt).length,
+        autoAccepted: reviews.filter((item) => item.reviewStatus === "accepted" && !item.reviewedAt).length,
         anomalousCanonical: metrics.filter((item) => canonicalIds.has(item.id) && (!item.canonicalEligible || item.anomalyScore > 0)).length,
         dimensionCoverage: percent(metrics.filter((item) => item.scopeType && item.periodType && item.extractorVersion).length, metrics.length),
       };

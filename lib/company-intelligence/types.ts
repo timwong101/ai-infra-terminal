@@ -74,7 +74,8 @@ export type EarningsChangeBrief = {
   id: string;
   headline: string;
   summary: string;
-  thesisImpact: "strengthened" | "weakened" | "mixed" | "unchanged";
+  thesisImpact: "strengthened" | "weakened" | "mixed" | "unchanged" | "not_assessed";
+  readinessStatus: "ready" | "review_required" | "insufficient_evidence" | "not_comparable";
   confidenceScore: number;
   evidenceQualityScore: number;
   sourceDiversityScore: number;
@@ -83,7 +84,8 @@ export type EarningsChangeBrief = {
   generatedAt: string;
   versionHistory: Array<{
     id: string;
-    thesisImpact: "strengthened" | "weakened" | "mixed" | "unchanged";
+    thesisImpact: "strengthened" | "weakened" | "mixed" | "unchanged" | "not_assessed";
+    readinessStatus: "ready" | "review_required" | "insufficient_evidence" | "not_comparable";
     confidenceScore: number;
     generatedAt: string;
   }>;
@@ -111,6 +113,7 @@ export type CompanyIntelligenceResponse = {
     proposedMetrics: number;
     disclosures: number;
     highSignificance: number;
-    evidenceSources: number;
+    citedSources: number;
+    packageDocuments: number;
   };
 };

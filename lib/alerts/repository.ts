@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
 import type { AlertStatus, AlertsResponse, ResearchAlert, ResearchClaim } from "@/lib/alerts/types";
 import { withDatabase } from "@/lib/db/client";
 import {
@@ -12,6 +12,8 @@ import {
   researchEvidence,
   thesisSnapshots,
   userAlertStates,
+  workspaceClaimEvidence,
+  workspaceClaimStates,
 } from "@/lib/db/schema";
 import type { AuthContext } from "@/lib/auth/types";
 import { recordAuditEvent } from "@/lib/auth/session";
@@ -33,6 +35,7 @@ export async function listResearchAlerts(filters: AlertFilters = {}, auth: AuthC
       .leftJoin(filingChanges, eq(researchAlerts.filingChangeId, filingChanges.id))
       .leftJoin(researchEvidence, eq(researchAlerts.researchEvidenceId, researchEvidence.id))
       .leftJoin(liveEvents, eq(researchAlerts.liveEventId, liveEvents.id))
+      .where(or(isNull(researchAlerts.workspaceId), eq(researchAlerts.workspaceId, auth.workspace.id)))
       .orderBy(desc(researchAlerts.createdAt));
 
     const stateRows = await db.select().from(userAlertStates).where(and(eq(userAlertStates.workspaceId, auth.workspace.id), eq(userAlertStates.userId, auth.user.id)));
@@ -86,13 +89,20 @@ export async function listResearchAlerts(filters: AlertFilters = {}, auth: AuthC
       .select({ claim: researchClaims, company: companies })
       .from(researchClaims)
       .innerJoin(companies, eq(researchClaims.companyId, companies.id))
-      .where(eq(researchClaims.status, "active"))
       .orderBy(desc(researchClaims.supportScore));
-    const allClaimEvidence = await db.select().from(claimEvidence);
+    const claimStateRows = await db.select().from(workspaceClaimStates).where(eq(workspaceClaimStates.workspaceId, auth.workspace.id));
+    const claimStateById = new Map(claimStateRows.map((state) => [state.claimId, state]));
+    const globalClaimEvidence = await db.select().from(claimEvidence);
+    const workspaceLinks = await db.select().from(workspaceClaimEvidence).where(eq(workspaceClaimEvidence.workspaceId, auth.workspace.id));
     const allSnapshots = await db.select().from(thesisSnapshots).orderBy(asc(thesisSnapshots.snapshotDate));
     const claims: ResearchClaim[] = [];
     for (const { claim, company } of claimRows) {
-      const evidence = allClaimEvidence.filter((item) => item.claimId === claim.id);
+      const state = claimStateById.get(claim.id);
+      if ((claim.kind.startsWith("custom:") && !state) || (state?.status ?? claim.status) !== "active") continue;
+      const evidence = [
+        ...globalClaimEvidence.filter((item) => item.claimId === claim.id),
+        ...workspaceLinks.filter((item) => item.claimId === claim.id),
+      ];
       const snapshots = allSnapshots.filter((snapshot) => snapshot.claimId === claim.id);
       claims.push({
         id: claim.id,
@@ -100,9 +110,9 @@ export async function listResearchAlerts(filters: AlertFilters = {}, auth: AuthC
         companyName: company.name,
         ticker: company.ticker,
         kind: claim.kind,
-        title: claim.title,
-        statement: claim.statement,
-        supportScore: claim.supportScore,
+        title: state?.title ?? claim.title,
+        statement: state?.statement ?? claim.statement,
+        supportScore: state?.supportScore ?? claim.supportScore,
         evidenceCount: evidence.length,
         supportingCount: evidence.filter((item) => item.impact === "supports").length,
         weakeningCount: evidence.filter((item) => item.impact === "weakens").length,

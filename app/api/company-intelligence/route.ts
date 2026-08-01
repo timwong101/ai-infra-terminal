@@ -3,11 +3,12 @@ import { authorizeApi } from "@/lib/auth/session";
 
 export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
-  const authorized = await authorizeApi(request, params.get("sync") === "1" ? "analyst" : "viewer");
+  const authorized = await authorizeApi(request, params.get("sync") === "1" ? "admin" : "viewer");
   if ("response" in authorized) return authorized.response;
   try {
     if (params.get("sync") === "1") await syncCompanyIntelligence();
     return Response.json(await getCompanyIntelligence(
+      authorized.auth.workspace.id,
       params.get("company") ?? undefined,
       params.get("current") ?? undefined,
       params.get("previous") ?? undefined,

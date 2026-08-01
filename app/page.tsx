@@ -337,13 +337,8 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
         if (!response.ok) throw new Error("IR refresh request failed");
         return await response.json() as IrEvidenceResponse;
       })
-      .then(async (result) => {
+      .then((result) => {
         setLiveIrCache(result.cache);
-        try {
-          await fetch("/api/ir-ingestion", { method: "POST", cache: "no-store", signal: controller.signal });
-        } catch (error) {
-          if (!(error instanceof DOMException && error.name === "AbortError")) return;
-        }
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;

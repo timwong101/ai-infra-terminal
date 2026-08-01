@@ -1,7 +1,7 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withDatabase } from "@/lib/db/client";
-import { companies, comparisonMemos, memoGenerations, researchEvidence } from "@/lib/db/schema";
+import { companies, comparisonMemos, memoGenerations, researchEvidence, workspaceEvidenceReviews } from "@/lib/db/schema";
 import { searchAcceptedEvidence } from "@/lib/research/search";
 import type { ComparisonMemo, ComparisonMemoSection, MemoClaim, ResearchEvidenceItem } from "@/lib/research/types";
 import type { AuthContext } from "@/lib/auth/types";
@@ -142,10 +142,10 @@ export async function generateComparisonMemo(input: { companyAId: string; compan
   const companyB = companyRows?.find((item) => item.id === input.companyBId);
   if (!companyA || !companyB) throw new Error("One or both selected companies are unavailable.");
   const question = input.question.trim() || `Compare ${companyA.name} and ${companyB.name} as AI infrastructure exposure.`;
-  const retrieval = await searchAcceptedEvidence({ companyIds, topic: input.topic, query: question, limit: 30 });
+  const retrieval = await searchAcceptedEvidence({ workspaceId: auth.workspace.id, companyIds, topic: input.topic, query: question, limit: 30 });
   const selected = companyIds.flatMap((id) => retrieval.items.filter((item) => item.companyId === id).slice(0, 10));
   if (companyIds.some((id) => !selected.some((item) => item.companyId === id))) throw new Error("Accept at least one matching evidence passage for each company before generating a comparison.");
-  const metricSnapshot = await getAcceptedMetricSnapshot(companyIds);
+  const metricSnapshot = await getAcceptedMetricSnapshot(auth.workspace.id, companyIds);
 
   const model = process.env.AI_MEMO_MODEL?.trim() || "gpt-5-mini";
   const hasAi = Boolean(process.env.OPENAI_API_KEY?.trim());
@@ -197,7 +197,9 @@ function rowToMemo(row: typeof comparisonMemos.$inferSelect, companyA: typeof co
 
 export async function listComparisonMemos(workspaceId: string) {
   const result = await withDatabase(async (db) => {
-    const currentEvidence = await db.select({ id: researchEvidence.id, reviewStatus: researchEvidence.reviewStatus, contentHash: researchEvidence.contentHash, evidenceQualityScore: researchEvidence.evidenceQualityScore, boilerplateRisk: researchEvidence.boilerplateRisk }).from(researchEvidence);
+    const currentEvidence = await db.select({ id: researchEvidence.id, reviewStatus: workspaceEvidenceReviews.reviewStatus, contentHash: researchEvidence.contentHash, evidenceQualityScore: researchEvidence.evidenceQualityScore, boilerplateRisk: researchEvidence.boilerplateRisk })
+      .from(researchEvidence)
+      .innerJoin(workspaceEvidenceReviews, and(eq(workspaceEvidenceReviews.evidenceId, researchEvidence.id), eq(workspaceEvidenceReviews.workspaceId, workspaceId)));
     const currentById = new Map(currentEvidence.map((item) => [item.id, item]));
     const memoRows = await db.select().from(comparisonMemos).where(eq(comparisonMemos.workspaceId, workspaceId)).orderBy(desc(comparisonMemos.updatedAt)).limit(20);
     for (const row of memoRows) {

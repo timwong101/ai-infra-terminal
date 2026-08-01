@@ -7,6 +7,7 @@ import {
   researchAssistantMessages,
   researchAssistantSessions,
   researchEvidence,
+  workspaceEvidenceReviews,
   metricQualityRuns,
   researchQualityRuns,
   researchReplayRuns,
@@ -94,19 +95,23 @@ function demoReviewerAuth(identity: { workspaceId: string }): AuthContext {
   };
 }
 
-async function ensureEvidenceCoverage(identity: { userId: string }) {
+async function ensureEvidenceCoverage(identity: { userId: string; workspaceId: string }) {
   const candidates = await withDatabase((db) => db
     .select({
       id: researchEvidence.id,
       companyId: researchEvidence.companyId,
       topic: researchEvidence.topic,
       sourceKind: researchEvidence.sourceKind,
-      reviewStatus: researchEvidence.reviewStatus,
+      reviewStatus: workspaceEvidenceReviews.reviewStatus,
       evidenceQualityScore: researchEvidence.evidenceQualityScore,
       specificityScore: researchEvidence.specificityScore,
       documentDate: researchEvidence.documentDate,
     })
     .from(researchEvidence)
+    .leftJoin(workspaceEvidenceReviews, and(
+      eq(workspaceEvidenceReviews.evidenceId, researchEvidence.id),
+      eq(workspaceEvidenceReviews.workspaceId, identity.workspaceId),
+    ))
     .where(and(
       inArray(researchEvidence.companyId, COMPANY_IDS),
       inArray(researchEvidence.topic, TOPICS),
@@ -116,16 +121,25 @@ async function ensureEvidenceCoverage(identity: { userId: string }) {
     )));
   if (!candidates) throw new Error("Postgres is required to prepare the portfolio demo.");
 
-  const ids = selectPortfolioBaselineEvidence(candidates);
+  const ids = selectPortfolioBaselineEvidence(candidates.map((item) => ({ ...item, reviewStatus: item.reviewStatus ?? "unreviewed" })));
   if (!ids.length) return 0;
   const now = new Date();
-  await withDatabase((db) => db.update(researchEvidence).set({
-    reviewStatus: "accepted",
-    reviewNote: "Portfolio demo baseline: real official evidence accepted to establish deterministic grounded coverage.",
-    reviewedByUserId: identity.userId,
-    reviewedAt: now,
-    updatedAt: now,
-  }).where(inArray(researchEvidence.id, ids)));
+  await withDatabase(async (db) => {
+    for (const id of ids) {
+      await db.insert(workspaceEvidenceReviews).values({
+        id: `${identity.workspaceId}:evidence-review:${id}`,
+        workspaceId: identity.workspaceId,
+        evidenceId: id,
+        reviewStatus: "accepted",
+        reviewNote: "Portfolio demo baseline: real official evidence accepted to establish deterministic grounded coverage.",
+        reviewedByUserId: identity.userId,
+        reviewedAt: now,
+      }).onConflictDoUpdate({
+        target: [workspaceEvidenceReviews.workspaceId, workspaceEvidenceReviews.evidenceId],
+        set: { reviewStatus: "accepted", reviewNote: "Portfolio demo baseline: real official evidence accepted to establish deterministic grounded coverage.", reviewedByUserId: identity.userId, reviewedAt: now, updatedAt: now },
+      });
+    }
+  });
   return ids.length;
 }
 

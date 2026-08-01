@@ -42,7 +42,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const authorized = await authorizeApi(request, "analyst");
+  const authorized = await authorizeApi(request, "admin");
   if ("response" in authorized) return authorized.response;
   try {
     const body = await request.json() as { action?: "verify" | "reprocess" | "promote"; sourceKind?: ArtifactSourceKind; sourceDocumentId?: string; runId?: string };

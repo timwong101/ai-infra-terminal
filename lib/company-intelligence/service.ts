@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { asc, desc, eq, inArray } from "drizzle-orm";
+import { asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { buildEarningsChangeBrief } from "@/lib/company-intelligence/brief-builder";
 import type { BriefComparisonInput } from "@/lib/company-intelligence/brief-builder";
 import { compareDisclosureTone, compareMetricValues, extractMetricsFromText } from "@/lib/company-intelligence/extract";
@@ -26,6 +26,10 @@ import {
   reportingPeriods,
   researchClaims,
   researchEvidence,
+  workspaceCanonicalMetrics,
+  workspaceClaimStates,
+  workspaceEvidenceReviews,
+  workspaceMetricReviews,
 } from "@/lib/db/schema";
 import type { ResearchEvidenceItem } from "@/lib/research/types";
 import { validateSecUserAgent } from "@/lib/sec/client";
@@ -56,11 +60,26 @@ function bestMetric(metrics: MetricShape[], key: string) {
 }
 
 export async function syncCompanyIntelligence() {
-  const result = await withDatabase(async (db) => {
+  const companyRows = await withDatabase((db) => db.select().from(companies));
+  if (!companyRows) throw new Error("Company intelligence requires a configured database.");
+  const companyFactsByCompany = new Map<string, Awaited<ReturnType<typeof fetchCompanyFacts>>>();
+  if (process.env.E2E_TEST !== "1" && process.env.SEC_USER_AGENT?.trim()) {
+    const userAgent = validateSecUserAgent(process.env.SEC_USER_AGENT);
+    await Promise.all(companyRows.map(async (company) => {
+      try {
+        companyFactsByCompany.set(company.id, await fetchCompanyFacts(company.cik, userAgent));
+      } catch (error) {
+        console.warn(`Company Facts unavailable for ${company.ticker}:`, error instanceof Error ? error.message : error);
+      }
+    }));
+  }
+  const result = await withDatabase((database) => database.transaction(async (db) => {
+    await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext('company-intelligence-sync'))`);
     const evidenceRows = await db.select().from(researchEvidence).orderBy(asc(researchEvidence.documentDate));
-    const companyRows = await db.select().from(companies);
     const previousMetricRows = await db.select().from(companyMetrics);
     const previousCanonicalRows = await db.select().from(canonicalMetrics);
+    const previousWorkspaceMetricReviews = await db.select().from(workspaceMetricReviews);
+    const previousWorkspaceCanonicalRows = await db.select().from(workspaceCanonicalMetrics);
     const previousCanonicalMetricIds = new Set(previousCanonicalRows.map((item) => item.metricId));
     const previousMetricState = new Map(previousMetricRows.map((metric) => [metric.id, {
       reviewStatus: metric.reviewStatus, reviewNote: metric.reviewNote, reviewedByUserId: metric.reviewedByUserId, reviewedAt: metric.reviewedAt,
@@ -68,17 +87,6 @@ export async function syncCompanyIntelligence() {
     const filingRows = await db.select().from(filings);
     const irDocumentRows = await db.select().from(irDocuments);
     const irSourceDocumentRows = await db.select().from(irSourceDocuments);
-    const companyFactsByCompany = new Map<string, Awaited<ReturnType<typeof fetchCompanyFacts>>>();
-    if (process.env.E2E_TEST !== "1" && process.env.SEC_USER_AGENT?.trim()) {
-      const userAgent = validateSecUserAgent(process.env.SEC_USER_AGENT);
-      await Promise.all(companyRows.map(async (company) => {
-        try {
-          companyFactsByCompany.set(company.id, await fetchCompanyFacts(company.cik, userAgent));
-        } catch (error) {
-          console.warn(`Company Facts unavailable for ${company.ticker}:`, error instanceof Error ? error.message : error);
-        }
-      }));
-    }
     await db.delete(reportingPeriods);
 
     const filingsById = new Map(filingRows.map((filing) => [filing.id, filing]));
@@ -251,6 +259,11 @@ export async function syncCompanyIntelligence() {
       resolutionMethod: "analyst_review", rationale: metric.reviewNote ?? "Preserved analyst selection.",
       selectedByUserId: metric.reviewedByUserId, selectedAt: metric.reviewedAt ?? new Date(),
     }))).onConflictDoNothing();
+    const persistedMetricIds = new Set(persistedMetricRows.map((metric) => metric.id));
+    const restoredReviews = previousWorkspaceMetricReviews.filter((review) => persistedMetricIds.has(review.metricId));
+    if (restoredReviews.length) await db.insert(workspaceMetricReviews).values(restoredReviews).onConflictDoNothing();
+    const restoredCanonical = previousWorkspaceCanonicalRows.filter((selection) => persistedMetricIds.has(selection.metricId));
+    if (restoredCanonical.length) await db.insert(workspaceCanonicalMetrics).values(restoredCanonical).onConflictDoNothing();
     const canonicalMetricIds = new Set(canonicalRows.map((metric) => metric.id));
 
     let metricComparisons = 0;
@@ -346,7 +359,7 @@ export async function syncCompanyIntelligence() {
       await db.insert(earningsChangeBriefs).values({
         id: briefId, companyId: currentPeriod.companyId, currentPeriodId: currentPeriod.id,
         previousPeriodId: previousPeriod.id, headline: brief.headline, summary: brief.summary,
-        thesisImpact: brief.thesisImpact, confidenceScore: brief.confidenceScore,
+        thesisImpact: brief.thesisImpact, readinessStatus: brief.readinessStatus, confidenceScore: brief.confidenceScore,
         evidenceQualityScore: brief.evidenceQualityScore, sourceDiversityScore: brief.sourceDiversityScore,
         changeCount: brief.changeCount,
       });
@@ -360,19 +373,19 @@ export async function syncCompanyIntelligence() {
         id: `change-brief-version:${currentPeriod.companyId}:${currentPeriod.periodKey}:${previousPeriod.periodKey}:${contentHash}`,
         companyId: currentPeriod.companyId, currentPeriodKey: currentPeriod.periodKey,
         currentPeriodLabel: currentPeriod.label, previousPeriodKey: previousPeriod.periodKey,
-        previousPeriodLabel: previousPeriod.label, thesisImpact: brief.thesisImpact,
+        previousPeriodLabel: previousPeriod.label, thesisImpact: brief.thesisImpact, readinessStatus: brief.readinessStatus,
         confidenceScore: brief.confidenceScore, contentHash, snapshot: brief,
       }).onConflictDoNothing();
       briefs += 1;
     }
     return { periods: periods.length, packages: periods.length, documents: resolvedDocuments.length, metrics: metrics.length, metricComparisons, disclosureComparisons, briefs };
-  });
+  }));
   if (!result) throw new Error("Company intelligence requires a configured database.");
   const conflicts = await rebuildMetricConflicts();
   return { ...result, conflicts: conflicts.open };
 }
 
-function toEvidenceItem(evidence: typeof researchEvidence.$inferSelect, company: typeof companies.$inferSelect): ResearchEvidenceItem {
+function toEvidenceItem(evidence: typeof researchEvidence.$inferSelect, company: typeof companies.$inferSelect, review?: typeof workspaceEvidenceReviews.$inferSelect): ResearchEvidenceItem {
   return {
     id: evidence.id, companyId: company.id, companyName: company.name, ticker: company.ticker,
     sourceKind: evidence.sourceKind as ResearchEvidenceItem["sourceKind"], sourceDocumentId: evidence.sourceDocumentId,
@@ -382,12 +395,12 @@ function toEvidenceItem(evidence: typeof researchEvidence.$inferSelect, company:
     evidenceQualityScore: evidence.evidenceQualityScore, materialityScore: evidence.materialityScore,
     specificityScore: evidence.specificityScore, relevanceScore: evidence.relevanceScore, boilerplateRisk: evidence.boilerplateRisk,
     qualityReasons: evidence.qualityReasons as string[], duplicateGroupId: evidence.duplicateGroupId, duplicateCount: evidence.duplicateCount,
-    suggestedClaimId: evidence.suggestedClaimId, suggestedClaimTitle: null,
-    suggestedImpact: evidence.suggestedImpact as ResearchEvidenceItem["suggestedImpact"], suggestionConfidence: evidence.suggestionConfidence,
-    suggestionRationale: evidence.suggestionRationale, suggestionStatus: evidence.suggestionStatus as ResearchEvidenceItem["suggestionStatus"],
+    suggestedClaimId: review?.suggestedClaimId ?? evidence.suggestedClaimId, suggestedClaimTitle: null,
+    suggestedImpact: (review?.suggestedImpact ?? evidence.suggestedImpact) as ResearchEvidenceItem["suggestedImpact"], suggestionConfidence: evidence.suggestionConfidence,
+    suggestionRationale: evidence.suggestionRationale, suggestionStatus: (review?.suggestionStatus ?? "pending") as ResearchEvidenceItem["suggestionStatus"],
     qualityScoredAt: evidence.qualityScoredAt?.toISOString() ?? null,
-    reviewStatus: evidence.reviewStatus as ResearchEvidenceItem["reviewStatus"], reviewNote: evidence.reviewNote,
-    reviewedAt: evidence.reviewedAt?.toISOString() ?? null,
+    reviewStatus: (review?.reviewStatus ?? "unreviewed") as ResearchEvidenceItem["reviewStatus"], reviewNote: review?.reviewNote ?? null,
+    reviewedAt: review?.reviewedAt?.toISOString() ?? null,
   };
 }
 
@@ -401,15 +414,18 @@ function toPeriod(row: typeof reportingPeriods.$inferSelect): IntelligencePeriod
   };
 }
 
-export async function getCompanyIntelligence(companyId?: string, currentPeriodId?: string, previousPeriodId?: string): Promise<CompanyIntelligenceResponse> {
+export async function getCompanyIntelligence(workspaceId: string, companyId?: string, currentPeriodId?: string, previousPeriodId?: string): Promise<CompanyIntelligenceResponse> {
   const result = await withDatabase(async (db) => {
     const companyRows = await db.select().from(companies).orderBy(asc(companies.name));
     const allPeriods = await db.select().from(reportingPeriods).orderBy(desc(reportingPeriods.periodEnd));
     const selectedCompany = companyRows.find((company) => company.id === companyId) ?? companyRows.find((company) => allPeriods.some((period) => period.companyId === company.id));
     if (!selectedCompany) throw new Error("No company intelligence is available yet. Run the intelligence sync first.");
     const periods = allPeriods.filter((period) => period.companyId === selectedCompany.id);
-    const companyMetricRows = await db.select().from(companyMetrics).where(eq(companyMetrics.companyId, selectedCompany.id));
-    const companyCanonicalRows = await db.select().from(canonicalMetrics).where(eq(canonicalMetrics.companyId, selectedCompany.id));
+    const rawCompanyMetricRows = await db.select().from(companyMetrics).where(eq(companyMetrics.companyId, selectedCompany.id));
+    const companyMetricReviewRows = await db.select().from(workspaceMetricReviews).where(eq(workspaceMetricReviews.workspaceId, workspaceId));
+    const metricReviewsById = new Map(companyMetricReviewRows.map((review) => [review.metricId, review]));
+    const companyMetricRows = rawCompanyMetricRows.map((metric) => ({ ...metric, reviewStatus: metricReviewsById.get(metric.id)?.reviewStatus ?? "proposed" }));
+    const companyCanonicalRows = await db.select().from(workspaceCanonicalMetrics).where(eq(workspaceCanonicalMetrics.workspaceId, workspaceId));
     const canonicalMetricIds = new Set(companyCanonicalRows.map((metric) => metric.metricId));
     const canonicalCompanyMetricRows = companyMetricRows.filter((metric) => canonicalMetricIds.has(metric.id));
     const metricPeriodIds = new Set(canonicalCompanyMetricRows.map((metric) => metric.periodId));
@@ -454,8 +470,13 @@ export async function getCompanyIntelligence(companyId?: string, currentPeriodId
     const mapped = [...dynamicMetrics, ...mappedDisclosures];
     const evidenceIds = [...new Set(mapped.flatMap((item) => item.evidenceIds))];
     const evidenceRows = evidenceIds.length ? await db.select().from(researchEvidence).where(inArray(researchEvidence.id, evidenceIds)) : [];
-    const claims = await db.select().from(researchClaims).where(eq(researchClaims.companyId, selectedCompany.id)).orderBy(desc(researchClaims.supportScore));
-    const evidence = evidenceRows.map((item) => toEvidenceItem(item, selectedCompany));
+    const claimRows = await db.select().from(researchClaims).where(eq(researchClaims.companyId, selectedCompany.id)).orderBy(desc(researchClaims.supportScore));
+    const claimStateRows = await db.select().from(workspaceClaimStates).where(eq(workspaceClaimStates.workspaceId, workspaceId));
+    const claimStateById = new Map(claimStateRows.map((state) => [state.claimId, state]));
+    const claims = claimRows.filter((claim) => !claim.kind.startsWith("custom:") || claimStateById.has(claim.id));
+    const evidenceReviewRows = await db.select().from(workspaceEvidenceReviews).where(eq(workspaceEvidenceReviews.workspaceId, workspaceId));
+    const evidenceReviewsById = new Map(evidenceReviewRows.map((review) => [review.evidenceId, review]));
+    const evidence = evidenceRows.map((item) => toEvidenceItem(item, selectedCompany, evidenceReviewsById.get(item.id)));
     const briefRows = await db.select().from(earningsChangeBriefs).where(eq(earningsChangeBriefs.currentPeriodId, current.id));
     const briefRow = briefRows.find((item) => item.previousPeriodId === (previous?.id ?? null));
     const briefClaims = briefRow
@@ -481,11 +502,13 @@ export async function getCompanyIntelligence(companyId?: string, currentPeriodId
       changeBrief: briefRow ? {
         id: briefRow.id, headline: briefRow.headline, summary: briefRow.summary,
         thesisImpact: briefRow.thesisImpact as EarningsChangeBrief["thesisImpact"],
+        readinessStatus: briefRow.readinessStatus as EarningsChangeBrief["readinessStatus"],
         confidenceScore: briefRow.confidenceScore, evidenceQualityScore: briefRow.evidenceQualityScore,
         sourceDiversityScore: briefRow.sourceDiversityScore, changeCount: briefRow.changeCount,
         engine: briefRow.engine, generatedAt: briefRow.generatedAt.toISOString(),
         versionHistory: briefVersionRows.map((version) => ({
           id: version.id, thesisImpact: version.thesisImpact as EarningsChangeBrief["thesisImpact"],
+          readinessStatus: version.readinessStatus as EarningsChangeBrief["readinessStatus"],
           confidenceScore: version.confidenceScore, generatedAt: version.generatedAt.toISOString(),
         })),
         sections: ([
@@ -509,14 +532,18 @@ export async function getCompanyIntelligence(companyId?: string, currentPeriodId
           evidenceCount: document.evidenceCount,
         })),
       } : null,
-      claims: claims.map((claim) => ({ id: claim.id, title: claim.title, statement: claim.statement, supportScore: claim.supportScore, kind: claim.kind })),
+      claims: claims.map((claim) => {
+        const state = claimStateById.get(claim.id);
+        return { id: claim.id, title: state?.title ?? claim.title, statement: state?.statement ?? claim.statement, supportScore: state?.supportScore ?? claim.supportScore, kind: claim.kind };
+      }),
       summary: {
         metrics: mapped.filter((item) => item.comparisonKind === "metric").length,
         metricObservations: currentObservationRows.length,
         proposedMetrics: currentObservationRows.filter((item) => item.reviewStatus === "proposed").length,
         disclosures: mapped.filter((item) => item.comparisonKind === "disclosure").length,
         highSignificance: mapped.filter((item) => item.significance === "high").length,
-        evidenceSources: new Set(evidence.map((item) => item.sourceDocumentId)).size,
+        citedSources: new Set(evidence.map((item) => item.sourceDocumentId)).size,
+        packageDocuments: packageDocuments.length,
       },
     };
   });

@@ -61,7 +61,7 @@ It does not insert synthetic research evidence. The seeded memo, answer, benchma
 | Research Quality | Production failure capture, versioned regression cases, run comparison, and deterministic CI gates |
 | Point-in-time replay | Temporal data modeling and explicit leakage checks |
 | Claim-to-evidence lineage | Relational provenance projected into an interactive graph |
-| Workspaces and roles | GitHub OAuth, database sessions, tenant isolation, and RBAC |
+| Workspaces and roles | GitHub OAuth, database sessions, workspace-scoped evidence, claim, alert, and metric decisions, negative isolation tests, and RBAC |
 | Collaborative review | Workspace invitations, claim-level comments, independent approval, and publish gates |
 | Research operations | Scheduled pipelines, trace IDs, stage status, briefings, and failure visibility |
 | Responsive terminal UI | Dense information design across desktop and mobile workflows |
@@ -199,7 +199,7 @@ Point-in-time replay reconstructs the eligible packet at an earlier date and com
 
 ### Pipeline To Analyst Inbox
 
-The scheduled research cycle runs SEC, IR, live-event, evidence, intelligence, XBRL metric, embedding, thesis, and briefing stages. Each run records stage timing and failures under a trace ID. The Activity workspace converts the result into a research briefing rather than forcing the analyst to inspect raw ingestion logs.
+The scheduled research cycle runs SEC, IR, live-event, evidence, intelligence, XBRL metric, embedding, thesis, and briefing stages. Each run records stage timing and failures under a trace ID. Upstream refresh and extraction belong to the independent worker; opening a page reads persisted snapshots and never initiates ingestion. Global pipeline controls require an administrator. The Activity workspace converts the result into a research briefing rather than forcing the analyst to inspect raw ingestion logs.
 
 ## Technology
 
@@ -226,7 +226,11 @@ The deterministic engine keeps the complete product usable without an API key. A
 
 Scoring is a triage tool. It can prioritize specific, material passages and suppress boilerplate, but it does not replace analyst judgment. Review state is modeled separately and remains visible.
 
-The same policy applies to numeric observations. Structured XBRL is high-confidence source data, but it is still proposed until an analyst accepts it. Review decisions survive intelligence rebuilds, and a resolved conflict records the canonical observation and reviewer.
+The same policy applies to numeric observations. Structured XBRL is high-confidence source data, but it is still proposed until an analyst accepts it. Evidence reviews, metric reviews, canonical selections, and custom thesis state are workspace-owned overlays on the shared source corpus. Review decisions survive transactional intelligence rebuilds without leaking into another workspace.
+
+### Insufficient evidence is not unchanged
+
+Earnings packages have an explicit readiness state. A package with no grounded comparison is `insufficient_evidence`; low-coverage or low-confidence packages are `review_required`. The terminal emits an `unchanged` thesis impact only after a comparable prior period and the minimum grounded evidence policy pass.
 
 ### Event discovery is not evidence
 
