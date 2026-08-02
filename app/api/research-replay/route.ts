@@ -1,6 +1,15 @@
 import { authorizeApi } from "@/lib/auth/session";
 import { createResearchReplay, getResearchReplayCatalog } from "@/lib/replay/service";
-import type { ReplayMode } from "@/lib/replay/types";
+import { boundedText, entityId, isoDate, parseJsonBody } from "@/lib/http/validation";
+import { z } from "zod";
+
+const replaySchema = z.object({
+  companyIds: z.array(entityId).min(1).max(12),
+  asOfDate: isoDate,
+  mode: z.enum(["system-known", "publication-time"]).default("system-known"),
+  topic: boundedText(120).default("All topics"),
+  question: boundedText(2_000).default(""),
+}).strict();
 
 export async function GET(request: Request) {
   const authorized = await authorizeApi(request);
@@ -18,22 +27,15 @@ export async function POST(request: Request) {
   const authorized = await authorizeApi(request, "analyst");
   if ("response" in authorized) return authorized.response;
   try {
-    const body = await request.json() as {
-      companyIds?: string[];
-      asOfDate?: string;
-      mode?: ReplayMode;
-      topic?: string;
-      question?: string;
-    };
-    if (!body.companyIds?.length || !body.asOfDate) {
-      return Response.json({ error: "At least one company and an as-of date are required." }, { status: 400 });
-    }
+    const parsed = await parseJsonBody(request, replaySchema);
+    if ("response" in parsed) return parsed.response;
+    const body = parsed.data;
     const run = await createResearchReplay({
       companyIds: body.companyIds,
       asOfDate: body.asOfDate,
-      mode: body.mode === "publication-time" ? "publication-time" : "system-known",
-      topic: body.topic || "All topics",
-      question: body.question || "",
+      mode: body.mode,
+      topic: body.topic,
+      question: body.question,
     }, authorized.auth);
     return Response.json({ run }, { status: 201 });
   } catch (error) {
@@ -41,4 +43,3 @@ export async function POST(request: Request) {
     return Response.json({ error: message }, { status: /Select|Choose|valid|before today/.test(message) ? 400 : 500 });
   }
 }
-

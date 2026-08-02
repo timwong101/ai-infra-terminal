@@ -13,3 +13,11 @@ export async function parseJsonBody<T extends z.ZodType>(request: Request, schem
 
 export const entityId = z.string().trim().min(1).max(300);
 export const boundedText = (maximum: number) => z.string().trim().max(maximum);
+export const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use an ISO date in YYYY-MM-DD format.");
+export const researchFiltersSchema = z.object({
+  companyIds: z.array(entityId).max(12).optional(),
+  topic: boundedText(120).optional(),
+  sourceKinds: z.array(z.enum(["sec", "ir"])).max(2).optional(),
+  dateFrom: isoDate.optional(),
+  dateTo: isoDate.optional(),
+}).strict();

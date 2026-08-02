@@ -1,6 +1,7 @@
 import { createResearchBriefing, createResearchBriefingsForAllWorkspaces } from "@/lib/operations/briefing";
 import { authorizeApi } from "@/lib/auth/session";
 import type { AuthContext } from "@/lib/auth/types";
+import { parseJsonBody } from "@/lib/http/validation";
 import { z } from "zod";
 
 const briefingSchema = z.object({ hours: z.coerce.number().int().min(1).max(168).default(24) });
@@ -15,8 +16,8 @@ export async function POST(request: Request) {
     auth = authorized.auth;
   }
   try {
-    const parsed = briefingSchema.safeParse(await request.json().catch(() => ({})));
-    if (!parsed.success) return Response.json({ error: "Hours must be between 1 and 168.", issues: z.treeifyError(parsed.error) }, { status: 400 });
+    const parsed = await parseJsonBody(request, briefingSchema);
+    if ("response" in parsed) return parsed.response;
     const hours = parsed.data.hours;
     const until = new Date();
     const since = new Date(until.valueOf() - hours * 60 * 60 * 1_000);

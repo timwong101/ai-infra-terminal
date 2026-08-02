@@ -7,6 +7,14 @@ import {
   verifySourceArtifact,
 } from "@/lib/artifacts/service";
 import type { ArtifactSourceKind } from "@/lib/artifacts/types";
+import { entityId, parseJsonBody } from "@/lib/http/validation";
+import { z } from "zod";
+
+const artifactCommandSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("verify"), sourceKind: z.enum(["sec", "ir"]), sourceDocumentId: entityId }).strict(),
+  z.object({ action: z.literal("reprocess"), sourceKind: z.enum(["sec", "ir"]), sourceDocumentId: entityId }).strict(),
+  z.object({ action: z.literal("promote"), runId: entityId }).strict(),
+]);
 
 function sourceRequest(request: Request) {
   const params = new URL(request.url).searchParams;
@@ -45,14 +53,12 @@ export async function POST(request: Request) {
   const authorized = await authorizeApi(request, "admin");
   if ("response" in authorized) return authorized.response;
   try {
-    const body = await request.json() as { action?: "verify" | "reprocess" | "promote"; sourceKind?: ArtifactSourceKind; sourceDocumentId?: string; runId?: string };
-    if (body.action === "promote" && body.runId) return Response.json(await promoteSourceExtraction(body.runId, authorized.auth));
-    if (!body.sourceKind || !["sec", "ir"].includes(body.sourceKind) || !body.sourceDocumentId) {
-      return Response.json({ error: "A source kind and document identifier are required." }, { status: 400 });
-    }
+    const parsed = await parseJsonBody(request, artifactCommandSchema);
+    if ("response" in parsed) return parsed.response;
+    const body = parsed.data;
+    if (body.action === "promote") return Response.json(await promoteSourceExtraction(body.runId, authorized.auth));
     if (body.action === "verify") return Response.json(await verifySourceArtifact(body.sourceKind, body.sourceDocumentId, authorized.auth));
-    if (body.action === "reprocess") return Response.json(await reprocessSourceArtifact(body.sourceKind, body.sourceDocumentId, authorized.auth));
-    return Response.json({ error: "Choose verify, reprocess, or promote." }, { status: 400 });
+    return Response.json(await reprocessSourceArtifact(body.sourceKind, body.sourceDocumentId, authorized.auth));
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Unable to update source provenance." }, { status: 500 });
   }

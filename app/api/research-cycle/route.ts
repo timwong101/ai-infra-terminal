@@ -1,13 +1,16 @@
 import { getResearchOperations } from "@/lib/operations/research-cycle";
 import { authorizeApi } from "@/lib/auth/session";
 import { cancelResearchCycle, enqueueResearchCycle, replayResearchCycle, retryResearchStage } from "@/lib/operations/queue";
-import type { ResearchStageName } from "@/lib/operations/types";
+import { RESEARCH_STAGE_NAMES } from "@/lib/operations/types";
+import { entityId, parseJsonBody } from "@/lib/http/validation";
 import { z } from "zod";
 
 const cycleControlSchema = z.object({
-  runId: z.string().min(1).max(300),
+  runId: entityId,
   action: z.enum(["cancel", "retry_stage", "replay"]),
-  stage: z.string().max(100).optional(),
+  stage: z.enum(RESEARCH_STAGE_NAMES).optional(),
+}).strict().superRefine((value, context) => {
+  if (value.action === "retry_stage" && !value.stage) context.addIssue({ code: "custom", message: "Choose the failed stage to retry.", path: ["stage"] });
 });
 
 export async function GET(request: Request) {
@@ -38,13 +41,12 @@ export async function PATCH(request: Request) {
   const authorized = await authorizeApi(request, "admin");
   if ("response" in authorized) return authorized.response;
   try {
-    const parsed = cycleControlSchema.safeParse(await request.json());
-    if (!parsed.success) return Response.json({ error: "A run and valid control action are required.", issues: z.treeifyError(parsed.error) }, { status: 400 });
-    const body = parsed.data as { runId: string; action: "cancel" | "retry_stage" | "replay"; stage?: ResearchStageName };
+    const parsed = await parseJsonBody(request, cycleControlSchema);
+    if ("response" in parsed) return parsed.response;
+    const body = parsed.data;
     if (body.action === "cancel") return Response.json(await cancelResearchCycle(body.runId));
     if (body.action === "replay") return Response.json({ run: await replayResearchCycle(body.runId, authorized.auth.user.id) }, { status: 202 });
-    if (!body.stage) return Response.json({ error: "Choose the failed stage to retry." }, { status: 400 });
-    return Response.json({ run: await retryResearchStage(body.runId, body.stage) }, { status: 202 });
+    return Response.json({ run: await retryResearchStage(body.runId, body.stage!) }, { status: 202 });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Unable to update this research cycle." }, { status: 400 });
   }

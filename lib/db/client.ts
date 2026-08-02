@@ -10,10 +10,6 @@ type DatabaseState = { connectionString: string; pool: Pool; database: Database 
 
 const databaseGlobal = globalThis as typeof globalThis & { __aiInfraDatabase?: DatabaseState };
 
-function usesRequestScopedIo() {
-  return typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers";
-}
-
 function connectionString() {
   if (process.env.E2E_TEST === "1") return process.env.E2E_DATABASE_URL?.trim();
   return process.env.DATABASE_URL?.trim();
@@ -49,17 +45,6 @@ export async function closeDatabasePool() {
 export async function withDatabase<T>(operation: (database: Database) => Promise<T>) {
   const databaseUrl = connectionString();
   if (!databaseUrl) return null;
-
-  // Cloudflare Workers binds outbound sockets to a request. Reusing a pg Pool
-  // across requests can strand the next request on a socket it does not own.
-  if (usesRequestScopedIo()) {
-    const pool = new Pool({ connectionString: databaseUrl, max: 1, idleTimeoutMillis: 5_000, connectionTimeoutMillis: 5_000 });
-    try {
-      return await operation(drizzle(pool, { schema }));
-    } finally {
-      await pool.end();
-    }
-  }
 
   const state = await databaseState(databaseUrl);
   return operation(state.database);

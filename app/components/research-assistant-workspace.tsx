@@ -152,7 +152,7 @@ export function ResearchAssistantWorkspace({ initialSessionId = "", onSessionSel
     setNotice(response.ok ? `Open question saved for ${company?.name ?? openQuestion.companyId}.` : result.error ?? "Unable to save the open question.");
   };
 
-  if (loadStatus === "loading" && !catalog) return <div className="workspace-state full-page"><LoaderCircle className="drawer-spinner" size={25} /><strong>Loading research assistant</strong><span>Opening saved questions and evidence controls.</span></div>;
+  if (loadStatus === "loading") return <div className="workspace-state full-page"><LoaderCircle className="drawer-spinner" size={25} /><strong>Loading research assistant</strong><span>Opening saved questions and evidence controls.</span></div>;
   if (loadStatus === "error" && !catalog) return <div className="workspace-state full-page"><FileQuestion size={25} /><strong>Research assistant unavailable</strong><span>{notice}</span></div>;
 
   return (

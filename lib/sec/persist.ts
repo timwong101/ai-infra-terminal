@@ -37,6 +37,7 @@ export async function syncSecFilingEvidence(
   let persisted = 0;
   let reused = 0;
   let failed = 0;
+  const failures: Array<{ filingId: string; message: string }> = [];
 
   for (const [index, filing] of ordered.entries()) {
     let detail: SecFilingDetail | null = null;
@@ -86,9 +87,10 @@ export async function syncSecFilingEvidence(
       const comparison = compareFilings(detail, previous);
       if (comparison) await persistFilingComparison(comparison);
       if (mode === "periodic") previousByCompanyAndForm.set(comparisonKey, detail);
-    } catch {
+    } catch (error) {
       failed += 1;
       status = "failed";
+      failures.push({ filingId: filing.id, message: error instanceof Error ? error.message : "Unknown SEC extraction failure." });
     }
 
     onProgress?.({ processed: index + 1, total: ordered.length, filingId: filing.id, status });
@@ -97,5 +99,5 @@ export async function syncSecFilingEvidence(
     }
   }
 
-  return { total: ordered.length, persisted, reused, failed };
+  return { total: ordered.length, persisted, reused, failed, failures };
 }

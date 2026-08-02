@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for the current portfolio deployment target
+Accepted
 
 ## Context
 
@@ -17,15 +17,15 @@ The terminal combines an interactive React application with PostgreSQL, Redis qu
 - Object storage owns immutable source bytes; PostgreSQL stores their hashes and lineage.
 - Company-intelligence replacement runs under a PostgreSQL advisory lock and transaction. External Company Facts requests complete before the transaction starts.
 - Global ingestion and parser controls require the admin role. Page loads never initiate upstream refresh or extraction.
-- The long-lived Node worker uses a bounded PostgreSQL connection pool. The Cloudflare web runtime opens request-scoped connections because Workers cannot reuse request-bound TCP sockets across requests; a public Cloudflare deployment should put Hyperdrive or another compatible connection proxy in front of PostgreSQL.
+- The Next.js web process and long-lived research worker both run on Node.js and use bounded PostgreSQL connection pools.
 
-`vinext` currently supplies the Next-compatible application runtime and Cloudflare build target. Before public deployment, the web and worker processes must be deployed as separate services sharing PostgreSQL, Redis, and object storage. The worker is not suitable for an edge-only runtime.
+The web and worker processes deploy as separate Node.js services sharing PostgreSQL, Redis, and S3-compatible object storage. This intentionally favors a conventional, observable runtime over an edge target that cannot host the worker or reuse the same database and queue clients.
 
 ## Consequences
 
 - Navigation is read-only and horizontally scalable.
 - Worker availability can affect freshness without taking the research UI offline.
 - Local Docker mirrors the stateful service boundaries used by CI and the intended deployment.
-- Web requests avoid cross-request socket reuse, while worker jobs amortize connections through a process pool.
+- Both processes reuse bounded connection pools; deployment sizing must reserve database connections for each replica.
 - Explicit App Router segments provide reloadable, bookmarkable workspace and detail URLs while sharing one authenticated terminal shell.
 - Heavy workspaces load as independent client chunks; a bundle-budget regression test protects the initial page from absorbing them again.

@@ -1,11 +1,12 @@
 "use client";
 
-import { BarChart3, CheckCircle2, ChevronRight, CircleDollarSign, Clock3, Database, FlaskConical, GitBranch, LoaderCircle, Play, ShieldCheck, XCircle } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, ChevronRight, CircleDollarSign, Clock3, Database, FlaskConical, GitBranch, LoaderCircle, Play, ShieldCheck, XCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ResearchQualityCase, ResearchQualityFeedback, ResearchQualityResult, ResearchQualityRun } from "@/lib/research/types";
 import { MetricQualityWorkspace } from "@/app/components/metric-quality-workspace";
 import { ExtractionQualityWorkspace } from "@/app/components/extraction-quality-workspace";
 import { ResearchQualityFeedbackWorkspace } from "@/app/components/research-quality-feedback-workspace";
+import { researchQualityGate } from "@/lib/research/research-quality-policy";
 
 type Catalog = {
   runs: ResearchQualityRun[];
@@ -69,8 +70,11 @@ export function ResearchQualityWorkspace({ initialRunId = "", onRunSelect }: Pro
         if (cancelled) return;
         const target = initialRunId || nextCatalog.runs[0]?.id;
         if (target) {
-          if (!initialRunId) onRunSelect(target);
-          else await loadRun(target);
+          if (!initialRunId) {
+            onRunSelect(target);
+            return;
+          }
+          await loadRun(target);
         }
         if (!cancelled) setStatus("ready");
       }).catch((error) => { if (!cancelled) { setNotice(error instanceof Error ? error.message : "Unable to load research quality."); setStatus("error"); } });
@@ -114,8 +118,9 @@ export function ResearchQualityWorkspace({ initialRunId = "", onRunSelect }: Pro
   const selectedResult = useMemo(() => run?.results.find((item) => item.id === selectedResultId) ?? null, [run, selectedResultId]);
   const metrics = run?.metrics;
   const totalCost = run?.results.reduce((sum, item) => sum + item.estimatedCostMicros, 0) ?? 0;
+  const gate = run ? researchQualityGate(run) : null;
 
-  if (status === "loading" && !catalog) return <div className="workspace-state full-page"><LoaderCircle className="drawer-spinner" size={25} /><strong>Loading research quality</strong><span>Opening benchmark history and regression results.</span></div>;
+  if (status === "loading") return <div className="workspace-state full-page"><LoaderCircle className="drawer-spinner" size={25} /><strong>Loading research quality</strong><span>Opening benchmark history and regression results.</span></div>;
   if (status === "error" && !catalog) return <div className="workspace-state full-page"><XCircle size={25} /><strong>Research quality unavailable</strong><span>{notice}</span></div>;
 
   return (
@@ -143,6 +148,7 @@ export function ResearchQualityWorkspace({ initialRunId = "", onRunSelect }: Pro
       {qualityDomain === "metrics" ? <MetricQualityWorkspace /> : qualityDomain === "sources" ? <ExtractionQualityWorkspace /> : researchView === "feedback" ? <ResearchQualityFeedbackWorkspace feedback={catalog?.feedback ?? []} cases={catalog?.cases ?? []} onChanged={async () => { await loadCatalog(); }} /> : <>
       {(notice || status === "running") && <div className={`quality-notice ${status}`}><FlaskConical size={15} /><span>{notice || "Running the complete benchmark against accepted evidence. This view will update when all cases are persisted."}</span></div>}
       {!catalog?.runs.length && <div className="quality-notice ready"><ShieldCheck size={15} /><span>This workspace has no saved run yet. CI enforces the same {catalog?.suite.caseCount ?? 32}-case suite at ≥{catalog?.suite.gates.overall ?? 85} overall, ≥{catalog?.suite.gates.passRate ?? 85}% pass rate, and 100% citation precision and groundedness. Run it here to create a workspace-owned baseline.</span></div>}
+      {gate && <div className={`quality-notice ${gate.passed ? "ready" : "error"}`}>{gate.passed ? <ShieldCheck size={15} /> : <AlertTriangle size={15} />}<span><strong>{gate.passed ? "Release gate passed." : "Release gate blocked."}</strong>{gate.passed ? " Aggregate and critical-case policies are satisfied." : ` ${gate.reasons.join(" ")}`}</span></div>}
 
       <section className="quality-metrics" aria-label="Quality metrics">
         <Metric label="Overall quality" value={run?.overallScore ?? null} gate={catalog?.suite.gates.overall} icon={BarChart3} />

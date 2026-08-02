@@ -134,7 +134,7 @@ export function startResearchWorkers(options: { workerId?: string; cycleConcurre
       const metrics = await withOperationSpan(`research.stage.${job.data.stage}`, {
         "research.run.id": job.data.runId,
         "research.stage": job.data.stage,
-        "research.trace.id": job.data.traceId,
+        "research.correlation.id": job.data.correlationId,
         "research.attempt": attempt,
       }, () => executeResearchStage(job.data.stage, job.data));
       const durationMs = Date.now() - startedAt.valueOf();
@@ -173,7 +173,7 @@ export function startResearchWorkers(options: { workerId?: string; cycleConcurre
     try {
       await withOperationSpan("research.cycle", {
         "research.run.id": job.data.runId,
-        "research.trace.id": job.data.traceId,
+        "research.correlation.id": job.data.correlationId,
         "research.trigger": job.data.trigger,
       }, async () => {
         for (const group of RESEARCH_STAGE_GROUPS) {

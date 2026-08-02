@@ -52,6 +52,7 @@ export type IrIngestionRun = {
   processed: number;
   completed: number;
   failed: number;
+  failures: Array<{ documentId: string; message: string }>;
   summary: IrIngestionSummary;
 };
 

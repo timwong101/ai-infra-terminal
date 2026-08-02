@@ -1,6 +1,15 @@
 import { authorizeApi } from "@/lib/auth/session";
 import { createResearchQualityFeedback, listResearchQualityFeedback } from "@/lib/research/quality-feedback";
-import type { ResearchQualityFailureType, ResearchQualityFeedback } from "@/lib/research/types";
+import { boundedText, entityId, parseJsonBody } from "@/lib/http/validation";
+import { z } from "zod";
+
+const feedbackSchema = z.object({
+  sourceMessageId: entityId,
+  failureType: z.enum(["wrong-retrieval", "unsupported-claim", "citation-mismatch", "incorrect-metric", "stale-source", "missing-evidence", "should-abstain", "incorrect-answer"]),
+  severity: z.enum(["low", "medium", "high", "critical"]).optional(),
+  summary: boundedText(800).min(1),
+  expectedBehavior: boundedText(1_200).optional(),
+}).strict();
 
 export async function GET(request: Request) {
   const authorized = await authorizeApi(request);
@@ -19,13 +28,9 @@ export async function POST(request: Request) {
   const authorized = await authorizeApi(request, "analyst");
   if ("response" in authorized) return authorized.response;
   try {
-    const body = await request.json() as {
-      sourceMessageId?: string;
-      failureType?: ResearchQualityFailureType;
-      severity?: ResearchQualityFeedback["severity"];
-      summary?: string;
-      expectedBehavior?: string;
-    };
+    const parsed = await parseJsonBody(request, feedbackSchema);
+    if ("response" in parsed) return parsed.response;
+    const body = parsed.data;
     const id = await createResearchQualityFeedback(authorized.auth, body);
     return Response.json({ id }, { status: 201 });
   } catch (error) {

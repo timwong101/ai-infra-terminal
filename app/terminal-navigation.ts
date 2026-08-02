@@ -117,16 +117,25 @@ export type TerminalRoute = {
   researchQualityRunId?: string;
 };
 
+export function routeEntitySegment(id: string) {
+  return id.includes(":") ? id.slice(id.lastIndexOf(":") + 1) : id;
+}
+
+export function storedEntityId(prefix: "memo" | "research-assistant" | "research-quality", segment: string) {
+  const decoded = decodeURIComponent(segment);
+  return !decoded || decoded.includes(":") ? decoded : `${prefix}:${decoded}`;
+}
+
 export function parseTerminalRoute(pathname: string, searchParams: URLSearchParams | Readonly<URLSearchParams> = new URLSearchParams()): TerminalRoute {
   const parts = pathname.split("/").filter(Boolean).map(decodeURIComponent);
   const search = new URLSearchParams(searchParams.toString());
   if (parts[0] === "companies") return { activeNav: "Companies", companyId: parts[1] ?? "" };
   if (parts[0] === "evidence") return { activeNav: "Evidence Feed", evidenceCompanyId: search.get("company") ?? "" };
   if (parts[0] === "events") return { activeNav: "Live Events" };
-  if (parts[0] === "memos") return { activeNav: "Memos", memoId: parts[1] ?? "" };
-  if (parts[0] === "research-assistant") return { activeNav: "Research Assistant", researchAssistantId: parts[1] ?? "" };
+  if (parts[0] === "memos") return { activeNav: "Memos", memoId: storedEntityId("memo", parts[1] ?? "") };
+  if (parts[0] === "research-assistant") return { activeNav: "Research Assistant", researchAssistantId: storedEntityId("research-assistant", parts[1] ?? "") };
   if (parts[0] === "research-replay") return { activeNav: "Research Replay" };
-  if (parts[0] === "research-quality") return { activeNav: "Research Quality", researchQualityRunId: parts[1] ?? "" };
+  if (parts[0] === "research-quality") return { activeNav: "Research Quality", researchQualityRunId: storedEntityId("research-quality", parts[1] ?? "") };
   if (parts[0] === "theses") return { activeNav: "Theses" };
   if (parts[0] === "alerts") return { activeNav: "Alerts" };
   if (parts[0] === "activity") return { activeNav: "Activity" };

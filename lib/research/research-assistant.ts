@@ -30,12 +30,6 @@ const RESEARCH_ASSISTANT_CONFIG = {
   verifierVersion: "same-company-citations-v1",
 } as const;
 
-export function chunkResearchAssistantMarkdown(value: string, size = 80) {
-  const chunks: string[] = [];
-  for (let offset = 0; offset < value.length; offset += size) chunks.push(value.slice(offset, offset + size));
-  return chunks;
-}
-
 function sentence(item: ResearchEvidenceItem) {
   const value = item.excerpt.split(/(?<=[.!?])\s+/)[0]?.trim() || item.excerpt.trim();
   return value.length > 360 ? `${value.slice(0, 357).trim()}...` : value;

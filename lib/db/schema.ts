@@ -1079,7 +1079,7 @@ export const researchCycleRuns = pgTable("research_cycle_runs", {
   status: text("status").default("queued").notNull(),
   stage: text("stage").default("starting").notNull(),
   queueJobId: text("queue_job_id"),
-  traceId: text("trace_id"),
+  correlationId: text("correlation_id"),
   requestedByUserId: text("requested_by_user_id").references(() => users.id, { onDelete: "set null" }),
   workerId: text("worker_id"),
   retryOfRunId: text("retry_of_run_id").references((): AnyPgColumn => researchCycleRuns.id, { onDelete: "set null" }),
@@ -1094,7 +1094,7 @@ export const researchCycleRuns = pgTable("research_cycle_runs", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("research_cycle_runs_status_idx").on(table.status, table.startedAt),
-  index("research_cycle_runs_trace_idx").on(table.traceId),
+  index("research_cycle_runs_correlation_idx").on(table.correlationId),
 ]);
 
 export const researchCycleEvents = pgTable("research_cycle_events", {

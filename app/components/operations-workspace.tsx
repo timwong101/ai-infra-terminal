@@ -152,15 +152,15 @@ export function OperationsWorkspace() {
   const canRun = queue.available && onlineWorkers.length > 0 && !data?.runs.some((run) => ["queued", "running", "cancelling"].includes(run.status));
   const runtimeState = !queue.available ? { label: "Queue unavailable", tone: "offline", detail: queue.error || "Redis is not connected." }
     : !onlineWorkers.length ? { label: "Worker offline", tone: "offline", detail: "Start pnpm worker:research before queueing a cycle." }
-      : { label: "Pipeline ready", tone: "live", detail: streamStatus === "live" ? "Runtime updates connected." : "Runtime polling available; event stream disconnected." };
+      : { label: "Runtime ready", tone: "live", detail: streamStatus === "live" ? "Workers and runtime updates are connected; research freshness is reported separately." : "Workers are connected; runtime polling is active and research freshness is reported separately." };
   const runDisabledReason = !queue.available ? "Redis queue is unavailable" : !onlineWorkers.length ? "Start pnpm worker:research first" : data?.runs.some((run) => ["queued", "running", "cancelling"].includes(run.status)) ? "A research cycle is already active" : undefined;
   const stats = briefing?.stats;
   const briefingAge = briefing ? ageInDays(briefing.windowEndedAt) : null;
   const selectedProgress = selectedRun?.status === "completed" ? 100 : selectedRun?.progress ?? 0;
 
-  const copyTrace = async () => {
-    if (!selectedRun?.traceId) return;
-    await navigator.clipboard.writeText(selectedRun.traceId);
+  const copyCorrelationId = async () => {
+    if (!selectedRun?.correlationId) return;
+    await navigator.clipboard.writeText(selectedRun.correlationId);
     setCopiedTrace(true);
     window.setTimeout(() => setCopiedTrace(false), 1_500);
   };
@@ -190,13 +190,13 @@ export function OperationsWorkspace() {
         <div className="run-monitor-layout">
           <div className="run-history">{data?.runs.map((run) => <button className={selectedRun?.id === run.id ? "active" : ""} key={run.id} onClick={() => setSelectedRunId(run.id)}><span className={`run-dot ${run.status}`} /><span><strong>{run.trigger}</strong><small>{formatDate(run.createdAt)} · {duration(run)}</small></span><em>{run.status}</em></button>)}{!data?.runs.length && <div className="workspace-state"><ServerCog size={22} /><strong>No pipeline runs yet</strong><span>Start a worker, then queue the first research cycle.</span></div>}</div>
           <div className="stage-timeline">{selectedRun ? <>
-            <header className="run-trace-header"><div><span>Trace ID</span><code>{selectedRun.traceId ?? selectedRun.id}</code></div><button className="icon-button" onClick={() => void copyTrace()} aria-label="Copy trace ID" title="Copy trace ID">{copiedTrace ? <CheckCircle2 size={14} /> : <Copy size={14} />}</button></header>
+            <header className="run-trace-header"><div><span>Correlation ID</span><code>{selectedRun.correlationId ?? selectedRun.id}</code></div><button className="icon-button" onClick={() => void copyCorrelationId()} aria-label="Copy correlation ID" title="Copy correlation ID">{copiedTrace ? <CheckCircle2 size={14} /> : <Copy size={14} />}</button></header>
             <div className="run-progress"><span style={{ width: `${selectedProgress}%` }} /><strong>{selectedProgress}%</strong></div>
             <div className="run-control-row"><span><b>{selectedRun.status}</b>{selectedRun.workerId ? ` · ${selectedRun.workerId.split(":").slice(-2).join(":")}` : ["queued", "running", "cancelling"].includes(selectedRun.status) ? " · waiting for worker" : " · finished"}</span><div>{["queued", "running", "cancelling"].includes(selectedRun.status) && <button className="command-button small danger" disabled={Boolean(action) || selectedRun.status === "cancelling"} onClick={() => void controlRun(selectedRun.id, "cancel")}><Ban size={13} />Cancel</button>}{["completed", "failed", "cancelled"].includes(selectedRun.status) && <button className="command-button small" disabled={Boolean(action)} onClick={() => void controlRun(selectedRun.id, "replay")}><RotateCcw size={13} />Replay</button>}</div></div>
             <div className="stage-graph">{RESEARCH_STAGE_NAMES.map((stage) => {
               const event = stageEvents.get(stage);
-              const status = event?.status ?? (selectedRun.status === "completed" ? "completed" : "pending");
-              const detail = event ? event.message ?? eventDetail(event) : selectedRun.status === "completed" ? "Completed before stage telemetry" : "Waiting on dependencies";
+              const status = event?.status ?? (selectedRun.status === "completed" ? "unobserved" : "pending");
+              const detail = event ? event.message ?? eventDetail(event) : selectedRun.status === "completed" ? "No stage telemetry was recorded for this legacy run" : "Waiting on dependencies";
               return <article className={`stage-event ${status}`} key={stage}><span className={`run-dot ${status}`} /><div><strong>{stageLabel(stage)}</strong><small>{detail}</small>{event && event.attempt > 1 && <b>Attempt {event.attempt} of {event.maxAttempts}</b>}</div><em>{status}</em>{event?.status === "failed" && <button className="icon-button" disabled={Boolean(action)} onClick={() => void controlRun(selectedRun.id, "retry_stage", stage)} aria-label={`Retry ${stageLabel(stage)}`} title={`Retry ${stageLabel(stage)}`}><TimerReset size={13} /></button>}</article>;
             })}</div>
             {selectedRun.error && <p className="run-error"><XCircle size={13} />{selectedRun.error}</p>}

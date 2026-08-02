@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  createTraceId,
+  createCorrelationId,
   cycleJobId,
   RESEARCH_STAGE_GROUPS,
   retryDelay,
@@ -41,9 +41,9 @@ test("retry delay follows exponential backoff", () => {
   assert.equal(retryDelay(3), 6_000);
 });
 
-test("trace IDs use the W3C 16-byte hexadecimal shape", () => {
-  const first = createTraceId();
-  const second = createTraceId();
+test("correlation IDs use a stable 16-byte hexadecimal shape", () => {
+  const first = createCorrelationId();
+  const second = createCorrelationId();
   assert.match(first, /^[a-f0-9]{32}$/);
   assert.notEqual(first, second);
 });

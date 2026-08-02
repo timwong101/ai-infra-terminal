@@ -47,6 +47,8 @@ flowchart LR
 5. Inspect the deterministic tests and Playwright analyst journey for executable proof.
 6. Run `pnpm research:extraction-quality -- --gate` to replay the real local source corpus.
 
+The [data ownership and lifecycle guide](data-ownership.md) explains why similarly named global and workspace tables coexist, which records are projections, and where the design intentionally avoids distributed-system machinery.
+
 ## Decision Records
 
 - [ADR-001: Stable commitment identity](adr-001-commitment-identity.md)

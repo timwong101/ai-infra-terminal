@@ -8,7 +8,7 @@ This is intentionally not a stock picker or price-prediction tool. The product i
 
 > What does the available evidence support, where did it come from, and what remains uncertain?
 
-![AI Infrastructure Map](docs/ai-infrastructure-map.jpg)
+![Neocloud Research Overview](docs/neocloud-research-overview.png)
 
 ## Why This Project
 
@@ -25,7 +25,7 @@ The terminal treats provenance as a product feature:
 - Management commitments retain append-only revisions and are reconciled only to analyst-approved canonical facts.
 - Analyst decisions and generated artifacts remain attributable in an audit trail.
 
-The initial live coverage focuses on four Neocloud companies: **CoreWeave, Nebius, Applied Digital, and IREN**. The infrastructure map keeps the broader taxonomy visible while clearly distinguishing live research from planned coverage.
+The initial live coverage focuses on four Neocloud companies: **CoreWeave, Nebius, Applied Digital, and IREN**. The home workspace prioritizes that usable coverage; the broader infrastructure taxonomy lives in a separate roadmap and clearly distinguishes live research from planned work.
 
 ## Two-Minute Demo
 
@@ -55,7 +55,7 @@ It does not insert synthetic research evidence. The seeded memo, answer, benchma
 | Evidence review | Human-in-the-loop workflow with durable decisions and provenance |
 | KPI ledger and peer benchmark | SEC XBRL normalization, source conflict resolution, review state, and comparable time series |
 | Guidance and commitments | Stable domain identity, bitemporal revisions, human review, and actual-versus-target reconciliation |
-| Research Assistant | Grounded retrieval, structured generation, streaming UI, and citation verification |
+| Research Assistant | Grounded retrieval, structured generation, verified response delivery, and citation enforcement |
 | Comparison memos | Analyst-grade claim synthesis, numeric fidelity, frozen evidence packets, and stale-artifact detection |
 | Published research reports | Immutable versions, public token URLs, compliance filtering, revocation, and export |
 | Research Quality | Production failure capture, versioned regression cases, run comparison, and deterministic CI gates |
@@ -63,7 +63,7 @@ It does not insert synthetic research evidence. The seeded memo, answer, benchma
 | Claim-to-evidence lineage | Relational provenance projected into an interactive graph |
 | Workspaces and roles | GitHub OAuth, database sessions, workspace-scoped evidence, claim, alert, and metric decisions, negative isolation tests, and RBAC |
 | Collaborative review | Workspace invitations, claim-level comments, independent approval, and publish gates |
-| Research operations | Scheduled pipelines, trace IDs, stage status, briefings, and failure visibility |
+| Research operations | Scheduled pipelines, correlation IDs, optional worker spans, stage status, briefings, and failure visibility |
 | Responsive terminal UI | Dense information design across desktop and mobile workflows |
 
 ## Architecture
@@ -112,7 +112,7 @@ flowchart LR
     WORKER -. "OpenTelemetry spans" .-> OTEL["OTLP collector (optional)"]
 ```
 
-The application is a TypeScript monolith with clear service boundaries. React workspaces call App Router API handlers; domain services own retrieval, verification, replay, ingestion, and persistence; PostgreSQL stores both research data and operational history.
+The application is a deliberately modular TypeScript monolith. React workspaces call App Router API handlers; domain services own retrieval, verification, replay, ingestion, and persistence; PostgreSQL stores both research data and operational history. This keeps deployment simple while preserving boundaries that can be extracted only if scale justifies it.
 
 Every workspace and detail view has an explicit App Router segment, so deep links, reloads, browser history, and unknown-route 404s use framework routing rather than a client-side catch-all. Large analysis workspaces are lazy-loaded behind a shared authenticated shell, and CI enforces entry-point and chunk-size budgets.
 
@@ -137,7 +137,7 @@ An evidence record retains the source document, exact excerpt, section, document
 
 A metric observation separately retains its reporting period, normalized value, unit, source method, XBRL taxonomy and concept when available, source URL, confidence, and analyst decision. Conflicting standardized financial facts are surfaced for resolution; scope differences such as facility-level capacity are not automatically mislabeled as conflicts.
 
-The reviewer-oriented [architecture guide](docs/architecture/README.md) maps bounded contexts to code and records the key temporal-modeling decisions as ADRs.
+The reviewer-oriented [architecture guide](docs/architecture/README.md) maps bounded contexts to code and records the key temporal-modeling decisions as ADRs. The [data ownership guide](docs/architecture/data-ownership.md) identifies authoritative records, replaceable projections, workspace decisions, frozen outputs, and the deliberate simplifications that prevent schema growth from becoming accidental architecture.
 
 ## Grounding And Hallucination Controls
 
@@ -201,14 +201,14 @@ Point-in-time replay reconstructs the eligible packet at an earlier date and com
 
 ### Pipeline To Analyst Inbox
 
-The scheduled research cycle runs SEC, IR, live-event, artifact-integrity, evidence, intelligence, XBRL metric, embedding, thesis, and briefing stages. Each run records stage timing and failures under a trace ID. Upstream refresh and extraction belong to the independent worker; opening a page reads persisted PostgreSQL snapshots and never initiates ingestion. The checked-in JSON catalogs are explicitly stale-labeled fallbacks for an empty or unavailable database. Global pipeline controls require an administrator. The Activity workspace converts the result into a workspace-owned research briefing rather than forcing the analyst to inspect raw ingestion logs.
+The scheduled research cycle runs SEC, IR, live-event, artifact-integrity, evidence, intelligence, XBRL metric, embedding, thesis, and briefing stages. Each run records stage timing and failures under a correlation ID; optional OpenTelemetry spans cover worker operations but are not presented as a distributed trace. Upstream refresh and extraction belong to the independent worker; opening a page reads persisted PostgreSQL snapshots and never initiates ingestion. The checked-in JSON catalogs are explicitly stale-labeled fallbacks for an empty or unavailable database. Global pipeline controls require an administrator. The Activity workspace converts the result into a workspace-owned research briefing rather than forcing the analyst to inspect raw ingestion logs.
 
 ## Technology
 
 | Layer | Choice |
 | --- | --- |
-| Frontend | React 19, TypeScript, Tailwind CSS 4, Lucide |
-| Application | Next.js-compatible App Router via vinext |
+| Frontend | React 19, TypeScript, feature-scoped CSS, Lucide |
+| Application | Next.js 16 App Router on the Node.js runtime |
 | Database | PostgreSQL 17, pgvector, Drizzle ORM |
 | Object storage | S3-compatible source archive, MinIO for local development |
 | AI | Vercel AI SDK with optional OpenAI generation |
@@ -216,7 +216,7 @@ The scheduled research cycle runs SEC, IR, live-event, artifact-integrity, evide
 | Visualization | Cytoscape for interactive lineage |
 | Authentication | GitHub OAuth, database sessions, workspace RBAC |
 | Jobs | Redis 7, BullMQ workers, bounded retries, dead-letter queue |
-| Observability | Server-sent events, trace IDs, worker heartbeats, optional OpenTelemetry export |
+| Observability | Server-sent events, correlation IDs, worker heartbeats, optional OpenTelemetry export |
 | Testing | Node test runner, Playwright, deterministic research quality gate |
 | Automation | GitHub Actions CI and six-hour ingestion workflow |
 
@@ -352,11 +352,12 @@ pnpm test
 
 The current suite includes:
 
-- **138 deterministic tests** covering ingestion, immutable source hashing, durable-storage policy, parser replay diffs, normalization, extraction, SEC Company Facts, metric reconciliation and anomaly policy, evidence policy, claim synthesis, numeric fidelity, content-bound review approval, citation verification, production regression contracts, report publishing, quality scoring, request validation, company intelligence, events, replay, durable queue contracts, route contracts, rate-limit isolation, and bundle budgets.
+- **140 deterministic tests** covering ingestion, immutable source hashing, durable-storage policy, parser replay diffs, normalization, extraction, SEC Company Facts, metric reconciliation and anomaly policy, evidence policy, claim synthesis, numeric fidelity, content-bound review approval, citation verification, production regression contracts, report publishing, quality scoring, request validation, company intelligence, events, replay, durable queue contracts, route contracts, rate-limit isolation, and bundle budgets.
 - **32 curated research-quality cases plus versioned production cases** covering four companies, topic retrieval, pairwise comparisons, source policy, synthesis, refusal behavior, and analyst-reported failures.
 - **11 metric-quality cases** covering golden extraction fixtures, value and unit normalization, scope and period dimensions, anomaly suppression, and live canonical-fact contracts.
 - **8 immutable real-document extraction cases** spanning all four Neoclouds, including production false-positive guards and issuer-specific fiscal calendars.
 - **20 Chromium journeys** covering login, explicit routes and browser history, real 404 handling, the curated demo, responsive layouts, all four Neoclouds, immutable source download, parser replay and analyst promotion, evidence review, commitments, two-user memo approval, team roles, public report publishing and export, assistant persistence, failure-to-regression promotion, durable job retries, benchmarks, lineage, workspace isolation, and audit history.
+- **1 isolated real-pipeline integration test** that migrates a dedicated database, archives actual fixture bytes through S3-compatible storage, extracts SEC evidence, persists it to PostgreSQL, verifies its checksum, synchronizes accepted research evidence, and produces an analyst briefing without mutating benchmark fixtures.
 
 CI runs three quality gates. Research answers require at least 85 overall, at least an 85% case pass rate, and 100% citation precision and groundedness. Metrics require at least 90 overall with 100% anomaly safety and live-contract health. Source extraction requires every archived fixture to pass with 100% false-positive and fiscal-period safety.
 
@@ -365,6 +366,7 @@ To run the browser suite against a dedicated local database:
 ```bash
 docker compose exec -T postgres createdb -U ai_infra ai_infra_e2e
 E2E_DATABASE_URL="postgresql://ai_infra:ai_infra@localhost:5432/ai_infra_e2e" E2E_REDIS_URL="redis://localhost:6379/1" pnpm test:e2e
+E2E_DATABASE_URL="postgresql://ai_infra:ai_infra@localhost:5432/ai_infra_e2e" pnpm test:integration:pipeline
 ```
 
 The E2E fixture refuses to truncate a database whose name does not end in `_e2e` or `_test`.

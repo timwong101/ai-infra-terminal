@@ -188,8 +188,8 @@ export async function verifySourceArtifact(sourceKind: ArtifactSourceKind, sourc
   return getSourceProvenance(sourceKind, sourceDocumentId);
 }
 
-export async function verifyArtifactIntegrityBatch(limit = 25) {
-  const [store, artifacts] = [getArtifactObjectStore(), await listArtifactsForVerification(limit)];
+export async function verifyArtifactIntegrityBatch(limit = 25, artifactIds?: string[]) {
+  const [store, artifacts] = [getArtifactObjectStore(), await listArtifactsForVerification(limit, artifactIds)];
   let verified = 0;
   let corrupt = 0;
   const failures: Array<{ artifactId: string; message: string }> = [];
@@ -209,7 +209,21 @@ export async function verifyArtifactIntegrityBatch(limit = 25) {
       failures.push({ artifactId: artifact.id, message: error instanceof Error ? error.message : "Artifact retrieval failed." });
     }
   }
-  return { checked: artifacts.length, verified, corrupt, failures };
+  const result = { checked: artifacts.length, verified, corrupt, failures };
+  if (corrupt > 0) {
+    throw new ArtifactIntegrityError(result);
+  }
+  return result;
+}
+
+export class ArtifactIntegrityError extends Error {
+  readonly result: { checked: number; verified: number; corrupt: number; failures: Array<{ artifactId: string; message: string }> };
+
+  constructor(result: ArtifactIntegrityError["result"]) {
+    super(`Source artifact verification failed for ${result.corrupt} of ${result.checked} checked artifacts.`);
+    this.name = "ArtifactIntegrityError";
+    this.result = result;
+  }
 }
 
 export async function downloadSourceArtifact(sourceKind: ArtifactSourceKind, sourceDocumentId: string) {

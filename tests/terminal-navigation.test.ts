@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseTerminalRoute, resolveAuthPath } from "@/app/terminal-navigation";
+import { parseTerminalRoute, resolveAuthPath, routeEntitySegment, storedEntityId } from "@/app/terminal-navigation";
 
 test("terminal routes preserve list, detail, filter, and theme deep links", () => {
   assert.deepEqual(parseTerminalRoute("/companies/coreweave"), { activeNav: "Companies", companyId: "coreweave" });
@@ -9,6 +9,8 @@ test("terminal routes preserve list, detail, filter, and theme deep links", () =
   assert.deepEqual(parseTerminalRoute("/research-quality/run%3A123"), { activeNav: "Research Quality", researchQualityRunId: "run:123" });
   assert.deepEqual(parseTerminalRoute("/evidence", new URLSearchParams("company=nebius")), { activeNav: "Evidence Feed", evidenceCompanyId: "nebius" });
   assert.deepEqual(parseTerminalRoute("/themes/liquid-cooling"), { activeNav: "Themes", selectedTheme: "Liquid Cooling" });
+  assert.equal(routeEntitySegment("research-quality:123"), "123");
+  assert.equal(storedEntityId("research-quality", "123"), "research-quality:123");
 });
 
 test("auth routing preserves safe local destinations without login loops", () => {

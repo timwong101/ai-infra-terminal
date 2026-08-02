@@ -84,7 +84,7 @@ export type ResearchStageName = typeof RESEARCH_STAGE_NAMES[number];
 export type ResearchCycleJobData = {
   runId: string;
   trigger: string;
-  traceId: string;
+  correlationId: string;
   windowStartedAt: string;
 };
 
@@ -98,7 +98,7 @@ export type ResearchCycleRunItem = {
   status: string;
   stage: string;
   queueJobId: string | null;
-  traceId: string | null;
+  correlationId: string | null;
   workerId: string | null;
   retryOfRunId: string | null;
   progress: number;

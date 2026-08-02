@@ -45,7 +45,7 @@ export default defineConfig({
       },
     },
     {
-      command: `pnpm dev -- --port ${port}`,
+      command: `pnpm dev --port ${port}`,
       url: baseURL,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

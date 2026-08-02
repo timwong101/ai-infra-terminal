@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { chunkResearchAssistantMarkdown, scoreResearchAssistantEvidence, verifyResearchAssistantOutput } from "../lib/research/research-assistant";
+import { scoreResearchAssistantEvidence, verifyResearchAssistantOutput } from "../lib/research/research-assistant";
 import type { ResearchEvidenceItem } from "../lib/research/types";
 
 function evidence(id: string, companyId: string): ResearchEvidenceItem {
@@ -40,9 +40,4 @@ test("research assistant rejects citations attributed to the wrong company", () 
 
 test("research assistant evidence scoring returns zero confidence for an empty packet", () => {
   assert.deepEqual(scoreResearchAssistantEvidence([], ["coreweave"]), { confidence: 0, quality: 0, diversity: 0 });
-});
-
-test("research assistant streaming preserves long citation URLs byte for byte", () => {
-  const markdown = `Evidence [[1]](https://www.sec.gov/Archives/edgar/data/${"1".repeat(180)}/filing.htm)`;
-  assert.equal(chunkResearchAssistantMarkdown(markdown).join(""), markdown);
 });

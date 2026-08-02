@@ -16,7 +16,7 @@ export const RESEARCH_STAGE_GROUPS: readonly (readonly ResearchStageName[])[] = 
   ["building-briefing"],
 ];
 
-export function createTraceId() {
+export function createCorrelationId() {
   return randomBytes(16).toString("hex");
 }
 

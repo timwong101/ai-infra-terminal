@@ -6,9 +6,9 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext dev",
-    "build": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext build",
-    "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
     "ingest:sec": "tsx --env-file-if-exists=.env.local scripts/ingest-sec.ts",
     "ingest:ir": "tsx --env-file-if-exists=.env.local scripts/ingest-ir.ts",
     "db:migrate": "tsx --env-file-if-exists=.env.local scripts/migrate-db.ts",
@@ -32,8 +32,9 @@
     "demo:seed": "tsx --env-file-if-exists=.env.local scripts/seed-portfolio-demo.ts",
     "db:generate": "drizzle-kit generate",
     "db:setup": "pnpm db:migrate && pnpm db:backfill && pnpm db:backfill:ir",
-    "test": "pnpm run build && node --test tests/rendered-html.test.mjs tests/bundle-budget.test.mjs && tsx --test tests/auth.test.ts tests/http-validation.test.ts tests/terminal-navigation.test.ts tests/sec-normalize.test.ts tests/sec-ingest.test.ts tests/sec-extract.test.ts tests/sec-event-policy.test.ts tests/ir-normalize.test.ts tests/ir-extract.test.ts tests/filing-compare.test.ts tests/alert-classification.test.ts tests/evidence-quality.test.ts tests/research-evidence.test.ts tests/research-briefing.test.ts tests/memo-verification.test.ts tests/claim-synthesis.test.ts tests/memo-review.test.ts tests/research-queue.test.ts tests/research-assistant-verification.test.ts tests/research-quality.test.ts tests/metric-quality.test.ts tests/extraction-quality.test.ts tests/portfolio-demo.test.ts tests/published-reports.test.ts tests/company-intelligence.test.ts tests/company-coverage.test.ts tests/event-intelligence.test.ts tests/research-replay.test.ts tests/commitments-ledger.test.ts tests/source-artifacts.test.ts",
+    "test": "pnpm run build && node --test tests/rendered-html.test.mjs tests/bundle-budget.test.mjs && tsx --test tests/auth.test.ts tests/http-validation.test.ts tests/terminal-navigation.test.ts tests/sec-normalize.test.ts tests/sec-ingest.test.ts tests/sec-extract.test.ts tests/sec-event-policy.test.ts tests/ir-normalize.test.ts tests/ir-extract.test.ts tests/filing-compare.test.ts tests/alert-classification.test.ts tests/evidence-quality.test.ts tests/research-evidence.test.ts tests/research-briefing.test.ts tests/memo-verification.test.ts tests/claim-synthesis.test.ts tests/memo-review.test.ts tests/research-queue.test.ts tests/research-stage-policy.test.ts tests/research-assistant-verification.test.ts tests/research-quality.test.ts tests/metric-quality.test.ts tests/extraction-quality.test.ts tests/portfolio-demo.test.ts tests/published-reports.test.ts tests/company-intelligence.test.ts tests/company-coverage.test.ts tests/event-intelligence.test.ts tests/research-replay.test.ts tests/commitments-ledger.test.ts tests/source-artifacts.test.ts",
     "test:e2e": "playwright test",
+    "test:integration:pipeline": "tsx --test tests/integration/real-source-pipeline.test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern playwright-report --ignore-pattern test-results"
   },
@@ -60,25 +61,16 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "1.37.1",
     "@playwright/test": "^1.61.1",
-    "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/pg": "^8.20.0",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
-    "@vitejs/plugin-react": "6.0.2",
-    "@vitejs/plugin-rsc": "0.5.26",
     "drizzle-kit": "^0.31.10",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
-    "react-server-dom-webpack": "19.2.6",
-    "tailwindcss": "4.2.1",
     "tsx": "^4.23.0",
-    "typescript": "5.9.3",
-    "vinext": "0.0.50",
-    "vite": "8.0.13",
-    "wrangler": "4.92.0"
+    "typescript": "5.9.3"
   },
   "type": "module"
 }

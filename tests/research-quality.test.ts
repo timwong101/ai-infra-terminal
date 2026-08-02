@@ -158,3 +158,15 @@ test("quality gate protects overall, pass-rate, citation, and groundedness thres
   assert.equal(gate.passed, false);
   assert.equal(gate.reasons.length, 2);
 });
+
+test("quality gate blocks critical source-policy and refusal regressions despite healthy aggregates", () => {
+  const run = {
+    overallScore: 98,
+    passRate: 94,
+    metrics: { retrievalCoverage: 96, citationPrecision: 100, groundedness: 100, companyAccuracy: 98, answerCompleteness: 97 },
+    results: [{ status: "failed", category: "source-policy", title: "CoreWeave IR source policy" }],
+  } as ResearchQualityRun;
+  const gate = researchQualityGate(run);
+  assert.equal(gate.passed, false);
+  assert.match(gate.reasons.at(-1) ?? "", /CoreWeave IR source policy/);
+});

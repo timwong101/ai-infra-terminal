@@ -77,6 +77,15 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      - name: Run isolated real source pipeline
+        env:
+          PGPASSWORD: ai_infra
+          DATABASE_URL: postgresql://ai_infra:ai_infra@127.0.0.1:5432/ai_infra_pipeline_test
+          E2E_DATABASE_URL: postgresql://ai_infra:ai_infra@127.0.0.1:5432/ai_infra_pipeline_test
+        run: |
+          createdb --host 127.0.0.1 --username ai_infra ai_infra_pipeline_test
+          pnpm db:migrate
+          pnpm test:integration:pipeline
       - name: Run deterministic research quality gate
         run: |
           pnpm db:migrate

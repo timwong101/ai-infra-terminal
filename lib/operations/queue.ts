@@ -3,7 +3,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { withDatabase } from "@/lib/db/client";
 import { researchCycleEvents, researchCycleRuns } from "@/lib/db/schema";
 import {
-  createTraceId,
+  createCorrelationId,
   cycleJobId,
   RESEARCH_CYCLE_QUEUE,
   RESEARCH_DEAD_LETTER_QUEUE,
@@ -97,14 +97,14 @@ export async function enqueueResearchCycle(options: EnqueueOptions) {
       .where(eq(researchCycleRuns.status, "completed"))
       .orderBy(desc(researchCycleRuns.completedAt)).limit(1))[0];
     const runId = `cycle:${crypto.randomUUID()}`;
-    const traceId = createTraceId();
+    const correlationId = createCorrelationId();
     const windowStartedAt = (previous?.completedAt ?? new Date(Date.now() - 24 * 60 * 60 * 1_000)).toISOString();
     const stored = (await db.insert(researchCycleRuns).values({
       id: runId,
       trigger: options.trigger,
       status: "queued",
       stage: "queued",
-      traceId,
+      correlationId,
       requestedByUserId: options.requestedByUserId ?? null,
       retryOfRunId: options.retryOfRunId ?? null,
       context: { windowStartedAt },
@@ -119,7 +119,7 @@ export async function enqueueResearchCycle(options: EnqueueOptions) {
   const data: ResearchCycleJobData = {
     runId: context.stored.id,
     trigger: context.stored.trigger,
-    traceId: context.stored.traceId!,
+    correlationId: context.stored.correlationId!,
     windowStartedAt: context.windowStartedAt,
   };
   try {
@@ -179,7 +179,7 @@ export async function retryResearchStage(runId: string, stage: ResearchStageName
   const data: ResearchCycleJobData = {
     runId,
     trigger: `retry:${stage}`,
-    traceId: run.traceId || createTraceId(),
+    correlationId: run.correlationId || createCorrelationId(),
     windowStartedAt: context.windowStartedAt || new Date(Date.now() - 24 * 60 * 60 * 1_000).toISOString(),
   };
   const cycleQueue = queue(RESEARCH_CYCLE_QUEUE);

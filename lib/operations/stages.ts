@@ -34,18 +34,27 @@ function summarize(value: unknown) {
   return summary;
 }
 
+export function assertIngestionSucceeded(source: "SEC" | "IR", result: { total?: number; processed?: number; failed: number; failures: Array<{ message: string }> }) {
+  if (result.failed === 0) return;
+  const attempted = result.total ?? result.processed ?? result.failed;
+  const examples = result.failures.slice(0, 3).map((failure) => failure.message).join("; ");
+  throw new Error(`${source} ingestion failed for ${result.failed} of ${attempted} attempted documents.${examples ? ` ${examples}` : ""}`);
+}
+
 async function executeLiveStage(stage: ResearchStageName, data: ResearchStageJobData) {
   switch (stage) {
     case "ingesting-sec": {
       const userAgent = validateSecUserAgent(process.env.SEC_USER_AGENT);
       const cache = await refreshSecEvidence({ userAgent, previousCache: secCacheJson as unknown as EvidenceCache });
       const persisted = await syncSecFilingEvidence(cache, userAgent, { requestDelayMs: 120 });
+      assertIngestionSucceeded("SEC", persisted);
       return { discovered: cache.filings.length, discoveryErrors: cache.errors.length, ...summarize(persisted) };
     }
     case "ingesting-ir": {
       const cache = await refreshIrEvidence({ previousCache: irCacheJson as unknown as IrEvidenceCache });
       const catalog = await syncIrCatalog(cache);
       const extraction = await processIrExtractionQueue(5);
+      assertIngestionSucceeded("IR", extraction);
       return { documents: cache.documents.length, sourceErrors: cache.errors.length, ...summarize(catalog), ...summarize(extraction) };
     }
     case "refreshing-events": return summarize(await refreshLiveEvents());

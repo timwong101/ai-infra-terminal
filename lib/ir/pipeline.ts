@@ -22,6 +22,7 @@ export async function processIrExtractionQueue(limit = 1): Promise<IrIngestionRu
   let processed = 0;
   let completed = 0;
   let failed = 0;
+  const failures: Array<{ documentId: string; message: string }> = [];
   const companyOrder = irSources.map((source) => source.companyId);
 
   for (let index = 0; index < boundedLimit; index += 1) {
@@ -59,7 +60,9 @@ export async function processIrExtractionQueue(limit = 1): Promise<IrIngestionRu
       completed += 1;
     } catch (error) {
       failed += 1;
-      await markIrSourceDocumentFailed(document.id, error instanceof Error ? error.message : "Unknown IR extraction failure");
+      const message = error instanceof Error ? error.message : "Unknown IR extraction failure";
+      failures.push({ documentId: document.id, message });
+      await markIrSourceDocumentFailed(document.id, message);
     }
   }
 
@@ -67,6 +70,7 @@ export async function processIrExtractionQueue(limit = 1): Promise<IrIngestionRu
     processed,
     completed,
     failed,
+    failures,
     summary: await getIrIngestionSummary() ?? EMPTY_SUMMARY,
   };
 }

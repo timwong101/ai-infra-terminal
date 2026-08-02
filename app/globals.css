@@ -1,5 +1,5 @@
-@import "tailwindcss";
 @import "./styles/artifact-vault.css";
+@import "./styles/neocloud-overview.css";
 
 :root {
   --bg: #050c12;
@@ -887,6 +887,7 @@ input::placeholder, textarea::placeholder { color: #758791; opacity: 1; }
 .run-dot.completed { border-color: #4aa567; background: #4aa567; }
 .run-dot.failed { border-color: #d96d61; background: #d96d61; }
 .run-dot.running { border-color: #58b8e9; background: #58b8e9; box-shadow: 0 0 0 3px rgba(88,184,233,.12); }
+.run-dot.unobserved { border-color: #52656e; background: transparent; }
 .stage-timeline { padding: 12px 14px; }
 .stage-timeline > header { min-height: 42px; margin-bottom: 5px; border-bottom: 1px solid var(--border-soft); display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .stage-timeline > header span, .stage-timeline > header code { display: block; }
@@ -1836,6 +1837,7 @@ input::placeholder, textarea::placeholder { color: #758791; opacity: 1; }
 .stage-event.failed em { color: #df746a; }
 .stage-event.completed em { color: #6dcf89; }
 .stage-event.running em { color: #62c5f4; }
+.stage-event.unobserved em { color: #71838c; }
 .stage-event .icon-button { width: 27px; height: 27px; color: #d4aa59; }
 .operations-runtime-rail { min-width: 0; display: grid; gap: 8px; }
 .worker-health > article { min-height: 51px; padding: 8px 10px; border-top: 1px solid var(--border-soft); display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
@@ -2177,6 +2179,7 @@ input::placeholder, textarea::placeholder { color: #758791; opacity: 1; }
 .team-invite-form small { margin-top: 2px; color: #6c828c; font-size: 11px; }
 .team-invite-form > div:last-child { display: grid; grid-template-columns: minmax(0, 1fr) 110px auto; gap: 6px; }
 .team-invite-form input, .team-invite-form select, .team-list select { min-width: 0; height: 32px; border: 1px solid #304b58; border-radius: 3px; background: #051018; color: #c6d3d8; padding: 0 8px; font-size: 11px; }
+
 .invitation-link-result { margin-top: 8px; padding: 9px 10px; border: 1px solid #2d6547; background: #092319; display: grid; grid-template-columns: minmax(0, 1fr) 30px; align-items: center; gap: 8px; }
 .invitation-link-result strong, .invitation-link-result small { display: block; }
 .invitation-link-result strong { color: #80dda1; font-size: 11px; }

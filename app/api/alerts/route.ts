@@ -1,8 +1,9 @@
-import type { AlertStatus } from "@/lib/alerts/types";
 import { listResearchAlerts, updateResearchAlertStatus } from "@/lib/alerts/repository";
 import { authorizeApi } from "@/lib/auth/session";
+import { entityId, parseJsonBody } from "@/lib/http/validation";
+import { z } from "zod";
 
-const VALID_STATUSES = new Set<AlertStatus>(["unread", "reviewed", "watching", "dismissed"]);
+const alertUpdateSchema = z.object({ id: entityId, status: z.enum(["unread", "reviewed", "watching", "dismissed"]) }).strict();
 
 export async function GET(request: Request) {
   const authorized = await authorizeApi(request);
@@ -28,10 +29,9 @@ export async function PATCH(request: Request) {
   const authorized = await authorizeApi(request, "analyst");
   if ("response" in authorized) return authorized.response;
   try {
-    const body = await request.json() as { id?: string; status?: AlertStatus };
-    if (!body.id || !body.status || !VALID_STATUSES.has(body.status)) {
-      return Response.json({ error: "A valid alert id and status are required." }, { status: 400 });
-    }
+    const parsed = await parseJsonBody(request, alertUpdateSchema);
+    if ("response" in parsed) return parsed.response;
+    const body = parsed.data;
     return Response.json(await updateResearchAlertStatus(body.id, body.status, authorized.auth), {
       headers: { "Cache-Control": "no-store" },
     });

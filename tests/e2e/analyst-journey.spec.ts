@@ -77,7 +77,7 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await expect(page).toHaveURL(/\/login$/);
     await page.getByRole("button", { name: /Open portfolio demo/ }).click();
     await expect(page).toHaveURL(/\/home$/);
-    await expect(page.getByRole("heading", { name: "AI Infrastructure Map" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Neocloud Research Overview" })).toBeVisible();
   });
 
   test("navigation groups tools around the analyst workflow", async ({ page }) => {
@@ -126,7 +126,7 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await expect(page.getByRole("heading", { name: "This workspace does not exist" })).toBeVisible();
     await page.getByRole("link", { name: "Return to market map" }).click();
     await expect(page).toHaveURL(/\/home$/);
-    await expect(page.getByRole("heading", { name: "AI Infrastructure Map" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Neocloud Research Overview" })).toBeVisible();
   });
 
   test("portfolio demo opens with a complete, evidence-grounded analyst story", async ({ page }) => {
@@ -200,7 +200,7 @@ test.describe.serial("evidence-grounded analyst journey", () => {
 
   test("the theme browser stays readable and stacked on wide screens", async ({ page }) => {
     await page.setViewportSize({ width: 2048, height: 1024 });
-    await page.goto("/home");
+    await page.goto("/themes/neoclouds");
 
     const themePanel = page.locator(".themes-panel");
     const researchPanel = page.locator(".research-panel");
@@ -225,8 +225,8 @@ test.describe.serial("evidence-grounded analyst journey", () => {
 
   test("theme and company deep links expose all four Neoclouds", async ({ page }) => {
     await page.goto("/themes/neoclouds");
-    await expect(page.getByRole("heading", { name: "AI Infrastructure Map" })).toBeVisible();
-    await expect(page.getByText("4 / 4", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Infrastructure Coverage Roadmap" })).toBeVisible();
+    await expect(page.locator(".company-tags button")).toHaveCount(4);
 
     for (const company of companies) {
       await page.goto(`/companies/${company.id}`);
@@ -327,7 +327,7 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await expect(page.locator(".source-archive-health dd").last()).toHaveText(/filesystem|s3/);
   });
 
-  test("durable research jobs retry, stream progress, and replay from the control plane", async ({ page }) => {
+  test("durable research jobs retry, report progress, and replay from the control plane", async ({ page }) => {
     await page.goto("/activity");
     await expect(page.getByText("Redis connected", { exact: true })).toBeVisible();
     await expect(page.locator(".worker-state.online")).toHaveCount(2);
@@ -445,7 +445,7 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await expect(dialog.getByLabel("Role for Demo Reviewer")).toHaveValue("analyst");
   });
 
-  test("research assistant streams, verifies, and persists a cited research answer", async ({ page }) => {
+  test("research assistant verifies, delivers, and persists a cited research answer", async ({ page }) => {
     await page.goto("/research-assistant");
     await expect(page).toHaveURL(/\/research-assistant\/.+/);
     await expect(page.getByRole("heading", { name: "Research Assistant" })).toBeVisible();
@@ -563,7 +563,8 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await page.getByRole("textbox", { name: "Workspace name" }).fill("Second Analyst Workspace");
     await page.getByRole("button", { name: "Save workspace" }).click();
 
-    await expect(page.getByRole("heading", { name: "AI Infrastructure Map" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Open profile and workspace menu" })).toContainText("Second Analyst Workspace");
+    await expect(page.getByRole("heading", { name: "Neocloud Research Overview" })).toBeVisible();
     await page.goto("/memos");
     await expect(page.getByRole("heading", { name: "Comparison Memos" })).toBeVisible();
     await expect(page.getByText("No memo selected", { exact: true })).toBeVisible();
@@ -582,7 +583,7 @@ test.describe.serial("evidence-grounded analyst journey", () => {
 
     await page.getByRole("button", { name: "Open profile and workspace menu" }).click();
     await page.getByRole("button", { name: /Neocloud Research/ }).click();
-    await expect(page.getByRole("heading", { name: "AI Infrastructure Map" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Neocloud Research Overview" })).toBeVisible();
     const originalEvidence = await (await page.request.get("/api/research-evidence?sync=0")).json() as { items: Array<{ id: string; reviewStatus: string }> };
     expect(originalEvidence.items.find((item) => item.id === "e2e:coreweave:capacity")?.reviewStatus).toBe("accepted");
     const originalMetricLedger = await (await page.request.get("/api/company-metrics")).json() as { observations: Array<{ id: string; reviewStatus: string; isCanonical: boolean }> };

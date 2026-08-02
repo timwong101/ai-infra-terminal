@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ne } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { sourceArtifacts, sourceDocumentVersions, sourceExtractionRuns } from "@/lib/artifacts/schema";
 import type { ArtifactIntegritySummary, ArtifactSourceKind, ExtractionDiffSummary, ExtractionSnapshot } from "@/lib/artifacts/types";
 import { artifactStorageConfig } from "@/lib/artifacts/storage";
@@ -176,10 +176,14 @@ export async function markArtifactVerified(id: string, valid: boolean) {
   if (!result) throw new Error("Postgres is required to record artifact verification.");
 }
 
-export async function listArtifactsForVerification(limit = 25) {
-  const rows = await withDatabase((db) => db.select().from(sourceArtifacts)
-    .orderBy(asc(sourceArtifacts.verifiedAt), asc(sourceArtifacts.createdAt))
-    .limit(Math.max(1, Math.min(limit, 500))));
+export async function listArtifactsForVerification(limit = 25, artifactIds?: string[]) {
+  const rows = await withDatabase((db) => {
+    const query = db.select().from(sourceArtifacts);
+    const filtered = artifactIds?.length ? query.where(inArray(sourceArtifacts.id, artifactIds)) : query;
+    return filtered
+      .orderBy(sql`${sourceArtifacts.verifiedAt} IS NULL DESC`, asc(sourceArtifacts.verifiedAt), asc(sourceArtifacts.createdAt))
+      .limit(Math.max(1, Math.min(limit, 500)));
+  });
   if (!rows) throw new Error("Postgres is required to verify source artifacts.");
   return rows;
 }

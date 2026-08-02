@@ -5,7 +5,7 @@ export async function POST(request: Request) {
   const authorized = await authorizeApi(request, "admin");
   if ("response" in authorized) return authorized.response;
   if (process.env.E2E_TEST === "1") {
-    return Response.json({ processed: 0, completed: 0, failed: 0, summary: { pending: 0, processing: 0, completed: 0, failed: 0 } }, {
+    return Response.json({ processed: 0, completed: 0, failed: 0, failures: [], summary: { pending: 0, processing: 0, completed: 0, failed: 0 } }, {
       headers: { "Cache-Control": "no-store" },
     });
   }
