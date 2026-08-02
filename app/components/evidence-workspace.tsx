@@ -110,7 +110,10 @@ export function EvidenceWorkspace({ initialCompanyId = "", onBuildComparison, on
     <div className="research-workspace evidence-workspace-page">
       <header className="workspace-title-row">
         <div><p className="breadcrumb">Research workspace / Provenance</p><h1>Evidence Review</h1><p className="workspace-subtitle">Triage material passages, approve claim links, and keep generated research current.</p></div>
-        <button className="primary-button" onClick={onBuildComparison}><FileCheck2 size={16} /> Build comparison</button>
+        <div className="workspace-title-actions">
+          <button className="command-button" disabled={updating || !visibleItems.some((item) => item.reviewStatus === "unreviewed")} onClick={() => void updateReview(visibleItems.filter((item) => item.reviewStatus === "unreviewed").map((item) => item.id), "accepted")}><Check size={15} /> Accept visible</button>
+          <button className="primary-button" onClick={onBuildComparison}><FileCheck2 size={16} /> Build comparison</button>
+        </div>
       </header>
 
       <section className="evidence-metrics" aria-label="Evidence review summary">

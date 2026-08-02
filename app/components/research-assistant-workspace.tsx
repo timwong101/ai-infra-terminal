@@ -2,7 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
-import { BookOpenText, Check, ChevronRight, ExternalLink, FileCheck2, FileQuestion, History, LoaderCircle, MessageSquareText, Plus, Send, ShieldCheck, Sparkles } from "lucide-react";
+import { BookOpenText, Check, ChevronRight, ExternalLink, FileCheck2, FileQuestion, History, LoaderCircle, MessageSquareText, Plus, Send, ShieldAlert, ShieldCheck, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { MessageResponse } from "@/app/components/ai-elements/message";
 import { QualityIssueReporter } from "@/app/components/quality-issue-reporter";
@@ -199,6 +199,7 @@ function SavedAnswer({ message, catalog }: { message: ResearchAssistantMessage; 
     <div className="research-assistant-question"><span>Research question</span><p>{message.question}</p></div>
     <div className="research-assistant-answer">
       <div className="answer-heading"><Sparkles size={16} /><strong>Grounded answer</strong><span>{message.engine.replaceAll("-", " ")}</span></div>
+      {message.isStale && <p className="stale-answer-notice"><ShieldAlert size={14} /> This saved answer used an older grounding policy. Ask the question again before relying on it.</p>}
       {message.answerMarkdown ? <MessageResponse>{message.answerMarkdown}</MessageResponse> : <p className="answer-error">{message.error ?? "This answer did not complete."}</p>}
       <div className="research-assistant-scores"><div className={scoreTone(message.confidenceScore)}><span>Confidence</span><strong>{message.confidenceScore ?? 0}</strong></div><div className={scoreTone(message.evidenceQualityScore)}><span>Evidence quality</span><strong>{message.evidenceQualityScore ?? 0}</strong></div><div className={scoreTone(message.sourceDiversityScore)}><span>Source diversity</span><strong>{message.sourceDiversityScore ?? 0}</strong></div><div className={message.verification?.passed ? "high" : "low"}><span>Claim checks</span><strong>{message.verification?.passed ? "Pass" : "Review"}</strong></div></div>
       <div className="research-answer-quality-actions"><QualityIssueReporter messageId={message.id} /><span>{message.promptVersion} · {message.latencyMs ? `${message.latencyMs}ms` : "latency unavailable"}</span></div>

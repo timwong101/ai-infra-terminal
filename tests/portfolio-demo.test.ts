@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { selectPortfolioBaselineEvidence, type PortfolioEvidenceCandidate } from "@/lib/demo/portfolio-seed";
+import { selectPortfolioDemoEvidence, type PortfolioEvidenceCandidate } from "@/lib/demo/portfolio-seed";
 
 function candidate(overrides: Partial<PortfolioEvidenceCandidate> & Pick<PortfolioEvidenceCandidate, "id">): PortfolioEvidenceCandidate {
   return {
@@ -15,8 +15,8 @@ function candidate(overrides: Partial<PortfolioEvidenceCandidate> & Pick<Portfol
   };
 }
 
-test("selectPortfolioBaselineEvidence fills each uncovered source cell with its strongest unreviewed item", () => {
-  const selected = selectPortfolioBaselineEvidence([
+test("selectPortfolioDemoEvidence fills each uncovered demo cell with its strongest unreviewed item", () => {
+  const selected = selectPortfolioDemoEvidence([
     candidate({ id: "lower", evidenceQualityScore: 60 }),
     candidate({ id: "strongest", evidenceQualityScore: 90 }),
     candidate({ id: "accepted", topic: "Customers & demand", reviewStatus: "accepted" }),

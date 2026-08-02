@@ -118,7 +118,7 @@ export async function getResearchOperations(workspaceId: string) {
     schedule: {
       cadence: "Repository schedule · every 6 hours",
       cron: "17 */6 * * *",
-      source: "GitHub Actions trigger · ephemeral BullMQ workers",
+      source: "GitHub Actions trigger · direct bounded batch",
       nextAction: runtime.queue.available ? "Queue connected" : "Start Redis and the research worker",
     },
     aiEnabled: Boolean(process.env.OPENAI_API_KEY?.trim()),

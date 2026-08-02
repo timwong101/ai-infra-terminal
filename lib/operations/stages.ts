@@ -71,7 +71,7 @@ async function executeLiveStage(stage: ResearchStageName, data: ResearchStageJob
 }
 
 export async function executeResearchStage(stage: ResearchStageName, data: ResearchStageJobData) {
-  if (process.env.E2E_TEST === "1" && stage !== "building-briefing") {
+  if (process.env.E2E_STAGE_MODE === "orchestration-fixture" && stage !== "building-briefing") {
     const failureKey = `${data.runId}:${stage}`;
     if (process.env.E2E_FAIL_STAGE_ONCE === stage && !simulatedFailures.has(failureKey)) {
       simulatedFailures.add(failureKey);

@@ -13,7 +13,6 @@ import {
   researchClaims,
   researchAlerts,
   users,
-  workspaces,
   workspaceClaimEvidence,
   workspaceClaimStates,
   workspaceEvidenceReviews,
@@ -34,77 +33,12 @@ const TOPIC_RULES: Array<[string, RegExp]> = [
   ["Competition & strategy", /competition|competitor|strategy|market|hyperscal|differentiat/i],
   ["Risk factors", /risk|uncertain|adverse|depend|concentrat|could harm|may not/i],
 ];
-const BASELINE_ACCEPTED_PER_COMPANY = 3;
 
 function linkedEvidenceScore(quality: number, confidence: number, documentDate: string) {
   const ageDays = Math.max(0, (Date.now() - new Date(`${documentDate}T00:00:00Z`).valueOf()) / 86_400_000);
   const qualityScore = quality >= 90 ? 10 : quality >= 80 ? 8 : quality >= 70 ? 6 : 4;
   const recencyScore = qualityScore * (ageDays <= 180 ? 1 : ageDays <= 365 ? 0.8 : 0.55);
   return Math.max(2, Math.round(recencyScore * Math.max(50, confidence) / 100));
-}
-
-async function ensureWorkspaceEvidenceDefaults(workspaceId: string) {
-  await withDatabase(async (db) => {
-    const [evidenceRows, reviewRows] = await Promise.all([
-      db.select().from(researchEvidence),
-      db.select({ evidenceId: workspaceEvidenceReviews.evidenceId }).from(workspaceEvidenceReviews).where(eq(workspaceEvidenceReviews.workspaceId, workspaceId)),
-    ]);
-    const decided = new Set(reviewRows.map((item) => item.evidenceId));
-    for (const item of evidenceRows) {
-      if (decided.has(item.id) || (item.reviewStatus === "unreviewed" && item.suggestionStatus === "pending")) continue;
-      await db.insert(workspaceEvidenceReviews).values({
-        id: `${workspaceId}:evidence-review:${item.id}`,
-        workspaceId,
-        evidenceId: item.id,
-        reviewStatus: item.reviewStatus,
-        reviewNote: item.reviewNote,
-        suggestionStatus: item.suggestionStatus,
-        suggestedClaimId: item.suggestedClaimId,
-        suggestedImpact: item.suggestedImpact,
-        reviewedByUserId: item.reviewedByUserId,
-        reviewedAt: item.reviewedAt,
-      }).onConflictDoNothing({ target: [workspaceEvidenceReviews.workspaceId, workspaceEvidenceReviews.evidenceId] });
-    }
-  });
-}
-
-type BaselineEvidenceCandidate = {
-  id: string;
-  sourceDocumentId: string;
-  topic: string;
-  sourceQuality: number;
-  evidenceQualityScore?: number;
-  boilerplateRisk?: number;
-  documentDate: string;
-  reviewStatus: string;
-};
-
-export function selectBaselineEvidenceCandidates(items: BaselineEvidenceCandidate[], minimum = BASELINE_ACCEPTED_PER_COMPANY) {
-  const accepted = items.filter((item) =>
-    item.reviewStatus === "accepted" &&
-    (item.evidenceQualityScore ?? item.sourceQuality) >= 45 &&
-    (item.boilerplateRisk ?? 0) < 60
-  ).length;
-  const needed = Math.max(0, minimum - accepted);
-  if (!needed) return [];
-  const candidates = items.filter((item) => item.reviewStatus === "unreviewed" && (item.evidenceQualityScore ?? item.sourceQuality) >= 65 && (item.boilerplateRisk ?? 0) < 50)
-    .sort((left, right) => (right.evidenceQualityScore ?? right.sourceQuality) - (left.evidenceQualityScore ?? left.sourceQuality) || right.documentDate.localeCompare(left.documentDate));
-  const selected: BaselineEvidenceCandidate[] = [];
-  const documents = new Set<string>();
-  const topics = new Set<string>();
-  for (const candidate of candidates) {
-    if (selected.length >= needed) break;
-    if (documents.has(candidate.sourceDocumentId) || topics.has(candidate.topic)) continue;
-    selected.push(candidate);
-    documents.add(candidate.sourceDocumentId);
-    topics.add(candidate.topic);
-  }
-  for (const candidate of candidates) {
-    if (selected.length >= needed) break;
-    if (selected.some((item) => item.id === candidate.id)) continue;
-    selected.push(candidate);
-  }
-  return selected;
 }
 
 function topicFor(...parts: string[]) {
@@ -311,41 +245,7 @@ export async function syncResearchEvidence() {
     for (const [groupId, duplicateCount] of duplicateCounts) {
       await db.update(researchEvidence).set({ duplicateCount }).where(eq(researchEvidence.duplicateGroupId, groupId));
     }
-    await db.delete(workspaceEvidenceReviews).where(and(
-      sql`${workspaceEvidenceReviews.reviewNote} LIKE 'System baseline:%'`,
-      sql`EXISTS (
-        SELECT 1 FROM research_evidence re
-        WHERE re.id = ${workspaceEvidenceReviews.evidenceId}
-          AND (re.evidence_quality_score < 65 OR re.boilerplate_risk >= 60)
-      )`,
-    ));
-    const reviewRows = await db.select().from(researchEvidence);
-    const workspaceRows = await db.select({ id: workspaces.id }).from(workspaces);
-    let baselineAccepted = 0;
-    for (const workspace of workspaceRows) {
-      const existingReviews = await db.select().from(workspaceEvidenceReviews).where(eq(workspaceEvidenceReviews.workspaceId, workspace.id));
-      const statusByEvidenceId = new Map(existingReviews.map((review) => [review.evidenceId, review.reviewStatus]));
-      for (const companyId of new Set(reviewRows.map((item) => item.companyId))) {
-        const selected = selectBaselineEvidenceCandidates(reviewRows.filter((item) => item.companyId === companyId).map((item) => ({
-          ...item,
-          reviewStatus: statusByEvidenceId.get(item.id) ?? "unreviewed",
-        })));
-        for (const item of selected) {
-          const now = new Date();
-          await db.insert(workspaceEvidenceReviews).values({
-            id: `${workspace.id}:evidence-review:${item.id}`,
-            workspaceId: workspace.id,
-            evidenceId: item.id,
-            reviewStatus: "accepted",
-            reviewNote: "System baseline: high-quality official evidence accepted to enable grounded company comparisons.",
-            reviewedAt: now,
-          }).onConflictDoNothing({ target: [workspaceEvidenceReviews.workspaceId, workspaceEvidenceReviews.evidenceId] });
-          baselineAccepted += 1;
-        }
-      }
-    }
-
-    return { sec: researchGradeSecRows.length, ir: researchGradeIrRows.length, baselineAccepted };
+    return { sec: researchGradeSecRows.length, ir: researchGradeIrRows.length };
   });
   if (!result) throw new Error("Postgres is required for the research evidence workspace.");
   return result;
@@ -399,7 +299,6 @@ function toItem(row: {
 }
 
 export async function listResearchEvidence(workspaceId: string, filters: EvidenceFilters = {}) {
-  await ensureWorkspaceEvidenceDefaults(workspaceId);
   const result = await withDatabase(async (db) => {
     const rows = await db.select({ evidence: researchEvidence, company: companies, review: workspaceEvidenceReviews, reviewer: users })
       .from(researchEvidence)
@@ -584,7 +483,6 @@ export async function getAcceptedEvidence(workspaceId: string, companyIds: strin
   dateTo?: string;
   knownAt?: string;
 }) {
-  await ensureWorkspaceEvidenceDefaults(workspaceId);
   const result = await withDatabase(async (db) => {
     const conditions = [eq(workspaceEvidenceReviews.workspaceId, workspaceId), eq(workspaceEvidenceReviews.reviewStatus, "accepted"), gte(researchEvidence.evidenceQualityScore, 45), lt(researchEvidence.boilerplateRisk, 60), inArray(researchEvidence.companyId, companyIds)];
     if (topic && topic !== "All topics") conditions.push(eq(researchEvidence.topic, topic));

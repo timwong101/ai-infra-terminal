@@ -2,20 +2,37 @@ import { expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { Client } from "pg";
+import Redis from "ioredis";
 import { PORTFOLIO_ASSISTANT_QUESTION } from "@/lib/demo/portfolio-seed";
 
 const e2eDatabaseUrl = process.env.E2E_DATABASE_URL;
 if (!e2eDatabaseUrl) throw new Error("E2E_DATABASE_URL is required for analyst journey tests.");
+const e2eRedisUrl = process.env.E2E_REDIS_URL?.trim() || "redis://127.0.0.1:6379/1";
 
-function prepareTestDatabase() {
+const testScripts = {
+  migrate: "scripts/migrate-db.ts",
+  seed: "scripts/seed-e2e.ts",
+  intelligence: "scripts/sync-company-intelligence.ts",
+} as const;
+
+function runTestScripts(scripts: Array<keyof typeof testScripts>) {
   const env = {
     ...process.env,
     DATABASE_URL: e2eDatabaseUrl,
     E2E_DATABASE_URL: e2eDatabaseUrl,
     E2E_TEST: "1",
   };
-  for (const script of ["db:migrate", "db:seed:e2e", "research:intelligence"]) {
-    execFileSync("pnpm", [script], { env, stdio: "inherit" });
+  for (const script of scripts) {
+    execFileSync(process.execPath, ["--import", "tsx", testScripts[script]], { env, stdio: "inherit" });
+  }
+}
+
+async function resetTestRedis() {
+  const redis = new Redis(e2eRedisUrl, { maxRetriesPerRequest: 1 });
+  try {
+    await redis.flushdb();
+  } finally {
+    await redis.quit();
   }
 }
 
@@ -69,10 +86,12 @@ const companies = [
   { id: "iren", name: "IREN" },
 ] as const;
 
-test.describe.serial("evidence-grounded analyst journey", () => {
-  test.beforeAll(() => prepareTestDatabase());
+test.describe("evidence-grounded analyst journeys", () => {
+  test.beforeAll(() => runTestScripts(["migrate"]));
 
   test.beforeEach(async ({ page }) => {
+    await resetTestRedis();
+    runTestScripts(["seed", "intelligence"]);
     await page.goto("/");
     await expect(page).toHaveURL(/\/login$/);
     await page.getByRole("button", { name: /Open portfolio demo/ }).click();
@@ -153,7 +172,7 @@ test.describe.serial("evidence-grounded analyst journey", () => {
 
     await page.goto("/audit");
     await expect(page.getByText("Created CoreWeave vs. Nebius comparison memo.", { exact: true })).toBeVisible();
-    await expect(page.getByText(/Completed neocloud-grounding-v2 with \d+\/100\./)).toBeVisible();
+    await expect(page.getByText(/Completed neocloud-grounding-v4 with \d+\/100\./)).toBeVisible();
     await expect(page.getByText("Replayed 2 companies as of 2026-02-01.", { exact: true })).toBeVisible();
   });
 
@@ -469,9 +488,10 @@ test.describe.serial("evidence-grounded analyst journey", () => {
   });
 
   test("analyst feedback becomes an executable production regression case", async ({ page }) => {
-    const question = "Compare the selected Neoclouds on capacity, demand, and financing risk.";
+    const question = PORTFOLIO_ASSISTANT_QUESTION;
     await page.goto("/research-assistant");
     const savedAnswer = page.locator(".saved-answer").filter({ hasText: question });
+    await expect(savedAnswer).toHaveCount(1);
     await savedAnswer.getByRole("button", { name: "Report issue" }).click();
     await savedAnswer.getByRole("combobox", { name: "Failure type" }).selectOption("wrong-retrieval");
     await savedAnswer.getByRole("combobox", { name: "Severity" }).selectOption("high");
@@ -507,7 +527,7 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await page.getByRole("button", { name: "Run benchmark" }).click();
 
     await expect(page).toHaveURL(/\/research-quality\/.+/, { timeout: 30_000 });
-    await expect(page.getByText("33/33 passed", { exact: false })).toBeVisible();
+    await expect(page.getByText("32/32 passed", { exact: false }).first()).toBeVisible();
     await expect(page.getByLabel("Quality metrics").getByText("Citation precision", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Quality metrics").getByText("Groundedness", { exact: true })).toBeVisible();
     await expect(page.getByText("Evidence packet")).toBeVisible();
@@ -515,7 +535,7 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     const runUrl = page.url();
     await page.reload();
     await expect(page).toHaveURL(runUrl);
-    await expect(page.getByText("33/33 passed", { exact: false })).toBeVisible();
+    await expect(page.getByText("32/32 passed", { exact: false }).first()).toBeVisible();
 
     await page.getByRole("button", { name: "Metric contracts" }).click();
     await page.getByRole("button", { name: "Run metric benchmark" }).click();
@@ -558,6 +578,20 @@ test.describe.serial("evidence-grounded analyst journey", () => {
   });
 
   test("workspace switching isolates saved research and preserves attributed audit history", async ({ page }) => {
+    const originalEvidenceDecision = await page.request.patch("/api/research-evidence", {
+      data: {
+        ids: ["e2e:coreweave:review"],
+        status: "accepted",
+        note: "Original workspace evidence decision.",
+        suggestion: { status: "accepted", claimId: "coreweave:capacity_growth", impact: "supports" },
+      },
+    });
+    expect(originalEvidenceDecision.status()).toBe(200);
+    const originalMetricLedger = await (await page.request.get("/api/company-metrics")).json() as { observations: Array<{ id: string; companyId: string; metricKey: string; normalizedValue: number; reviewStatus: string; isCanonical: boolean }> };
+    const originalCapacity = originalMetricLedger.observations.find((item) => item.companyId === "coreweave" && item.metricKey === "active_power_capacity" && item.normalizedValue === 320);
+    expect(originalCapacity).toBeDefined();
+    expect((await page.request.patch("/api/company-metrics", { data: { id: originalCapacity!.id, status: "accepted", note: "Original workspace canonical decision." } })).status()).toBe(200);
+
     await page.getByRole("button", { name: "Open profile and workspace menu" }).click();
     await page.getByRole("button", { name: "Create workspace" }).click();
     await page.getByRole("textbox", { name: "Workspace name" }).fill("Second Analyst Workspace");
@@ -586,10 +620,10 @@ test.describe.serial("evidence-grounded analyst journey", () => {
     await expect(page.getByRole("heading", { name: "Neocloud Research Overview" })).toBeVisible();
     const originalEvidence = await (await page.request.get("/api/research-evidence?sync=0")).json() as { items: Array<{ id: string; reviewStatus: string }> };
     expect(originalEvidence.items.find((item) => item.id === "e2e:coreweave:capacity")?.reviewStatus).toBe("accepted");
-    const originalMetricLedger = await (await page.request.get("/api/company-metrics")).json() as { observations: Array<{ id: string; reviewStatus: string; isCanonical: boolean }> };
-    const originalCapacity = originalMetricLedger.observations.find((item) => item.id === secondCapacity!.id);
-    expect(originalCapacity?.reviewStatus).toBe("accepted");
-    expect(originalCapacity?.isCanonical).toBe(true);
+    const restoredMetricLedger = await (await page.request.get("/api/company-metrics")).json() as { observations: Array<{ id: string; reviewStatus: string; isCanonical: boolean }> };
+    const restoredCapacity = restoredMetricLedger.observations.find((item) => item.id === secondCapacity!.id);
+    expect(restoredCapacity?.reviewStatus).toBe("accepted");
+    expect(restoredCapacity?.isCanonical).toBe(true);
     const originalAlerts = await (await page.request.get("/api/alerts?significance=all")).json() as { alerts: Array<{ title: string }> };
     expect(originalAlerts.alerts.some((item) => item.title === "Capacity growth supports")).toBe(true);
     await page.goto("/memos");

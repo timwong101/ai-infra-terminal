@@ -23,16 +23,6 @@ jobs:
       ARTIFACT_STORAGE_ACCESS_KEY: ${{ secrets.ARTIFACT_STORAGE_ACCESS_KEY }}
       ARTIFACT_STORAGE_SECRET_KEY: ${{ secrets.ARTIFACT_STORAGE_SECRET_KEY }}
       ARTIFACT_STORAGE_REQUIRED: "1"
-    services:
-      redis:
-        image: redis:7.4-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -55,11 +45,10 @@ jobs:
         run: pnpm db:migrate
       - name: Run evidence, thesis, and briefing pipeline
         if: ${{ env.DATABASE_URL != '' }}
-        run: pnpm research:cycle
+        run: pnpm research:cycle:scheduled
         env:
           AI_MEMO_MODEL: gpt-5-mini
           AI_EMBEDDING_MODEL: text-embedding-3-small
-          REDIS_URL: redis://127.0.0.1:6379
       - name: Explain missing configuration
         if: ${{ env.DATABASE_URL == '' }}
         run: echo "Add DATABASE_URL, SEC_USER_AGENT, and ARTIFACT_STORAGE_* repository secrets to enable scheduled ingestion."

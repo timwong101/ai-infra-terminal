@@ -2,6 +2,7 @@ import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
 import { withDatabase } from "@/lib/db/client";
 import { apiRateLimits, auditEvents, authSessions, users, workspaceMembers, workspaces } from "@/lib/db/schema";
 import type { AuditEventItem, AuthContext, WorkspaceRole } from "@/lib/auth/types";
+import { consumeRedisRateLimit } from "@/lib/auth/rate-limit";
 
 export const SESSION_COOKIE = "ai_infra_session";
 export const OAUTH_STATE_COOKIE = "ai_infra_oauth_state";
@@ -10,7 +11,7 @@ const SESSION_AGE_SECONDS = 60 * 60 * 24 * 14;
 const ROLE_LEVEL: Record<WorkspaceRole, number> = { viewer: 0, analyst: 1, admin: 2 };
 
 export class AuthError extends Error {
-  constructor(message: string, readonly status: 401 | 403 = 401) { super(message); }
+  constructor(message: string, readonly status: 401 | 403 | 409 = 401) { super(message); }
 }
 
 function bytesToHex(bytes: Uint8Array) {
@@ -104,7 +105,10 @@ export async function authenticateRequest(request: Request, minimumRole: Workspa
     if (!current) return null;
     const memberships = await db.select({ workspace: workspaces, membership: workspaceMembers }).from(workspaceMembers)
       .innerJoin(workspaces, eq(workspaceMembers.workspaceId, workspaces.id)).where(eq(workspaceMembers.userId, current.user.id));
-    await db.update(authSessions).set({ lastSeenAt: new Date() }).where(eq(authSessions.id, current.session.id));
+    await db.update(authSessions).set({ lastSeenAt: new Date() }).where(and(
+      eq(authSessions.id, current.session.id),
+      lt(authSessions.lastSeenAt, new Date(Date.now() - 5 * 60 * 1_000)),
+    ));
     return { current, memberships };
   });
   if (!result) throw new AuthError("Your session is missing or expired.");
@@ -135,7 +139,8 @@ export async function authorizeApi(request: Request, minimumRole: WorkspaceRole 
       const windowStart = new Date();
       windowStart.setUTCSeconds(0, 0);
       const id = `${auth.user.id}:${rateLimit.key}:${windowStart.toISOString()}`;
-      const row = await withDatabase(async (db) => {
+      const redisCount = await consumeRedisRateLimit(id);
+      const row = redisCount === null ? await withDatabase(async (db) => {
         const current = (await db.insert(apiRateLimits).values({
           id, userId: auth.user.id, route: rateLimit.key, windowStart,
         }).onConflictDoUpdate({
@@ -146,7 +151,7 @@ export async function authorizeApi(request: Request, minimumRole: WorkspaceRole 
           await db.delete(apiRateLimits).where(lt(apiRateLimits.windowStart, new Date(Date.now() - 24 * 60 * 60 * 1_000)));
         }
         return current;
-      });
+      }) : { count: redisCount };
       if ((row?.count ?? 0) > rateLimit.limit) {
         return { response: Response.json({ error: "Rate limit exceeded. Try again in one minute." }, { status: 429, headers: { "Retry-After": "60", "Cache-Control": "no-store" } }) } as const;
       }
@@ -191,7 +196,12 @@ export async function upsertGitHubIdentity(profile: { id: number; login: string;
   const providerAccountId = String(profile.id);
   const result = await withDatabase(async (db) => {
     let user = (await db.select().from(users).where(and(eq(users.provider, "github"), eq(users.providerAccountId, providerAccountId))).limit(1))[0];
-    if (!user) user = (await db.insert(users).values({ id: `user:${crypto.randomUUID()}`, email: profile.email.toLowerCase(), name: profile.name?.trim() || profile.login, avatarUrl: profile.avatarUrl, provider: "github", providerAccountId }).onConflictDoUpdate({ target: users.email, set: { name: profile.name?.trim() || profile.login, avatarUrl: profile.avatarUrl, provider: "github", providerAccountId, updatedAt: new Date() } }).returning())[0];
+    if (!user) {
+      const normalizedEmail = profile.email.toLowerCase();
+      const existingEmailUser = (await db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1))[0];
+      if (existingEmailUser) throw new AuthError("An account already uses this email. Sign in with its existing provider before linking GitHub.", 409);
+      user = (await db.insert(users).values({ id: `user:${crypto.randomUUID()}`, email: normalizedEmail, name: profile.name?.trim() || profile.login, avatarUrl: profile.avatarUrl, provider: "github", providerAccountId }).returning())[0];
+    }
     else user = (await db.update(users).set({ email: profile.email.toLowerCase(), name: profile.name?.trim() || profile.login, avatarUrl: profile.avatarUrl, updatedAt: new Date() }).where(eq(users.id, user.id)).returning())[0];
     let membership = (await db.select().from(workspaceMembers).where(eq(workspaceMembers.userId, user.id)).limit(1))[0];
     if (!membership) {

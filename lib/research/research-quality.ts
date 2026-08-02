@@ -2,20 +2,17 @@ import { and, asc, desc, eq } from "drizzle-orm";
 import { withDatabase } from "@/lib/db/client";
 import { researchQualityResults, researchQualityRuns } from "@/lib/db/schema";
 import { runResearchAssistantPipeline, type ResearchAssistantEngine } from "@/lib/research/research-assistant";
+import { claimEvidenceSupport, isMalformedClaimText, verifyNumericFidelity } from "@/lib/research/claim-synthesis";
 import type { ResearchAssistantClaim, ResearchEvidenceItem, ResearchQualityResult, ResearchQualityRun, ResearchQualityScores } from "@/lib/research/types";
 import type { AuthContext } from "@/lib/auth/types";
 import { ensureDemoIdentity, recordAuditEvent } from "@/lib/auth/session";
 import { listResearchQualityCases } from "@/lib/research/quality-feedback";
+import { TRACKED_COMPANY_SUMMARIES } from "@/data/company-registry";
 export { RESEARCH_QUALITY_GATES, researchQualityGate } from "@/lib/research/research-quality-policy";
 
-export const RESEARCH_QUALITY_SUITE_VERSION = "neocloud-grounding-v2";
+export const RESEARCH_QUALITY_SUITE_VERSION = "neocloud-grounding-v4";
 
-const TRACKED_COMPANIES = [
-  { id: "coreweave", name: "CoreWeave" },
-  { id: "nebius", name: "Nebius" },
-  { id: "applied-digital", name: "Applied Digital" },
-  { id: "iren", name: "IREN" },
-] as const;
+const TRACKED_COMPANIES = TRACKED_COMPANY_SUMMARIES;
 
 const TOPICS = {
   capacity: "Power & capacity",
@@ -121,7 +118,15 @@ export function scoreResearchQualityCase(input: {
   const evidenceById = new Map(evidence.map((item) => [item.id, item]));
   const validCitations = allCitationIds.filter((citation) => evidenceById.get(citation.id)?.companyId === citation.companyId);
   const citationPrecision = allCitationIds.length ? percentage(validCitations.length, allCitationIds.length) : (rawClaimCount > 0 ? 0 : 100);
-  const groundedness = percentage(rawClaimCount - rejectedClaims, rawClaimCount);
+  const semanticallyGroundedClaims = claims.filter((claim) => {
+    const cited = claim.citationIds.flatMap((id) => evidenceById.get(id) ?? []);
+    return cited.length > 0
+      && cited.every((item) => item.companyId === claim.companyId)
+      && claimEvidenceSupport(claim.text, cited).passed
+      && verifyNumericFidelity(claim.text, cited).passed
+      && !isMalformedClaimText(claim.text);
+  }).length;
+  const groundedness = percentage(semanticallyGroundedClaims, rawClaimCount);
   const companiesWithClaims = new Set(claims.map((claim) => claim.companyId));
   const companyAccuracy = benchmark.expectations.behavior === "insufficient"
     ? (claims.length === 0 ? 100 : 0)
@@ -137,6 +142,7 @@ export function scoreResearchQualityCase(input: {
   if (retrievalCoverage < 70) failureReasons.push(`Expected company-topic retrieval coverage was ${retrievalCoverage}%.`);
   if (rejectedClaims > 0) failureReasons.push(`${rejectedClaims} generated claim${rejectedClaims === 1 ? " was" : "s were"} rejected by citation verification.`);
   if (citationPrecision < 100 && rejectedClaims === 0) failureReasons.push("One or more citations did not resolve to evidence for the claimed company.");
+  if (groundedness < 100 && rejectedClaims === 0) failureReasons.push("One or more claims lacked semantic, numeric, or readability support from its cited passage.");
   if (companyAccuracy < 100) failureReasons.push("One or more expected companies had no supported claim.");
   if (citationIds.length < benchmark.expectations.minimumCitations) failureReasons.push(`Only ${citationIds.length} of ${benchmark.expectations.minimumCitations} expected citations were returned.`);
   const scores: ResearchQualityScores = { retrievalCoverage, citationPrecision, groundedness, companyAccuracy, answerCompleteness, overall };

@@ -8,15 +8,24 @@ export const RESEARCH_QUALITY_GATES = {
 } as const;
 
 const CRITICAL_QUALITY_CATEGORIES = new Set(["source-policy", "insufficiency", "production-regression"]);
+const CRITICAL_PUBLICATION_CATEGORIES = new Set(["insufficiency", "production-regression"]);
 
-export function researchQualityGate(run: ResearchQualityRun) {
+function evaluateResearchQuality(run: ResearchQualityRun, criticalCategories: Set<string>) {
   const metrics = run.metrics;
   const reasons: string[] = [];
   if ((run.overallScore ?? 0) < RESEARCH_QUALITY_GATES.overall) reasons.push(`Overall score ${run.overallScore ?? 0} is below ${RESEARCH_QUALITY_GATES.overall}.`);
   if ((run.passRate ?? 0) < RESEARCH_QUALITY_GATES.passRate) reasons.push(`Pass rate ${run.passRate ?? 0}% is below ${RESEARCH_QUALITY_GATES.passRate}%.`);
   if ((metrics.citationPrecision ?? 0) < RESEARCH_QUALITY_GATES.citationPrecision) reasons.push(`Citation precision must remain at ${RESEARCH_QUALITY_GATES.citationPrecision}%.`);
   if ((metrics.groundedness ?? 0) < RESEARCH_QUALITY_GATES.groundedness) reasons.push(`Groundedness must remain at ${RESEARCH_QUALITY_GATES.groundedness}%.`);
-  const criticalFailures = (run.results ?? []).filter((result) => result.status === "failed" && CRITICAL_QUALITY_CATEGORIES.has(result.category));
+  const criticalFailures = (run.results ?? []).filter((result) => result.status === "failed" && criticalCategories.has(result.category));
   if (criticalFailures.length) reasons.push(`Critical benchmark failures: ${criticalFailures.map((result) => result.title).join(", ")}.`);
   return { passed: reasons.length === 0, reasons };
+}
+
+export function researchQualityGate(run: ResearchQualityRun) {
+  return evaluateResearchQuality(run, CRITICAL_QUALITY_CATEGORIES);
+}
+
+export function researchPublicationQualityGate(run: ResearchQualityRun) {
+  return evaluateResearchQuality(run, CRITICAL_PUBLICATION_CATEGORIES);
 }

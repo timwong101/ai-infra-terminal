@@ -26,6 +26,7 @@ export async function persistArchivedSource(input: {
   fetchedAt: Date;
 }) {
   const result = await withDatabase(async (db) => db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${input.sourceKind}:${input.sourceDocumentId}`}))`);
     const artifact = (await tx.insert(sourceArtifacts).values({
       id: input.artifactId,
       contentHash: input.contentHash,
@@ -88,6 +89,7 @@ export async function persistExtractionRun(input: {
 }) {
   const id = `extraction:${input.source.version.sourceKind}:${input.source.version.sourceDocumentId}:${input.runKind}:${input.parserVersion}:${input.outputHash.slice(0, 16)}`;
   const result = await withDatabase(async (db) => db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${input.source.version.sourceKind}:${input.source.version.sourceDocumentId}`}))`);
     const existing = (await tx.select().from(sourceExtractionRuns).where(and(
       eq(sourceExtractionRuns.sourceVersionId, input.source.version.id),
       eq(sourceExtractionRuns.runKind, input.runKind),
@@ -192,6 +194,7 @@ export async function promoteExtractionRunRecord(id: string, userId: string) {
   const result = await withDatabase(async (db) => db.transaction(async (tx) => {
     const run = (await tx.select().from(sourceExtractionRuns).where(eq(sourceExtractionRuns.id, id)).limit(1))[0];
     if (!run) return null;
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${run.sourceKind}:${run.sourceDocumentId}`}))`);
     await tx.update(sourceExtractionRuns).set({ status: "superseded" }).where(and(
       eq(sourceExtractionRuns.sourceKind, run.sourceKind),
       eq(sourceExtractionRuns.sourceDocumentId, run.sourceDocumentId),

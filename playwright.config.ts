@@ -29,7 +29,7 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
-      command: `pnpm worker:research -- --health-port ${workerPort}`,
+      command: `node --import tsx scripts/research-worker.ts --health-port ${workerPort}`,
       url: `http://localhost:${workerPort}/healthz`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
@@ -38,6 +38,7 @@ export default defineConfig({
         E2E_TEST: "1",
         E2E_DATABASE_URL: e2eDatabaseUrl,
         E2E_REDIS_URL: e2eRedisUrl,
+        E2E_STAGE_MODE: "orchestration-fixture",
         ARTIFACT_STORAGE_PATH: e2eArtifactPath,
         E2E_FAIL_STAGE_ONCE: "embedding-evidence",
         REDIS_URL: e2eRedisUrl,
@@ -45,7 +46,7 @@ export default defineConfig({
       },
     },
     {
-      command: `pnpm dev --port ${port}`,
+      command: `next dev --port ${port}`,
       url: baseURL,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

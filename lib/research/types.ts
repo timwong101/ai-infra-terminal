@@ -47,13 +47,23 @@ export type ResearchAssistantMessage = {
   engine: string;
   model: string;
   promptVersion: string;
+  isStale: boolean;
   configSnapshot: Record<string, unknown>;
   retrievalMode: string;
   status: "running" | "completed" | "error";
   filters: ResearchAssistantFilters;
   citations: ResearchEvidenceItem[];
   metricSnapshot: ResearchMetricSnapshot[];
-  verification: { passed: boolean; rejectedClaims: number; checkedClaims: number; allowedCitations: number } | null;
+  verification: {
+    passed: boolean;
+    rejectedClaims: number;
+    checkedClaims: number;
+    allowedCitations: number;
+    citationFailures?: number;
+    semanticSupportFailures?: number;
+    numericFidelityFailures?: number;
+    malformedClaims?: number;
+  } | null;
   estimatedCostMicros: number;
   latencyMs: number | null;
   error: string | null;
@@ -249,7 +259,7 @@ export type EvidenceWorkspaceResponse = {
   topics: Array<{ name: string; evidenceCount: number }>;
   claims: Array<{ id: string; companyId: string; title: string; kind: string }>;
   qualitySummary: { highValue: number; boilerplateRisk: number; pendingSuggestions: number; duplicatePassages: number };
-  synced: { sec: number; ir: number; baselineAccepted?: number };
+  synced: { sec: number; ir: number };
 };
 
 export type MemoClaim = {
@@ -301,6 +311,7 @@ export type ComparisonMemo = {
   generation?: {
     engine: string;
     retrievalMode: string;
+    policyVersion: string;
     verification: MemoVerification;
   };
   createdAt: string;

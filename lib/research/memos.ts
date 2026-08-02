@@ -9,6 +9,8 @@ import { recordAuditEvent } from "@/lib/auth/session";
 import { createDeterministicMemoClaim, isMalformedClaimText, synthesizeMemoSections, verifySynthesizedClaim } from "@/lib/research/claim-synthesis";
 import { getAcceptedMetricSnapshot } from "@/lib/company-intelligence/metric-ledger";
 
+export const MEMO_GENERATION_POLICY_VERSION = "memo-grounding-v3";
+
 const RISK_PATTERN = /risk|depend|concentrat|debt|liquidity|cost|competition|delay|uncertain|adverse/i;
 const CATALYST_PATTERN = /growth|expand|capacity|contract|demand|launch|deploy|delivery|availability|pipeline/i;
 const RISK_DIRECTION_PATTERN = /\b(adverse|borrow|capital intensive|concentrat|constraint|cost|credit facility|debt|delay|depend|financ|loss|risk|uncertain)\b/i;
@@ -152,7 +154,7 @@ export async function generateComparisonMemo(input: { companyAId: string; compan
   const generationId = `generation:${crypto.randomUUID()}`;
   const names = new Map([[companyA.id, companyA.name], [companyB.id, companyB.name]]);
   const prompt = buildPrompt(question, names, selected);
-  await withDatabase((db) => db.insert(memoGenerations).values({ id: generationId, workspaceId: auth.workspace.id, ownerUserId: auth.user.id, companyAId: companyA.id, companyBId: companyB.id, topic: input.topic, question, prompt, model: hasAi ? model : "deterministic-v2", engine: hasAi ? "ai" : "deterministic", retrievalMode: retrieval.mode, evidenceSnapshot: selected, metricSnapshot }));
+  await withDatabase((db) => db.insert(memoGenerations).values({ id: generationId, workspaceId: auth.workspace.id, ownerUserId: auth.user.id, companyAId: companyA.id, companyBId: companyB.id, topic: input.topic, question, prompt, model: hasAi ? model : "deterministic-v2", engine: hasAi ? "ai" : "deterministic", retrievalMode: retrieval.mode, policyVersion: MEMO_GENERATION_POLICY_VERSION, evidenceSnapshot: selected, metricSnapshot }));
 
   let rawSections = deterministicSections(selected, companyIds);
   let engine = hasAi ? "ai" : "deterministic";
@@ -182,13 +184,13 @@ export async function generateComparisonMemo(input: { companyAId: string; compan
   const scores = scoreMemo(selected, companyIds);
   const id = `memo:${crypto.randomUUID()}`;
   const stored = await withDatabase(async (db) => {
-    const rows = await db.insert(comparisonMemos).values({ id, workspaceId: auth.workspace.id, ownerUserId: auth.user.id, title: `${companyA.name} vs. ${companyB.name}`, question, companyAId: companyA.id, companyBId: companyB.id, topic: input.topic, confidenceScore: Math.max(0, scores.confidence - verification.rejectedClaims * 4), evidenceQualityScore: scores.quality, sourceDiversityScore: scores.diversity, sections, evidenceSnapshot: selected, metricSnapshot }).returning();
-    await db.update(memoGenerations).set({ memoId: id, engine, status: "completed", output: { sections }, verification, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, totalTokens: usage.totalTokens, error: generationError, completedAt: new Date() }).where(eq(memoGenerations.id, generationId));
+    const rows = await db.insert(comparisonMemos).values({ id, workspaceId: auth.workspace.id, ownerUserId: auth.user.id, title: `${companyA.name} vs. ${companyB.name}`, question, companyAId: companyA.id, companyBId: companyB.id, topic: input.topic, confidenceScore: Math.max(0, scores.confidence - verification.rejectedClaims * 4), evidenceQualityScore: scores.quality, sourceDiversityScore: scores.diversity, generationPolicyVersion: MEMO_GENERATION_POLICY_VERSION, sections, evidenceSnapshot: selected, metricSnapshot }).returning();
+    await db.update(memoGenerations).set({ memoId: id, engine, status: "completed", output: { sections }, verification, policyVersion: MEMO_GENERATION_POLICY_VERSION, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, totalTokens: usage.totalTokens, error: generationError, completedAt: new Date() }).where(eq(memoGenerations.id, generationId));
     return rows[0];
   });
   if (!stored) throw new Error("Postgres is required to save comparison memos.");
   await recordAuditEvent(auth, { action: "memo.created", entityType: "comparison_memo", entityId: id, summary: `Created ${companyA.name} vs. ${companyB.name} comparison memo.`, metadata: { companyAId: companyA.id, companyBId: companyB.id, topic: input.topic } });
-  return rowToMemo(stored, companyA, companyB, { engine, retrievalMode: retrieval.mode, verification });
+  return rowToMemo(stored, companyA, companyB, { engine, retrievalMode: retrieval.mode, policyVersion: MEMO_GENERATION_POLICY_VERSION, verification });
 }
 
 function rowToMemo(row: typeof comparisonMemos.$inferSelect, companyA: typeof companies.$inferSelect, companyB: typeof companies.$inferSelect, metadata?: ComparisonMemo["generation"]) : ComparisonMemo {
@@ -205,7 +207,9 @@ export async function listComparisonMemos(workspaceId: string) {
     for (const row of memoRows) {
       if (row.isStale) continue;
       const snapshot = row.evidenceSnapshot as Array<{ id?: string; contentHash?: string }>;
-      const staleReason = memoEvidenceStaleReason(snapshot, currentById);
+      const staleReason = row.generationPolicyVersion !== MEMO_GENERATION_POLICY_VERSION
+        ? `Generation policy ${row.generationPolicyVersion} has been replaced by ${MEMO_GENERATION_POLICY_VERSION}. Regenerate before review or publication.`
+        : memoEvidenceStaleReason(snapshot, currentById);
       if (staleReason) await db.update(comparisonMemos).set({ status: "changes_requested", isStale: true, staleReason, staleAt: new Date(), updatedAt: new Date() }).where(eq(comparisonMemos.id, row.id));
     }
     const rows = await db.select().from(comparisonMemos).where(eq(comparisonMemos.workspaceId, workspaceId)).orderBy(desc(comparisonMemos.updatedAt)).limit(20);
@@ -218,6 +222,7 @@ export async function listComparisonMemos(workspaceId: string) {
       return companyA && companyB ? [rowToMemo(row, companyA, companyB, generation ? {
         engine: generation.engine,
         retrievalMode: generation.retrievalMode,
+        policyVersion: generation.policyVersion,
         verification: generation.verification as NonNullable<ComparisonMemo["generation"]>["verification"],
       } : undefined)] : [];
     });

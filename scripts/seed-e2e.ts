@@ -44,6 +44,20 @@ const evidenceTemplates = [
 try {
   await client.query("BEGIN");
   await client.query("TRUNCATE TABLE users, companies CASCADE");
+  await client.query(
+    `INSERT INTO users (id, email, name, provider, provider_account_id) VALUES
+      ('user:demo', 'demo@ai-infra.local', 'Demo Analyst', 'demo', 'demo'),
+      ('user:demo-reviewer', 'reviewer@ai-infra.local', 'Demo Reviewer', 'demo', 'reviewer')`,
+  );
+  await client.query(
+    `INSERT INTO workspaces (id, name, slug, created_by_user_id)
+     VALUES ('workspace:demo', 'Neocloud Research', 'neocloud-research', 'user:demo')`,
+  );
+  await client.query(
+    `INSERT INTO workspace_members (id, workspace_id, user_id, role) VALUES
+      ('membership:demo', 'workspace:demo', 'user:demo', 'admin'),
+      ('membership:demo-reviewer', 'workspace:demo', 'user:demo-reviewer', 'analyst')`,
+  );
 
   for (const company of secCompanies) {
     await client.query(
@@ -164,6 +178,16 @@ try {
       [`event-impact:e2e:${company.id}`, eventId, claimId],
     );
   }
+
+  await client.query(
+    `INSERT INTO workspace_evidence_reviews (
+      id, workspace_id, evidence_id, review_status, review_note, reviewed_by_user_id, reviewed_at
+    )
+    SELECT 'workspace:demo:evidence-review:' || md5(id), 'workspace:demo', id, 'accepted',
+      'Deterministic CI analyst decision', 'user:demo', now()
+    FROM research_evidence
+    WHERE review_status = 'accepted'`,
+  );
 
   await client.query("COMMIT");
   const archivedCompany = secCompanies.find((company) => company.id === "coreweave")!;

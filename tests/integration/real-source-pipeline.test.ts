@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 import { eq } from "drizzle-orm";
 import { archiveSourceBytes, recordInitialExtraction, verifyArtifactIntegrityBatch } from "@/lib/artifacts/service";
 import { getCurrentArchivedSource } from "@/lib/artifacts/repository";
@@ -16,24 +17,17 @@ if (!databaseUrl) throw new Error("E2E_DATABASE_URL is required for the real sou
 const databaseName = decodeURIComponent(new URL(databaseUrl).pathname.slice(1));
 if (!/(?:^|_)(?:e2e|test)$/.test(databaseName)) throw new Error(`Refusing to use non-test database ${databaseName}.`);
 
-test("archived SEC bytes flow through extraction, integrity verification, evidence, and briefing", async () => {
+test("a sanitized real SEC filing excerpt flows through extraction, integrity verification, evidence, and briefing", async () => {
   await ensureDemoIdentity();
   await withDatabase((db) => db.insert(companies).values({
     id: "coreweave",
     name: "CoreWeave",
     ticker: "CRWV",
-    cik: "0001951443",
+    cik: "0001769628",
   }).onConflictDoNothing());
-  const filingId = "sec:1951443:0001951443-26-900001";
-  const sourceUrl = "https://www.sec.gov/Archives/edgar/data/1951443/000195144326900001/portfolio-fixture.htm";
-  const html = `<!doctype html><html><head><title>CoreWeave Portfolio Pipeline Fixture</title></head><body>
-    <h2>Data Center Capacity</h2>
-    <p>CoreWeave reported that active power capacity across its AI data center platform reached three hundred megawatts, with additional contracted campuses under construction and scheduled through 2027 to support customer GPU clusters.</p>
-    <h2>Customers and Demand</h2>
-    <p>The company signed multi-year infrastructure agreements with investment-grade customers, increasing contracted backlog while preserving delivery milestones, minimum capacity commitments, and explicit deployment schedules for accelerated computing services.</p>
-    <h2>Liquidity and Capital Resources</h2>
-    <p>CoreWeave ended the period with committed financing and available liquidity for construction, while management identified interest expense, customer concentration, and utilization ramp timing as material execution risks.</p>
-  </body></html>`;
+  const filingId = "sec:1769628:0001769628-26-000291";
+  const sourceUrl = "https://www.sec.gov/Archives/edgar/data/1769628/000176962826000291/crwv-20260618.htm";
+  const html = await readFile(new URL("../fixtures/sec/coreweave-2026-06-18-8k.html", import.meta.url), "utf8");
   const bytes = new TextEncoder().encode(html);
   const archived = await archiveSourceBytes({
     sourceKind: "sec",
@@ -50,13 +44,14 @@ test("archived SEC bytes flow through extraction, integrity verification, eviden
     companyName: "CoreWeave",
     ticker: "CRWV",
     formType: "8-K",
-    filedAt: "2026-07-31",
-    periodOfReport: "2026-07-31",
-    accessionNumber: "0001951443-26-900001",
+    filedAt: "2026-06-18",
+    periodOfReport: "2026-06-18",
+    accessionNumber: "0001769628-26-000291",
     sourceUrl,
   }, archived.version.fetchedAt.toISOString());
 
-  assert.ok(detail.sections.length >= 3, "the real parser should identify all fixture research sections");
+  assert.equal(detail.sections.length, 1, "the parser should retain the filing item as one source section");
+  assert.ok(detail.sections[0].passages.length >= 3, "the parser should preserve each substantive financing passage inside the filing item");
   assert.equal(await persistFilingDetail(detail), true);
   await recordInitialExtraction(archived, detail, 1);
 

@@ -19,8 +19,8 @@ function evidence(id: string, companyId: string): ResearchEvidenceItem {
 
 const packet = [evidence("coreweave:1", "coreweave"), evidence("nebius:1", "nebius")];
 
-test("research assistant accepts claims with valid same-company citations", () => {
-  const result = verifyResearchAssistantOutput({ claims: [{ companyId: "coreweave", text: "Supported capacity claim", citationIds: ["coreweave:1"], confidenceScore: 84 }], openQuestions: [] }, packet, ["coreweave", "nebius"]);
+test("research assistant accepts semantically supported claims with valid same-company citations", () => {
+  const result = verifyResearchAssistantOutput({ claims: [{ companyId: "coreweave", text: "The company reported active capacity supported by contracted customer demand.", citationIds: ["coreweave:1"], confidenceScore: 84 }], openQuestions: [] }, packet, ["coreweave", "nebius"]);
   assert.equal(result.verification.passed, true);
   assert.equal(result.claims.length, 1);
 });
@@ -35,6 +35,18 @@ test("research assistant rejects unsupported claims instead of presenting them",
 test("research assistant rejects citations attributed to the wrong company", () => {
   const result = verifyResearchAssistantOutput({ claims: [{ companyId: "coreweave", text: "Misattributed claim", citationIds: ["nebius:1"], confidenceScore: 90 }], openQuestions: [] }, packet, ["coreweave", "nebius"]);
   assert.equal(result.verification.rejectedClaims, 1);
+  assert.deepEqual(result.claims, []);
+});
+
+test("research assistant rejects an unrelated claim even when its citation belongs to the same company", () => {
+  const result = verifyResearchAssistantOutput({ claims: [{ companyId: "coreweave", text: "The company secured nuclear power for a new robotics factory.", citationIds: ["coreweave:1"], confidenceScore: 90 }], openQuestions: [] }, packet, ["coreweave"]);
+  assert.equal(result.verification.semanticSupportFailures, 1);
+  assert.deepEqual(result.claims, []);
+});
+
+test("research assistant rejects numeric facts absent from the cited passage", () => {
+  const result = verifyResearchAssistantOutput({ claims: [{ companyId: "coreweave", text: "The company reported 500 MW of active capacity supported by contracted customer demand.", citationIds: ["coreweave:1"], confidenceScore: 90 }], openQuestions: [] }, packet, ["coreweave"]);
+  assert.equal(result.verification.numericFidelityFailures, 1);
   assert.deepEqual(result.claims, []);
 });
 

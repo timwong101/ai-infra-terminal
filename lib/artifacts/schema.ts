@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const sourceArtifacts = pgTable("source_artifacts", {
@@ -30,6 +31,7 @@ export const sourceDocumentVersions = pgTable("source_document_versions", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   uniqueIndex("source_document_versions_document_artifact_unique").on(table.sourceKind, table.sourceDocumentId, table.artifactId),
+  uniqueIndex("source_document_versions_one_current_unique").on(table.sourceKind, table.sourceDocumentId).where(sql`${table.isCurrent} = true`),
   index("source_document_versions_current_idx").on(table.sourceKind, table.sourceDocumentId, table.isCurrent),
   index("source_document_versions_company_fetched_idx").on(table.companyId, table.fetchedAt),
 ]);
@@ -59,6 +61,7 @@ export const sourceExtractionRuns = pgTable("source_extraction_runs", {
   completedAt: timestamp("completed_at", { withTimezone: true }),
 }, (table) => [
   uniqueIndex("source_extraction_runs_replay_unique").on(table.sourceVersionId, table.runKind, table.parserVersion, table.outputHash),
+  uniqueIndex("source_extraction_runs_one_promoted_unique").on(table.sourceKind, table.sourceDocumentId).where(sql`${table.status} = 'promoted'`),
   index("source_extraction_runs_document_status_idx").on(table.sourceKind, table.sourceDocumentId, table.status, table.startedAt),
   index("source_extraction_runs_artifact_idx").on(table.artifactId),
 ]);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assessEvidenceQuality, evidenceDuplicateGroup } from "@/lib/research/quality";
+import { assessEvidenceQuality, evidenceDuplicateGroup, extractionReadabilityRisk } from "@/lib/research/quality";
 
 test("scores material AI infrastructure disclosures and suggests a relevant claim", () => {
   const assessment = assessEvidenceQuality({
@@ -36,4 +36,12 @@ test("does not map bitcoin-only operating metrics to AI demand", () => {
 
 test("groups formatting variants as duplicate evidence", () => {
   assert.equal(evidenceDuplicateGroup("AI capacity: 200 MW."), evidenceDuplicateGroup("AI capacity  200 MW"));
+});
+
+test("caps keyword-dense slide fragments that lack readable sentences", () => {
+  const excerpt = "Company Timeline 2021 2022 2023 2024 2025 ARR guidance Actual sites 100 MW new colocations GPU capacity customers revenue backlog power capacity 2025 ARR guidance Actual sites 200 MW customers revenue backlog";
+  const assessment = assessEvidenceQuality({ excerpt, topic: "Power & capacity", sectionTitle: "Investor presentation", sourceType: "IR presentation", sourceQuality: 97 });
+  assert.ok(extractionReadabilityRisk(excerpt) >= 70);
+  assert.ok(assessment.evidenceQualityScore < 45);
+  assert.equal(assessment.suggestion, null);
 });

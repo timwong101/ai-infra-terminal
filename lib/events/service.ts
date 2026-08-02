@@ -1,5 +1,6 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { irSources } from "@/data/ir-sources";
+import { COMPANY_REGISTRY } from "@/data/company-registry";
 import { withDatabase } from "@/lib/db/client";
 import {
   companies,
@@ -38,13 +39,12 @@ type EventInput = {
 };
 
 const GDELT_ENDPOINT = "https://api.gdeltproject.org/api/v2/doc/doc";
-const GDELT_QUERY = '(CoreWeave OR Nebius OR "Applied Digital" OR IREN OR "Iris Energy") (AI OR GPU OR "data center" OR capacity OR financing)';
-const COMPANY_ALIASES: Array<{ companyId: string; pattern: RegExp }> = [
-  { companyId: "coreweave", pattern: /\bCoreWeave\b/i },
-  { companyId: "nebius", pattern: /\bNebius\b/i },
-  { companyId: "applied-digital", pattern: /\bApplied Digital\b/i },
-  { companyId: "iren", pattern: /\bIREN\b|\bIris Energy\b/i },
-];
+const GDELT_COMPANIES = COMPANY_REGISTRY.flatMap((company) => company.eventAliases).map((alias) => alias.includes(" ") ? `"${alias}"` : alias).join(" OR ");
+const GDELT_QUERY = `(${GDELT_COMPANIES}) (AI OR GPU OR "data center" OR capacity OR financing)`;
+const COMPANY_ALIASES = COMPANY_REGISTRY.map((company) => ({
+  companyId: company.id,
+  pattern: new RegExp(`\\b(?:${company.eventAliases.map((alias) => alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`, "i"),
+}));
 
 async function sha256(value: string) {
   const bytes = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)));

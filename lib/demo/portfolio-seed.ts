@@ -12,9 +12,9 @@ import {
   researchQualityRuns,
   researchReplayRuns,
 } from "@/lib/db/schema";
-import { generateComparisonMemo } from "@/lib/research/memos";
+import { generateComparisonMemo, MEMO_GENERATION_POLICY_VERSION } from "@/lib/research/memos";
 import { decideMemoReview, submitMemoForReview } from "@/lib/reviews/service";
-import { answerResearchAssistantQuestion, createResearchAssistantSession } from "@/lib/research/research-assistant";
+import { answerResearchAssistantQuestion, createResearchAssistantSession, RESEARCH_ASSISTANT_PROMPT_VERSION } from "@/lib/research/research-assistant";
 import { RESEARCH_QUALITY_SUITE_VERSION, runResearchQualitySuite } from "@/lib/research/research-quality";
 import { METRIC_QUALITY_SUITE_VERSION, runMetricQualitySuite } from "@/lib/company-intelligence/metric-quality";
 import { createResearchReplay } from "@/lib/replay/service";
@@ -57,7 +57,7 @@ function coverageCell(row: Pick<PortfolioEvidenceCandidate, "companyId" | "topic
   return `${row.companyId}:${row.topic}:${row.sourceKind}`;
 }
 
-export function selectPortfolioBaselineEvidence(rows: PortfolioEvidenceCandidate[]) {
+export function selectPortfolioDemoEvidence(rows: PortfolioEvidenceCandidate[]) {
   const acceptedCells = new Set(rows.filter((row) => row.reviewStatus === "accepted").map(coverageCell));
   const selectedCells = new Set<string>();
   return [...rows]
@@ -121,7 +121,7 @@ async function ensureEvidenceCoverage(identity: { userId: string; workspaceId: s
     )));
   if (!candidates) throw new Error("Postgres is required to prepare the portfolio demo.");
 
-  const ids = selectPortfolioBaselineEvidence(candidates.map((item) => ({ ...item, reviewStatus: item.reviewStatus ?? "unreviewed" })));
+  const ids = selectPortfolioDemoEvidence(candidates.map((item) => ({ ...item, reviewStatus: item.reviewStatus ?? "unreviewed" })));
   if (!ids.length) return 0;
   const now = new Date();
   await withDatabase(async (db) => {
@@ -131,12 +131,12 @@ async function ensureEvidenceCoverage(identity: { userId: string; workspaceId: s
         workspaceId: identity.workspaceId,
         evidenceId: id,
         reviewStatus: "accepted",
-        reviewNote: "Portfolio demo baseline: real official evidence accepted to establish deterministic grounded coverage.",
+        reviewNote: "Seeded demo decision: official evidence selected for the reproducible portfolio walkthrough.",
         reviewedByUserId: identity.userId,
         reviewedAt: now,
       }).onConflictDoUpdate({
         target: [workspaceEvidenceReviews.workspaceId, workspaceEvidenceReviews.evidenceId],
-        set: { reviewStatus: "accepted", reviewNote: "Portfolio demo baseline: real official evidence accepted to establish deterministic grounded coverage.", reviewedByUserId: identity.userId, reviewedAt: now, updatedAt: now },
+        set: { reviewStatus: "accepted", reviewNote: "Seeded demo decision: official evidence selected for the reproducible portfolio walkthrough.", reviewedByUserId: identity.userId, reviewedAt: now, updatedAt: now },
       });
     }
   });
@@ -170,6 +170,7 @@ async function ensureMemo(auth: AuthContext) {
       eq(comparisonMemos.workspaceId, auth.workspace.id),
       eq(comparisonMemos.question, PORTFOLIO_MEMO_QUESTION),
       eq(comparisonMemos.isStale, false),
+      eq(comparisonMemos.generationPolicyVersion, MEMO_GENERATION_POLICY_VERSION),
     ))
     .orderBy(desc(comparisonMemos.createdAt))
     .limit(1))[0] ?? null);
@@ -204,6 +205,7 @@ async function ensureAssistant(auth: AuthContext) {
       eq(researchAssistantSessions.workspaceId, auth.workspace.id),
       eq(researchAssistantMessages.question, PORTFOLIO_ASSISTANT_QUESTION),
       eq(researchAssistantMessages.status, "completed"),
+      eq(researchAssistantMessages.promptVersion, RESEARCH_ASSISTANT_PROMPT_VERSION),
     ))
     .orderBy(desc(researchAssistantMessages.createdAt))
     .limit(1))[0] ?? null);
@@ -217,7 +219,7 @@ async function ensureAssistant(auth: AuthContext) {
 
 async function ensureQualityRun(auth: AuthContext) {
   const existing = await withDatabase(async (db) => (await db
-    .select({ id: researchQualityRuns.id })
+    .select({ id: researchQualityRuns.id, overallScore: researchQualityRuns.overallScore, passRate: researchQualityRuns.passRate, metrics: researchQualityRuns.metrics })
     .from(researchQualityRuns)
     .where(and(
       eq(researchQualityRuns.workspaceId, auth.workspace.id),
@@ -227,7 +229,8 @@ async function ensureQualityRun(auth: AuthContext) {
     ))
     .orderBy(desc(researchQualityRuns.createdAt))
     .limit(1))[0] ?? null);
-  if (existing) return existing.id;
+  const metrics = existing?.metrics as { citationPrecision?: number; groundedness?: number } | undefined;
+  if (existing && (existing.overallScore ?? 0) >= 85 && (existing.passRate ?? 0) >= 85 && metrics?.citationPrecision === 100 && metrics.groundedness === 100) return existing.id;
   const run = await runResearchQualitySuite("deterministic", auth);
   if (!run) throw new Error("Unable to prepare the portfolio quality benchmark.");
   return run.id;

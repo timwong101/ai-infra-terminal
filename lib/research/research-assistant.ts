@@ -7,6 +7,7 @@ import type { ResearchAssistantClaim, ResearchAssistantFilters, ResearchAssistan
 import type { AuthContext } from "@/lib/auth/types";
 import { recordAuditEvent } from "@/lib/auth/session";
 import { getAcceptedMetricSnapshot } from "@/lib/company-intelligence/metric-ledger";
+import { claimEvidenceSupport, createDeterministicMemoClaim, isMalformedClaimText, verifyNumericFidelity } from "@/lib/research/claim-synthesis";
 
 const researchAssistantOutputSchema = z.object({
   claims: z.array(z.object({
@@ -18,16 +19,25 @@ const researchAssistantOutputSchema = z.object({
   openQuestions: z.array(z.object({ companyId: z.string(), text: z.string() })),
 });
 
-type Verification = { passed: boolean; rejectedClaims: number; checkedClaims: number; allowedCitations: number };
+type Verification = {
+  passed: boolean;
+  rejectedClaims: number;
+  checkedClaims: number;
+  allowedCitations: number;
+  citationFailures: number;
+  semanticSupportFailures: number;
+  numericFidelityFailures: number;
+  malformedClaims: number;
+};
 type ResearchAssistantOutput = { claims: ResearchAssistantClaim[]; openQuestions: Array<{ companyId: string; text: string }> };
 export type ResearchAssistantEngine = "auto" | "deterministic" | "ai";
-export const RESEARCH_ASSISTANT_PROMPT_VERSION = "research-assistant-v2";
+export const RESEARCH_ASSISTANT_PROMPT_VERSION = "research-assistant-v4";
 const RESEARCH_ASSISTANT_CONFIG = {
   retrievalLimit: 36,
   perCompanyLimit: 6,
   evidencePacketLimit: 24,
   maxOutputTokens: 2200,
-  verifierVersion: "same-company-citations-v1",
+  verifierVersion: "semantic-numeric-grounding-v2",
 } as const;
 
 function sentence(item: ResearchEvidenceItem) {
@@ -38,16 +48,40 @@ function sentence(item: ResearchEvidenceItem) {
 export function verifyResearchAssistantOutput(output: ResearchAssistantOutput, evidence: ResearchEvidenceItem[], companyIds: string[]) {
   const evidenceById = new Map(evidence.map((item) => [item.id, item]));
   let rejectedClaims = 0;
+  let citationFailures = 0;
+  let semanticSupportFailures = 0;
+  let numericFidelityFailures = 0;
+  let malformedClaims = 0;
   const claims = output.claims.filter((claim) => {
-    const valid = companyIds.includes(claim.companyId)
+    const citationValid = companyIds.includes(claim.companyId)
       && Boolean(claim.text.trim())
       && claim.citationIds.length > 0
       && claim.citationIds.every((id) => evidenceById.get(id)?.companyId === claim.companyId);
+    const cited = citationValid
+      ? [...new Set(claim.citationIds)].flatMap((id) => evidenceById.get(id) ?? [])
+      : [];
+    const semantic = citationValid && claimEvidenceSupport(claim.text, cited).passed;
+    const numeric = citationValid && verifyNumericFidelity(claim.text, cited).passed;
+    const readable = !isMalformedClaimText(claim.text);
+    if (!citationValid) citationFailures += 1;
+    if (citationValid && !semantic) semanticSupportFailures += 1;
+    if (citationValid && !numeric) numericFidelityFailures += 1;
+    if (!readable) malformedClaims += 1;
+    const valid = citationValid && semantic && numeric && readable;
     if (!valid) rejectedClaims += 1;
     return valid;
   }).map((claim) => ({ ...claim, citationIds: [...new Set(claim.citationIds)], confidenceScore: Math.max(0, Math.min(100, Math.round(claim.confidenceScore))) }));
   const openQuestions = output.openQuestions.filter((item) => companyIds.includes(item.companyId) && item.text.trim()).slice(0, 6);
-  const verification: Verification = { passed: rejectedClaims === 0, rejectedClaims, checkedClaims: claims.length, allowedCitations: evidence.length };
+  const verification: Verification = {
+    passed: rejectedClaims === 0,
+    rejectedClaims,
+    checkedClaims: output.claims.length,
+    allowedCitations: evidence.length,
+    citationFailures,
+    semanticSupportFailures,
+    numericFidelityFailures,
+    malformedClaims,
+  };
   return { claims, openQuestions, verification };
 }
 
@@ -61,12 +95,15 @@ export function scoreResearchAssistantEvidence(items: ResearchEvidenceItem[], co
 }
 
 function deterministicOutput(items: ResearchEvidenceItem[], companyIds: string[]): ResearchAssistantOutput {
-  const claims = companyIds.flatMap((companyId) => items.filter((item) => item.companyId === companyId).slice(0, 3).map((item) => ({
-    companyId,
-    text: sentence(item),
-    citationIds: [item.id],
-    confidenceScore: Math.round(item.evidenceQualityScore * .75 + item.relevanceScore * .25),
-  })));
+  const claims = companyIds.flatMap((companyId) => items.filter((item) => item.companyId === companyId).slice(0, 3).map((item) => {
+    const synthesized = createDeterministicMemoClaim(item, "summary");
+    return {
+      companyId,
+      text: synthesized.text || sentence(item),
+      citationIds: [item.id],
+      confidenceScore: Math.round(item.evidenceQualityScore * .75 + item.relevanceScore * .25),
+    };
+  }));
   const topicsByCompany = new Map(companyIds.map((id) => [id, new Set(items.filter((item) => item.companyId === id).map((item) => item.topic))]));
   const openQuestions = companyIds.flatMap((companyId) => {
     const topics = topicsByCompany.get(companyId) ?? new Set<string>();
@@ -212,7 +249,7 @@ function messageFromRow(row: typeof researchAssistantMessages.$inferSelect): Res
     claims: row.claims as ResearchAssistantClaim[], openQuestions: row.openQuestions as ResearchAssistantMessage["openQuestions"],
     confidenceScore: row.confidenceScore, evidenceQualityScore: row.evidenceQualityScore, sourceDiversityScore: row.sourceDiversityScore,
     engine: row.engine, model: row.model, retrievalMode: row.retrievalMode, status: row.status as ResearchAssistantMessage["status"],
-    promptVersion: row.promptVersion, configSnapshot: row.configSnapshot as Record<string, unknown>,
+    promptVersion: row.promptVersion, isStale: row.promptVersion !== RESEARCH_ASSISTANT_PROMPT_VERSION, configSnapshot: row.configSnapshot as Record<string, unknown>,
     filters: row.filters as ResearchAssistantFilters, citations: row.evidenceSnapshot as ResearchEvidenceItem[],
     metricSnapshot: row.metricSnapshot as ResearchAssistantMessage["metricSnapshot"],
     verification: row.verification as ResearchAssistantMessage["verification"], estimatedCostMicros: row.estimatedCostMicros,
@@ -223,7 +260,9 @@ function messageFromRow(row: typeof researchAssistantMessages.$inferSelect): Res
 export async function listResearchAssistantSessions(workspaceId: string) {
   const result = await withDatabase(async (db) => {
     const sessions = await db.select().from(researchAssistantSessions).where(eq(researchAssistantSessions.workspaceId, workspaceId)).orderBy(desc(researchAssistantSessions.updatedAt)).limit(30);
-    const messages = await db.select().from(researchAssistantMessages).orderBy(desc(researchAssistantMessages.createdAt));
+    const messages = sessions.length
+      ? await db.select().from(researchAssistantMessages).where(inArray(researchAssistantMessages.sessionId, sessions.map((session) => session.id))).orderBy(desc(researchAssistantMessages.createdAt))
+      : [];
     const messageCount = new Map<string, number>();
     for (const message of messages) messageCount.set(message.sessionId, (messageCount.get(message.sessionId) ?? 0) + 1);
     const emptySessions = sessions.filter((session) => !messageCount.get(session.id));

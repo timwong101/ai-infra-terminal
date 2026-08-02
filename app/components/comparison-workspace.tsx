@@ -214,7 +214,23 @@ export function ComparisonWorkspace({ initialMemoId = "", onMemoSelect, onReview
 
         <section className={`memo-document panel ${selectedMemo ? `status-${selectedMemo.status}` : ""}`}>
           {selectedMemo ? <>{selectedMemo.isStale && <div className="stale-research-banner memo-stale-banner"><AlertTriangle size={15} /><div><strong>Saved evidence is stale</strong><span>{selectedMemo.staleReason}</span></div><button className="command-button small" disabled={status === "generating"} onClick={() => void generate(selectedMemo)}>{status === "generating" ? <LoaderCircle className="drawer-spinner" size={14} /> : <Sparkles size={14} />} Regenerate</button></div>}
-            <header className="memo-document-header"><div><span className="section-kicker">Saved evidence snapshot</span><h2>{selectedMemo.title}</h2><p>{selectedMemo.question}</p></div><div className="memo-header-actions"><div className="memo-run-badges"><span className="draft-badge">{selectedMemo.status.replaceAll("_", " ")}</span>{selectedMemo.generation && <><span className="draft-badge">{selectedMemo.generation.engine.replaceAll("-", " ")}</span><span className="draft-badge">{selectedMemo.generation.retrievalMode}</span><span className={`draft-badge claim-check-badge ${selectedMemo.generation.verification.synthesisFallbackClaims ? "fallback" : ""}`}>{selectedMemo.generation.verification.synthesisFallbackClaims ? `${selectedMemo.generation.verification.synthesisFallbackClaims} source fallback${selectedMemo.generation.verification.synthesisFallbackClaims === 1 ? "" : "s"}` : "Claim checks passed"}</span></>}</div><button className="primary-button publish-report-button" onClick={() => { setPublishOpen(true); setPublishNotice(""); }}><Share2 size={15} />Publish report</button></div></header>
+            <header className="memo-document-header">
+              <div><span className="section-kicker">Saved evidence snapshot</span><h2>{selectedMemo.title}</h2><p>{selectedMemo.question}</p></div>
+              <div className="memo-header-actions">
+                <div className="memo-run-badges">
+                  <span className="draft-badge">{selectedMemo.status.replaceAll("_", " ")}</span>
+                  {selectedMemo.generation && <>
+                    <span className="draft-badge">{selectedMemo.generation.engine.replaceAll("-", " ")}</span>
+                    <span className="draft-badge">{selectedMemo.generation.retrievalMode}</span>
+                    <span className={`draft-badge claim-check-badge ${selectedMemo.generation.verification.passed ? "" : "fallback"}`}>
+                      {selectedMemo.generation.verification.passed ? "Claim checks passed" : `${selectedMemo.generation.verification.rejectedClaims} claim check${selectedMemo.generation.verification.rejectedClaims === 1 ? "" : "s"} failed`}
+                    </span>
+                    {Boolean(selectedMemo.generation.verification.synthesisFallbackClaims) && <span className="draft-badge claim-check-badge fallback">{selectedMemo.generation.verification.synthesisFallbackClaims} source fallback{selectedMemo.generation.verification.synthesisFallbackClaims === 1 ? "" : "s"}</span>}
+                  </>}
+                </div>
+                <button className="primary-button publish-report-button" onClick={() => { setPublishOpen(true); setPublishNotice(""); }}><Share2 size={15} />Publish report</button>
+              </div>
+            </header>
             <MemoReviewWorkflow
               memo={selectedMemo}
               workspace={reviewWorkspace}

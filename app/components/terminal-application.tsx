@@ -35,7 +35,6 @@ import {
   routeEntitySegment,
   slugify,
   themeGroups,
-  type TerminalRoute,
 } from "@/app/terminal-navigation";
 
 const AlertsWorkspace = lazy(() => import("@/app/components/alerts-workspace").then((module) => ({ default: module.AlertsWorkspace })));
@@ -158,7 +157,7 @@ function AppLogo() {
   );
 }
 
-export function TerminalApplication({ route }: { route?: TerminalRoute }) {
+export function TerminalApplication() {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -191,20 +190,21 @@ export function TerminalApplication({ route }: { route?: TerminalRoute }) {
   if (invitationParts.length === 2 && invitationParts[0] === "invite") {
     return <Suspense fallback={<RouteLoading label="Opening invitation" />}><InvitationAcceptance token={invitationParts[1]} auth={auth} onAccepted={loadAuth} /></Suspense>;
   }
-  return <Terminal auth={auth} onAuthChange={loadAuth} route={route} />;
+  return <Terminal auth={auth} onAuthChange={loadAuth} />;
 }
 
 function RouteLoading({ label = "Opening workspace" }: { label?: string }) {
   return <div className="workspace-state full-page route-loading"><LoaderCircle className="drawer-spinner" size={25} /><strong>{label}</strong><span>Loading only the tools required for this view.</span></div>;
 }
 
-function Terminal({ auth, onAuthChange, route: routeOverride }: { auth: AuthSession; onAuthChange: () => Promise<void>; route?: TerminalRoute }) {
+function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () => Promise<void> }) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [selectedTheme, setSelectedTheme] = useState(routeOverride?.selectedTheme ?? LIVE_THEME);
+  const initialRoute = parseTerminalRoute(pathname, searchParams);
+  const [selectedTheme, setSelectedTheme] = useState(initialRoute.selectedTheme ?? LIVE_THEME);
   const [activeThemeGroup, setActiveThemeGroup] = useState("Cloud & Capacity");
-  const [activeNav, setActiveNav] = useState(routeOverride?.activeNav ?? "AI Infra Map");
+  const [activeNav, setActiveNav] = useState(initialRoute.activeNav);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [liveSecCache, setLiveSecCache] = useState(secEvidenceCache);
@@ -223,15 +223,15 @@ function Terminal({ auth, onAuthChange, route: routeOverride }: { auth: AuthSess
   const [detailError, setDetailError] = useState("");
   const [copiedPassage, setCopiedPassage] = useState<string | null>(null);
   const [unreadAlertCount, setUnreadAlertCount] = useState(0);
-  const [routeCompanyId, setRouteCompanyId] = useState(routeOverride?.companyId ?? "");
-  const [routeEvidenceCompanyId, setRouteEvidenceCompanyId] = useState(routeOverride?.evidenceCompanyId ?? "");
-  const [routeMemoId, setRouteMemoId] = useState(routeOverride?.memoId ?? "");
-  const [routeResearchAssistantId, setRouteResearchAssistantId] = useState(routeOverride?.researchAssistantId ?? "");
-  const [routeResearchQualityRunId, setRouteResearchQualityRunId] = useState(routeOverride?.researchQualityRunId ?? "");
+  const [routeCompanyId, setRouteCompanyId] = useState(initialRoute.companyId ?? "");
+  const [routeEvidenceCompanyId, setRouteEvidenceCompanyId] = useState(initialRoute.evidenceCompanyId ?? "");
+  const [routeMemoId, setRouteMemoId] = useState(initialRoute.memoId ?? "");
+  const [routeResearchAssistantId, setRouteResearchAssistantId] = useState(initialRoute.researchAssistantId ?? "");
+  const [routeResearchQualityRunId, setRouteResearchQualityRunId] = useState(initialRoute.researchQualityRunId ?? "");
   const detailRequest = useRef<AbortController | null>(null);
 
   const syncRoute = useCallback(() => {
-    const route = routeOverride ?? parseTerminalRoute(pathname, searchParams);
+    const route = parseTerminalRoute(pathname, searchParams);
     setActiveNav(route.activeNav);
     setRouteCompanyId(route.companyId ?? "");
     setRouteEvidenceCompanyId(route.evidenceCompanyId ?? "");
@@ -244,7 +244,7 @@ function Terminal({ auth, onAuthChange, route: routeOverride }: { auth: AuthSess
       const matchingGroup = themeGroups.find((group) => (group.items as readonly string[]).includes(routeTheme));
       if (matchingGroup) setActiveThemeGroup(matchingGroup.title);
     }
-  }, [pathname, routeOverride, searchParams]);
+  }, [pathname, searchParams]);
 
   const navigate = useCallback((path: string) => {
     const currentPath = `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;

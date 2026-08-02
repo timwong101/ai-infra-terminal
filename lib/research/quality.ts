@@ -46,6 +46,25 @@ function clamp(value: number) {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
+export function extractionReadabilityRisk(value: string) {
+  const text = value.replace(/\s+/g, " ").trim();
+  const words = text.split(/\s+/).filter(Boolean);
+  if (!words.length) return 100;
+  const sentenceMarks = (text.match(/[.!?](?:\s|$)/g) ?? []).length;
+  const numericDensity = words.filter((word) => /\d/.test(word)).length / words.length;
+  const yearCount = (text.match(/\b20\d{2}\b/g) ?? []).length;
+  const labelChurn = (text.match(/\b(?:actual|guidance|sites?|revenue|arr|mw|gpu|customers?|capacity)\b/gi) ?? []).length;
+  let risk = 0;
+  if (words.length >= 25 && sentenceMarks === 0) risk += 35;
+  if (words.length >= 45 && sentenceMarks === 0) risk += 20;
+  if (words.length >= 80 && sentenceMarks <= 1) risk += 25;
+  if (numericDensity > .28) risk += 30;
+  if (yearCount >= 4) risk += 25;
+  if (labelChurn >= 10 && sentenceMarks <= 2) risk += 25;
+  if (/^[a-z]{2,}\s/.test(text)) risk += 20;
+  return clamp(risk);
+}
+
 function matchCount(value: string, pattern: RegExp) {
   return new Set((value.match(pattern) ?? []).map((match) => match.toLowerCase())).size;
 }
@@ -97,17 +116,20 @@ export function assessEvidenceQuality(input: { excerpt: string; topic: string; s
   const infraSignals = matchCount(value, INFRA_PATTERN);
   const specificSignals = matchCount(value, SPECIFIC_PATTERN);
   const boilerplate = BOILERPLATE_PATTERNS.find(([pattern]) => pattern.test(input.excerpt));
-  const boilerplateRisk = boilerplate?.[1] ?? (/\bmay|could|might\b/gi.test(input.excerpt) && specificSignals === 0 ? 22 : 5);
+  const readabilityRisk = extractionReadabilityRisk(input.excerpt);
+  const boilerplateRisk = Math.max(boilerplate?.[1] ?? (/\bmay|could|might\b/gi.test(input.excerpt) && specificSignals === 0 ? 22 : 5), readabilityRisk);
   const materialityScore = clamp(20 + materialSignals * 11 + specificSignals * 7 + (/contract|guidance|liquidity|capacity|revenue/i.test(input.topic) ? 8 : 0));
   const specificityScore = clamp(16 + specificSignals * 16 + (wordCount >= 35 ? 12 : 0) + (wordCount >= 80 ? 8 : 0));
   const relevanceScore = miningOnly ? 15 : clamp(12 + infraSignals * 14 + (/Power & capacity|Compute & accelerators|Customers & demand/i.test(input.topic) ? 12 : 0));
   const calculatedQuality = clamp(input.sourceQuality * .2 + materialityScore * .3 + specificityScore * .18 + relevanceScore * .32 - boilerplateRisk * .38);
-  const evidenceQualityScore = miningOnly ? Math.min(42, calculatedQuality) : calculatedQuality;
+  const readabilityCap = readabilityRisk >= 70 ? 34 : readabilityRisk >= 50 ? 44 : 100;
+  const evidenceQualityScore = Math.min(miningOnly ? 42 : 100, readabilityCap, calculatedQuality);
   const qualityReasons = [
     materialSignals >= 3 ? "Material operating or financial signals" : materialSignals ? "Some material context" : "Few material signals",
     specificSignals >= 2 ? "Contains specific quantities or terms" : "Limited quantitative specificity",
     miningOnly ? "Bitcoin mining without an explicit AI infrastructure linkage" : infraSignals >= 2 ? "Direct AI infrastructure relevance" : infraSignals ? "Adjacent infrastructure relevance" : "Weak AI infrastructure relevance",
     boilerplate ? `High ${boilerplate[2]} risk` : "No major boilerplate pattern detected",
+    readabilityRisk >= 50 ? "Likely extraction or slide-layout corruption" : "Readable narrative structure",
   ];
   return {
     evidenceQualityScore,

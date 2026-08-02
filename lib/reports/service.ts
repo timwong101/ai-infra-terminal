@@ -2,9 +2,11 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import type { AuthContext } from "@/lib/auth/types";
 import { recordAuditEvent } from "@/lib/auth/session";
 import { withDatabase } from "@/lib/db/client";
-import { companies, comparisonMemos, memoGenerations, publishedReports } from "@/lib/db/schema";
+import { companies, comparisonMemos, memoGenerations, publishedReports, researchQualityResults, researchQualityRuns } from "@/lib/db/schema";
 import { verifyMemoSections } from "@/lib/research/memos";
-import type { ComparisonMemo, ComparisonMemoSection, ResearchEvidenceItem } from "@/lib/research/types";
+import { RESEARCH_QUALITY_SUITE_VERSION } from "@/lib/research/research-quality";
+import { researchPublicationQualityGate } from "@/lib/research/research-quality-policy";
+import type { ComparisonMemo, ComparisonMemoSection, ResearchEvidenceItem, ResearchQualityRun } from "@/lib/research/types";
 import type {
   PublishedReport,
   PublishedReportCompany,
@@ -123,6 +125,33 @@ function reportSummary(report: PublishedReport): PublishedReportSummary {
 }
 
 export async function publishComparisonMemo(memoId: string, complianceMode: boolean, auth: AuthContext) {
+  const releaseGate = await withDatabase(async (db) => {
+    const run = (await db.select().from(researchQualityRuns).where(and(
+      eq(researchQualityRuns.workspaceId, auth.workspace.id),
+      eq(researchQualityRuns.suiteVersion, RESEARCH_QUALITY_SUITE_VERSION),
+      eq(researchQualityRuns.status, "completed"),
+    )).orderBy(desc(researchQualityRuns.createdAt)).limit(1))[0];
+    if (!run) return { passed: false, reasons: [`Run ${RESEARCH_QUALITY_SUITE_VERSION} before publishing.`] };
+    const results = await db.select({ status: researchQualityResults.status, category: researchQualityResults.category, title: researchQualityResults.title }).from(researchQualityResults).where(eq(researchQualityResults.runId, run.id));
+    return researchPublicationQualityGate({
+      id: run.id,
+      suiteVersion: run.suiteVersion,
+      engine: run.engine,
+      status: run.status as ResearchQualityRun["status"],
+      overallScore: run.overallScore,
+      passRate: run.passRate,
+      metrics: run.metrics as ResearchQualityRun["metrics"],
+      caseCount: run.caseCount,
+      passedCount: run.passedCount,
+      failedCount: run.failedCount,
+      durationMs: run.durationMs,
+      error: run.error,
+      startedAt: run.startedAt.toISOString(),
+      completedAt: run.completedAt?.toISOString() ?? null,
+      results: results as ResearchQualityRun["results"],
+    });
+  });
+  if (!releaseGate?.passed) throw new Error(`Research quality release gate is blocked. ${releaseGate?.reasons.join(" ") || "Run the current benchmark before publishing."}`);
   const source = await withDatabase(async (db) => {
     const memo = (await db.select().from(comparisonMemos).where(and(
       eq(comparisonMemos.id, memoId),

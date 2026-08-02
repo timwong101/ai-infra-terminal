@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { RESEARCH_QUALITY_BENCHMARKS, researchQualityGate, scoreResearchQualityCase } from "@/lib/research/research-quality";
+import { researchPublicationQualityGate } from "@/lib/research/research-quality-policy";
 import { buildProductionRegressionContract } from "@/lib/research/quality-feedback";
 import type { ResearchEvidenceItem, ResearchQualityRun, ResearchQualityTrace } from "@/lib/research/types";
 
@@ -27,7 +28,7 @@ test("quality scoring passes complete same-company grounded evidence", () => {
   const result = scoreResearchQualityCase({
     benchmark,
     evidence: [item],
-    claims: [{ companyId: "coreweave", text: "Capacity was disclosed.", citationIds: [item.id], confidenceScore: 90 }],
+    claims: [{ companyId: "coreweave", text: "The company disclosed specific AI infrastructure capacity.", citationIds: [item.id], confidenceScore: 90 }],
     rawClaimCount: 1,
     rejectedClaims: 0,
   });
@@ -50,12 +51,12 @@ test("citation precision and groundedness measure different failure modes", () =
   const result = scoreResearchQualityCase({
     benchmark,
     evidence: [item],
-    claims: [{ companyId: "coreweave", text: "Capacity was disclosed.", citationIds: ["evidence:missing"], confidenceScore: 90 }],
+    claims: [{ companyId: "coreweave", text: "The company disclosed specific AI infrastructure capacity.", citationIds: ["evidence:missing"], confidenceScore: 90 }],
     rawClaimCount: 1,
     rejectedClaims: 0,
   });
   assert.equal(result.scores.citationPrecision, 0);
-  assert.equal(result.scores.groundedness, 100);
+  assert.equal(result.scores.groundedness, 0);
   assert.ok(result.failureReasons.some((reason) => reason.includes("did not resolve")));
 });
 
@@ -73,7 +74,7 @@ test("production cases can require retrieval of an exact frozen evidence set", (
   const result = scoreResearchQualityCase({
     benchmark,
     evidence: [item],
-    claims: [{ companyId: "coreweave", text: "Capacity was disclosed.", citationIds: [item.id], confidenceScore: 90 }],
+    claims: [{ companyId: "coreweave", text: "The company disclosed specific AI infrastructure capacity.", citationIds: [item.id], confidenceScore: 90 }],
     rawClaimCount: 1,
     rejectedClaims: 0,
   });
@@ -169,4 +170,23 @@ test("quality gate blocks critical source-policy and refusal regressions despite
   const gate = researchQualityGate(run);
   assert.equal(gate.passed, false);
   assert.match(gate.reasons.at(-1) ?? "", /CoreWeave IR source policy/);
+});
+
+test("publication gate allows source-coverage gaps but blocks behavioral regressions", () => {
+  const healthy = {
+    overallScore: 98,
+    passRate: 94,
+    metrics: { retrievalCoverage: 96, citationPrecision: 100, groundedness: 100, companyAccuracy: 98, answerCompleteness: 97 },
+  };
+  const sourcePolicy = researchPublicationQualityGate({
+    ...healthy,
+    results: [{ status: "failed", category: "source-policy", title: "Missing optional IR coverage" }],
+  } as ResearchQualityRun);
+  assert.equal(sourcePolicy.passed, true);
+
+  const refusal = researchPublicationQualityGate({
+    ...healthy,
+    results: [{ status: "failed", category: "insufficiency", title: "Unsupported answer was not refused" }],
+  } as ResearchQualityRun);
+  assert.equal(refusal.passed, false);
 });

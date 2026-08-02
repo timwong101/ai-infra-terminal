@@ -143,7 +143,7 @@ The reviewer-oriented [architecture guide](docs/architecture/README.md) maps bou
 
 The same safety policy applies whether generation uses an OpenAI model or the deterministic local engine.
 
-1. **Retrieval gate:** Only accepted evidence above the quality threshold is eligible. Company, topic, source, and date filters are applied during retrieval.
+1. **Retrieval gate:** Only explicitly analyst-accepted evidence above the quality threshold is eligible. Quality scores prioritize the inbox but never approve evidence. Company, topic, source, and date filters are applied during retrieval.
 
 2. **Company-scoped citations:** A factual claim about CoreWeave cannot cite a Nebius passage. Unknown, missing, and cross-company citation IDs are rejected.
 
@@ -167,7 +167,7 @@ SEC filings and IR documents are normalized into citation-ready passages. Determ
 
 ### Evidence To Answer
 
-The Research Assistant retrieves across one or more companies and returns a cited answer, confidence score, evidence quality, source diversity, open questions, and claim-check status. Sessions have durable URLs and retain prompt version, model, token use, latency, retrieval configuration, KPI snapshot, and the exact evidence packet.
+The Research Assistant retrieves across one or more companies and returns a cited answer, confidence score, evidence quality, source diversity, open questions, and claim-check status. Verification checks citation ownership, lexical support, numeric fidelity, and malformed extraction text. Sessions have durable URLs and retain prompt version, model, token use, latency, retrieval configuration, KPI snapshot, and the exact evidence packet; older verifier versions are visibly stale.
 
 ### Production Failure To Evaluation
 
@@ -201,7 +201,7 @@ Point-in-time replay reconstructs the eligible packet at an earlier date and com
 
 ### Pipeline To Analyst Inbox
 
-The scheduled research cycle runs SEC, IR, live-event, artifact-integrity, evidence, intelligence, XBRL metric, embedding, thesis, and briefing stages. Each run records stage timing and failures under a correlation ID; optional OpenTelemetry spans cover worker operations but are not presented as a distributed trace. Upstream refresh and extraction belong to the independent worker; opening a page reads persisted PostgreSQL snapshots and never initiates ingestion. The checked-in JSON catalogs are explicitly stale-labeled fallbacks for an empty or unavailable database. Global pipeline controls require an administrator. The Activity workspace converts the result into a workspace-owned research briefing rather than forcing the analyst to inspect raw ingestion logs.
+The research cycle runs SEC, IR, live-event, artifact-integrity, evidence, intelligence, XBRL metric, embedding, thesis, and briefing stages. Interactive jobs use the independent BullMQ worker for retry and restart durability. The six-hour GitHub Actions job executes the same bounded stage graph directly because a queue inside one short-lived runner would add topology without cross-run recovery. Both paths record stage timing and failures under a correlation ID. Opening a page reads persisted PostgreSQL snapshots and never initiates ingestion. The checked-in JSON catalogs are explicitly stale-labeled fallbacks for an empty or unavailable database.
 
 ## Technology
 
@@ -352,14 +352,14 @@ pnpm test
 
 The current suite includes:
 
-- **140 deterministic tests** covering ingestion, immutable source hashing, durable-storage policy, parser replay diffs, normalization, extraction, SEC Company Facts, metric reconciliation and anomaly policy, evidence policy, claim synthesis, numeric fidelity, content-bound review approval, citation verification, production regression contracts, report publishing, quality scoring, request validation, company intelligence, events, replay, durable queue contracts, route contracts, rate-limit isolation, and bundle budgets.
+- **143 deterministic tests** covering ingestion, immutable source hashing, durable-storage policy, parser replay diffs, normalization, extraction, SEC Company Facts, metric reconciliation and anomaly policy, evidence policy, semantic and numeric claim verification, content-bound review approval, production regression contracts, report publishing, quality scoring, request validation, company intelligence, events, replay, durable and direct-cycle contracts, route contracts, rate-limit isolation, and bundle budgets.
 - **32 curated research-quality cases plus versioned production cases** covering four companies, topic retrieval, pairwise comparisons, source policy, synthesis, refusal behavior, and analyst-reported failures.
 - **11 metric-quality cases** covering golden extraction fixtures, value and unit normalization, scope and period dimensions, anomaly suppression, and live canonical-fact contracts.
 - **8 immutable real-document extraction cases** spanning all four Neoclouds, including production false-positive guards and issuer-specific fiscal calendars.
-- **20 Chromium journeys** covering login, explicit routes and browser history, real 404 handling, the curated demo, responsive layouts, all four Neoclouds, immutable source download, parser replay and analyst promotion, evidence review, commitments, two-user memo approval, team roles, public report publishing and export, assistant persistence, failure-to-regression promotion, durable job retries, benchmarks, lineage, workspace isolation, and audit history.
-- **1 isolated real-pipeline integration test** that migrates a dedicated database, archives actual fixture bytes through S3-compatible storage, extracts SEC evidence, persists it to PostgreSQL, verifies its checksum, synchronizes accepted research evidence, and produces an analyst briefing without mutating benchmark fixtures.
+- **20 independently reseeded Chromium journeys** covering login, explicit routes and browser history, real 404 handling, the curated demo, responsive layouts, all four Neoclouds, immutable source download, parser replay and analyst promotion, evidence review, commitments, two-user memo approval, team roles, public report publishing and export, assistant persistence, failure-to-regression promotion, orchestration retries, benchmarks, lineage, workspace isolation, and audit history. The queue-control journey explicitly uses deterministic stage fixtures; the sourced pipeline test below exercises real archive, extraction, persistence, evidence synchronization, and briefing services.
+- **1 isolated sourced-fixture integration test** that migrates a dedicated database, archives a sanitized excerpt from a named SEC filing through S3-compatible storage, extracts evidence, persists it to PostgreSQL, verifies its checksum, synchronizes research evidence, and produces an analyst briefing without external network access.
 
-CI runs three quality gates. Research answers require at least 85 overall, at least an 85% case pass rate, and 100% citation precision and groundedness. Metrics require at least 90 overall with 100% anomaly safety and live-contract health. Source extraction requires every archived fixture to pass with 100% false-positive and fiscal-period safety.
+CI runs three quality gates. Research answers require at least 85 overall, at least an 85% case pass rate, 100% citation precision and groundedness, and no source-policy, insufficiency, or production-regression failures. Memo publication applies the same numeric thresholds and blocks behavioral regressions, while treating missing source coverage as a corpus gap rather than a defect in an otherwise reviewed memo. Metrics require at least 90 overall with 100% anomaly safety and live-contract health. Source extraction requires every archived fixture to pass with 100% false-positive and fiscal-period safety.
 
 To run the browser suite against a dedicated local database:
 

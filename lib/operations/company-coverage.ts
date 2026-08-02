@@ -1,4 +1,5 @@
 import { secCompanies } from "@/data/companies";
+import { count, desc, eq, inArray } from "drizzle-orm";
 import { withDatabase } from "@/lib/db/client";
 import {
   earningsChangeBriefs,
@@ -49,13 +50,31 @@ export function buildCompanyFlowCoverage(
 
 export async function getCompanyFlowCoverage(workspaceId: string): Promise<CompanyFlowCoverage[]> {
   const result = await withDatabase(async (db) => {
-    const [filingRows, catalogRows, documentRows, evidenceRows, reviewRows, alertRows, claimRows, periodRows, comparisonRows, briefRows, packageRows, packageDocumentRows, memoRows] = await Promise.all([
-      db.select().from(filings), db.select().from(irSourceDocuments), db.select().from(irDocuments),
-      db.select().from(researchEvidence), db.select().from(workspaceEvidenceReviews), db.select().from(researchAlerts), db.select().from(researchClaims),
-      db.select().from(reportingPeriods), db.select().from(periodComparisons), db.select().from(earningsChangeBriefs),
-      db.select().from(earningsPackages), db.select().from(earningsPackageDocuments), db.select().from(comparisonMemos),
+    const companyIds = secCompanies.map((company) => company.id);
+    const groupedCount = async (table: typeof filings | typeof irSourceDocuments | typeof irDocuments | typeof researchAlerts | typeof researchClaims) =>
+      db.select({ companyId: table.companyId, count: count() }).from(table).where(inArray(table.companyId, companyIds)).groupBy(table.companyId);
+    const [filingCounts, catalogCounts, documentCounts, alertCounts, claimCounts, periodRows, evidenceRows, reviewRows, memoRows] = await Promise.all([
+      groupedCount(filings), groupedCount(irSourceDocuments), groupedCount(irDocuments), groupedCount(researchAlerts), groupedCount(researchClaims),
+      db.select({ id: reportingPeriods.id, companyId: reportingPeriods.companyId, label: reportingPeriods.label, periodEnd: reportingPeriods.periodEnd, periodKind: reportingPeriods.periodKind, periodBasis: reportingPeriods.periodBasis })
+        .from(reportingPeriods).where(inArray(reportingPeriods.companyId, companyIds)).orderBy(desc(reportingPeriods.periodEnd)),
+      db.select({ id: researchEvidence.id, companyId: researchEvidence.companyId, sourceKind: researchEvidence.sourceKind, sourceDocumentId: researchEvidence.sourceDocumentId, evidenceQualityScore: researchEvidence.evidenceQualityScore, boilerplateRisk: researchEvidence.boilerplateRisk })
+        .from(researchEvidence).where(inArray(researchEvidence.companyId, companyIds)),
+      db.select({ evidenceId: workspaceEvidenceReviews.evidenceId, reviewStatus: workspaceEvidenceReviews.reviewStatus }).from(workspaceEvidenceReviews).where(eq(workspaceEvidenceReviews.workspaceId, workspaceId)),
+      db.select({ companyAId: comparisonMemos.companyAId, companyBId: comparisonMemos.companyBId }).from(comparisonMemos).where(eq(comparisonMemos.workspaceId, workspaceId)),
     ]);
-    const reviewByEvidenceId = new Map(reviewRows.filter((item) => item.workspaceId === workspaceId).map((item) => [item.evidenceId, item]));
+    const currentPeriods = companyIds.flatMap((companyId) => periodRows.find((item) => item.companyId === companyId && item.periodKind === "quarter" && item.periodBasis !== "calendar-fallback") ?? []);
+    const currentPeriodIds = currentPeriods.map((item) => item.id);
+    const [comparisonRows, briefRows, packageRows] = currentPeriodIds.length ? await Promise.all([
+      db.select({ companyId: periodComparisons.companyId, currentPeriodId: periodComparisons.currentPeriodId, evidenceIds: periodComparisons.evidenceIds }).from(periodComparisons).where(inArray(periodComparisons.currentPeriodId, currentPeriodIds)),
+      db.select({ companyId: earningsChangeBriefs.companyId, currentPeriodId: earningsChangeBriefs.currentPeriodId, readinessStatus: earningsChangeBriefs.readinessStatus }).from(earningsChangeBriefs).where(inArray(earningsChangeBriefs.currentPeriodId, currentPeriodIds)),
+      db.select({ id: earningsPackages.id, periodId: earningsPackages.periodId, evidenceCount: earningsPackages.evidenceCount }).from(earningsPackages).where(inArray(earningsPackages.periodId, currentPeriodIds)),
+    ]) : [[], [], []];
+    const packageIds = packageRows.map((item) => item.id);
+    const packageDocumentRows = packageIds.length
+      ? await db.select({ packageId: earningsPackageDocuments.packageId, sourceKind: earningsPackageDocuments.sourceKind, sourceDocumentId: earningsPackageDocuments.sourceDocumentId }).from(earningsPackageDocuments).where(inArray(earningsPackageDocuments.packageId, packageIds))
+      : [];
+    const countByCompany = (rows: Array<{ companyId: string; count: number }>, companyId: string) => Number(rows.find((item) => item.companyId === companyId)?.count ?? 0);
+    const reviewByEvidenceId = new Map(reviewRows.map((item) => [item.evidenceId, item]));
     return secCompanies.map((company) => {
       const acceptedEvidence = evidenceRows.filter((item) => item.companyId === company.id && reviewByEvidenceId.get(item.id)?.reviewStatus === "accepted" && item.evidenceQualityScore >= 45 && item.boilerplateRisk < 60);
       const companyQuarters = periodRows.filter((item) => item.companyId === company.id && item.periodKind === "quarter" && item.periodBasis !== "calendar-fallback").sort((left, right) => right.periodEnd.localeCompare(left.periodEnd));
@@ -68,17 +87,17 @@ export async function getCompanyFlowCoverage(workspaceId: string): Promise<Compa
       const groundedComparisons = currentComparisons.filter((item) => (item.evidenceIds as string[]).some((id) => currentAccepted.some((evidence) => evidence.id === id)));
       const currentBriefs = currentPeriod ? briefRows.filter((item) => item.currentPeriodId === currentPeriod.id) : [];
       const counts = {
-        sec: filingRows.filter((item) => item.companyId === company.id).length,
-        irCatalog: catalogRows.filter((item) => item.companyId === company.id).length,
-        irDocuments: documentRows.filter((item) => item.companyId === company.id).length,
+        sec: countByCompany(filingCounts, company.id),
+        irCatalog: countByCompany(catalogCounts, company.id),
+        irDocuments: countByCompany(documentCounts, company.id),
         evidence: evidenceRows.filter((item) => item.companyId === company.id).length,
         accepted: acceptedEvidence.length,
-        alerts: alertRows.filter((item) => item.companyId === company.id).length,
-        claims: claimRows.filter((item) => item.companyId === company.id).length,
+        alerts: countByCompany(alertCounts, company.id),
+        claims: countByCompany(claimCounts, company.id),
         comparableQuarters: companyQuarters.length,
         comparisons: comparisonRows.filter((item) => item.companyId === company.id).length,
         briefs: briefRows.filter((item) => item.companyId === company.id).length,
-        memos: memoRows.filter((item) => item.workspaceId === workspaceId && (item.companyAId === company.id || item.companyBId === company.id)).length,
+        memos: memoRows.filter((item) => item.companyAId === company.id || item.companyBId === company.id).length,
         latestPackageDocuments: currentPackageDocuments.length,
         latestPackageEvidence: currentPackage?.evidenceCount ?? 0,
         latestAcceptedEvidence: currentAccepted.length,

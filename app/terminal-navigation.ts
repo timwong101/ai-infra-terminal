@@ -19,6 +19,7 @@ import {
   Target,
   Zap,
 } from "lucide-react";
+import { TRACKED_COMPANY_SUMMARIES } from "@/data/company-registry";
 
 export const navigationSections = [
   {
@@ -85,12 +86,7 @@ export function navigationSectionFor(view: string) {
 
 export const LIVE_THEME = "Neoclouds";
 
-export const TRACKED_COMPANIES = [
-  { id: "coreweave", name: "CoreWeave", ticker: "CRWV" },
-  { id: "nebius", name: "Nebius", ticker: "NBIS" },
-  { id: "applied-digital", name: "Applied Digital", ticker: "APLD" },
-  { id: "iren", name: "IREN", ticker: "IREN" },
-] as const;
+export const TRACKED_COMPANIES = TRACKED_COMPANY_SUMMARIES;
 
 export const themeGroups = [
   { title: "Compute & Silicon", icon: Cpu, items: ["GPUs / Accelerators", "AI Servers / Racks", "Memory / HBM", "Foundry / Packaging"] },

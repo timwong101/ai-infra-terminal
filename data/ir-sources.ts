@@ -1,3 +1,5 @@
+import { COMPANY_REGISTRY } from "@/data/company-registry";
+
 export type IrSourceConfig = {
   companyId: string;
   companyName: string;
@@ -8,41 +10,9 @@ export type IrSourceConfig = {
   catalogOnlyHosts?: string[];
 };
 
-export const irSources: IrSourceConfig[] = [
-  {
-    companyId: "coreweave",
-    companyName: "CoreWeave",
-    ticker: "CRWV",
-    pages: ["https://investors.coreweave.com/rss/pressrelease.aspx"],
-    allowedHosts: ["investors.coreweave.com", "coreweave2025ipo.q4web.com", "s205.q4cdn.com"],
-    includePathFragments: ["/news/news-details/", "/files/doc_financials/", "/files/doc_presentations/"],
-  },
-  {
-    companyId: "nebius",
-    companyName: "Nebius",
-    ticker: "NBIS",
-    pages: ["https://nebius.com/financials", "https://nebius.com/newsroom"],
-    allowedHosts: ["nebius.com", "assets.nebius.com"],
-    includePathFragments: ["/newsroom/", "/assets/"],
-  },
-  {
-    companyId: "applied-digital",
-    companyName: "Applied Digital",
-    ticker: "APLD",
-    pages: [
-      "https://ir.applieddigital.com/news-events",
-      "https://ir.applieddigital.com/news-events/presentations",
-    ],
-    allowedHosts: ["ir.applieddigital.com"],
-    includePathFragments: ["/news-events/press-releases/detail/", "/_assets/"],
-  },
-  {
-    companyId: "iren",
-    companyName: "IREN",
-    ticker: "IREN",
-    pages: ["https://iren.com/investors/news", "https://iren.com/investors/reports"],
-    allowedHosts: ["iren.com", "www.iren.com", "iren.gcs-web.com"],
-    includePathFragments: ["/static-files/", "/investors/news/", "/investors/reports/"],
-    catalogOnlyHosts: ["iren.gcs-web.com"],
-  },
-];
+export const irSources: IrSourceConfig[] = COMPANY_REGISTRY.map((company) => ({
+  companyId: company.id,
+  companyName: company.name,
+  ticker: company.ticker,
+  ...company.ir,
+}));

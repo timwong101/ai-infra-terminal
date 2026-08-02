@@ -1,4 +1,4 @@
-import { listResearchEvidence, syncResearchEvidence, updateEvidenceReview } from "@/lib/research/evidence";
+import { listResearchEvidence, updateEvidenceReview } from "@/lib/research/evidence";
 import type { EvidenceReviewStatus, EvidenceSuggestionStatus, ResearchEvidenceItem, ResearchSourceKind } from "@/lib/research/types";
 import { authorizeApi } from "@/lib/auth/session";
 import { boundedText, entityId, parseJsonBody } from "@/lib/http/validation";
@@ -24,9 +24,6 @@ export async function GET(request: Request) {
   if ("response" in authorized) return authorized.response;
   try {
     const params = new URL(request.url).searchParams;
-    const synced = process.env.E2E_TEST === "1" || params.get("sync") === "0"
-      ? { sec: 0, ir: 0 }
-      : await syncResearchEvidence();
     const result = await listResearchEvidence(authorized.auth.workspace.id, {
       query: params.get("q") ?? undefined,
       companyId: params.get("company") ?? undefined,
@@ -35,7 +32,7 @@ export async function GET(request: Request) {
       reviewStatus: params.get("status") as EvidenceReviewStatus | undefined,
       dateFrom: params.get("dateFrom") ?? undefined,
     });
-    return Response.json({ ...result, synced }, { headers: { "Cache-Control": "private, no-store" } });
+    return Response.json({ ...result, synced: { sec: 0, ir: 0 } }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Unable to load research evidence." }, { status: 503 });
   }
