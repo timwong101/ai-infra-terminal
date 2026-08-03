@@ -3,7 +3,7 @@ import type { ComparisonMemoSection, MemoClaim, MemoVerification, ResearchEviden
 type SectionKey = ComparisonMemoSection["key"];
 type SynthesisDiagnostics = Required<Pick<
   MemoVerification,
-  "synthesisFallbackClaims" | "duplicateClaims" | "numericFidelityFailures" | "quoteFidelityFailures" | "semanticSupportFailures" | "malformedClaims"
+  "synthesisFallbackClaims" | "duplicateClaims" | "numericFidelityFailures" | "quoteFidelityFailures" | "groundingSupportFailures" | "malformedClaims"
 >>;
 
 const STOP_WORDS = new Set([
@@ -246,7 +246,7 @@ function emptyDiagnostics(): SynthesisDiagnostics {
     duplicateClaims: 0,
     numericFidelityFailures: 0,
     quoteFidelityFailures: 0,
-    semanticSupportFailures: 0,
+    groundingSupportFailures: 0,
     malformedClaims: 0,
   };
 }
@@ -288,7 +288,7 @@ export function synthesizeMemoSections(
       const quoteValid = representation !== "quote" || quoteMatchesEvidence(candidate.text, cited);
       const malformed = isMalformedClaimText(candidate.text);
       if (!numeric.passed) diagnostics.numericFidelityFailures += 1;
-      if (!support.passed) diagnostics.semanticSupportFailures += 1;
+      if (!support.passed) diagnostics.groundingSupportFailures += 1;
       if (!quoteValid) diagnostics.quoteFidelityFailures += 1;
       if (malformed) diagnostics.malformedClaims += 1;
       const needsFallback = !numeric.passed || !support.passed || !quoteValid || malformed;

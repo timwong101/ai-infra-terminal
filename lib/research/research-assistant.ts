@@ -25,7 +25,7 @@ type Verification = {
   checkedClaims: number;
   allowedCitations: number;
   citationFailures: number;
-  semanticSupportFailures: number;
+  groundingSupportFailures: number;
   numericFidelityFailures: number;
   malformedClaims: number;
 };
@@ -49,7 +49,7 @@ export function verifyResearchAssistantOutput(output: ResearchAssistantOutput, e
   const evidenceById = new Map(evidence.map((item) => [item.id, item]));
   let rejectedClaims = 0;
   let citationFailures = 0;
-  let semanticSupportFailures = 0;
+  let groundingSupportFailures = 0;
   let numericFidelityFailures = 0;
   let malformedClaims = 0;
   const claims = output.claims.filter((claim) => {
@@ -60,14 +60,14 @@ export function verifyResearchAssistantOutput(output: ResearchAssistantOutput, e
     const cited = citationValid
       ? [...new Set(claim.citationIds)].flatMap((id) => evidenceById.get(id) ?? [])
       : [];
-    const semantic = citationValid && claimEvidenceSupport(claim.text, cited).passed;
+    const grounded = citationValid && claimEvidenceSupport(claim.text, cited).passed;
     const numeric = citationValid && verifyNumericFidelity(claim.text, cited).passed;
     const readable = !isMalformedClaimText(claim.text);
     if (!citationValid) citationFailures += 1;
-    if (citationValid && !semantic) semanticSupportFailures += 1;
+    if (citationValid && !grounded) groundingSupportFailures += 1;
     if (citationValid && !numeric) numericFidelityFailures += 1;
     if (!readable) malformedClaims += 1;
-    const valid = citationValid && semantic && numeric && readable;
+    const valid = citationValid && grounded && numeric && readable;
     if (!valid) rejectedClaims += 1;
     return valid;
   }).map((claim) => ({ ...claim, citationIds: [...new Set(claim.citationIds)], confidenceScore: Math.max(0, Math.min(100, Math.round(claim.confidenceScore))) }));
@@ -78,7 +78,7 @@ export function verifyResearchAssistantOutput(output: ResearchAssistantOutput, e
     checkedClaims: output.claims.length,
     allowedCitations: evidence.length,
     citationFailures,
-    semanticSupportFailures,
+    groundingSupportFailures,
     numericFidelityFailures,
     malformedClaims,
   };

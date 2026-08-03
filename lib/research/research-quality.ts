@@ -118,7 +118,7 @@ export function scoreResearchQualityCase(input: {
   const evidenceById = new Map(evidence.map((item) => [item.id, item]));
   const validCitations = allCitationIds.filter((citation) => evidenceById.get(citation.id)?.companyId === citation.companyId);
   const citationPrecision = allCitationIds.length ? percentage(validCitations.length, allCitationIds.length) : (rawClaimCount > 0 ? 0 : 100);
-  const semanticallyGroundedClaims = claims.filter((claim) => {
+  const groundedClaims = claims.filter((claim) => {
     const cited = claim.citationIds.flatMap((id) => evidenceById.get(id) ?? []);
     return cited.length > 0
       && cited.every((item) => item.companyId === claim.companyId)
@@ -126,7 +126,7 @@ export function scoreResearchQualityCase(input: {
       && verifyNumericFidelity(claim.text, cited).passed
       && !isMalformedClaimText(claim.text);
   }).length;
-  const groundedness = percentage(semanticallyGroundedClaims, rawClaimCount);
+  const groundedness = percentage(groundedClaims, rawClaimCount);
   const companiesWithClaims = new Set(claims.map((claim) => claim.companyId));
   const companyAccuracy = benchmark.expectations.behavior === "insufficient"
     ? (claims.length === 0 ? 100 : 0)

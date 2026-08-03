@@ -60,6 +60,8 @@ export type ResearchAssistantMessage = {
     checkedClaims: number;
     allowedCitations: number;
     citationFailures?: number;
+    groundingSupportFailures?: number;
+    /** Legacy verifier output retained for historical saved runs. */
     semanticSupportFailures?: number;
     numericFidelityFailures?: number;
     malformedClaims?: number;
@@ -285,6 +287,8 @@ export type MemoVerification = {
   duplicateClaims?: number;
   numericFidelityFailures?: number;
   quoteFidelityFailures?: number;
+  groundingSupportFailures?: number;
+  /** Legacy verifier output retained for historical saved memos. */
   semanticSupportFailures?: number;
   malformedClaims?: number;
 };
