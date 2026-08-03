@@ -45,6 +45,8 @@ pnpm demo:seed
 
 It does not insert synthetic research evidence. The seeded memo, answer, benchmark, and replay are produced by the same application services used in normal workflows.
 
+For a reproducible walkthrough, it may create clearly labeled **seeded demo decisions** over the strongest eligible evidence already present in the demo workspace. Those fixtures are attributed to the demo analyst and are not created in normal workspaces.
+
 ## What It Demonstrates
 
 | Product capability | Engineering signal |
@@ -70,9 +72,11 @@ It does not insert synthetic research evidence. The seeded memo, answer, benchma
 
 ```mermaid
 flowchart LR
-    SCHEDULE["API and scheduled triggers"] --> REDIS[("Redis / BullMQ")]
+    API["Interactive API and CLI triggers"] --> REDIS[("Redis / BullMQ")]
     REDIS --> WORKER["Durable research workers"]
+    SCHEDULE["Six-hour GitHub Actions schedule"] --> DIRECT["Bounded direct runner"]
     WORKER --> INGEST["Parallel ingest and processing stages"]
+    DIRECT --> INGEST
     SEC["SEC EDGAR"] --> ARCHIVE[("Immutable source artifacts")]
     IR["Official investor relations"] --> ARCHIVE
     ARCHIVE --> INGEST
@@ -109,7 +113,9 @@ flowchart LR
     REPLAY --> LINEAGE
     THESES --> LINEAGE
     WORKER --> OPS["Live operations control plane"]
+    DIRECT --> OPS
     WORKER -. "OpenTelemetry spans" .-> OTEL["OTLP collector (optional)"]
+    DIRECT -. "OpenTelemetry spans" .-> OTEL
 ```
 
 The application is a deliberately modular TypeScript monolith. React workspaces call App Router API handlers; domain services own retrieval, verification, replay, ingestion, and persistence; PostgreSQL stores both research data and operational history. This keeps deployment simple while preserving boundaries that can be extracted only if scale justifies it.
@@ -177,7 +183,7 @@ An analyst can report wrong retrieval, unsupported claims, citation mismatches, 
 
 The source extraction benchmark reparses immutable official documents from all four covered companies and scores structure, section taxonomy, metric recall and precision, false-positive guards, management commitments, and fiscal-period resolution. Each result retains the archived SHA-256 hash, parser version, replay diff, expected contract, and actual output. A parser candidate cannot be promoted unless every case passes, the overall score is at least 90, metric recall is at least 90%, and false-positive plus fiscal-period safety remain at 100%.
 
-Local and portfolio runs use the eight-document real SEC/IR corpus. CI uses a deliberately smaller archived fixture to prove the same replay-and-gate contract without depending on external sites or checked-in proprietary source bytes.
+Non-E2E source-benchmark runs use the eight-document real SEC/IR corpus. CI uses a deliberately smaller archived fixture to prove the same replay-and-gate contract without depending on external sites or checked-in proprietary source bytes.
 
 ### Evidence To Memo
 
@@ -207,7 +213,7 @@ The research cycle runs SEC, IR, live-event, artifact-integrity, evidence, intel
 
 | Layer | Choice |
 | --- | --- |
-| Frontend | React 19, TypeScript, feature-scoped CSS, Lucide |
+| Frontend | React 19, TypeScript, custom responsive CSS, Lucide |
 | Application | Next.js 16 App Router on the Node.js runtime |
 | Database | PostgreSQL 17, pgvector, Drizzle ORM |
 | Object storage | S3-compatible source archive, MinIO for local development |
@@ -215,7 +221,7 @@ The research cycle runs SEC, IR, live-event, artifact-integrity, evidence, intel
 | Parsing | Cheerio for HTML, unpdf for page-aware PDF extraction |
 | Visualization | Cytoscape for interactive lineage |
 | Authentication | GitHub OAuth, database sessions, workspace RBAC |
-| Jobs | Redis 7, BullMQ workers, bounded retries, dead-letter queue |
+| Jobs | Redis 7 and BullMQ for interactive durability; bounded direct runner for scheduled ingestion |
 | Observability | Server-sent events, correlation IDs, worker heartbeats, optional OpenTelemetry export |
 | Testing | Node test runner, Playwright, deterministic research quality gate |
 | Automation | GitHub Actions CI and six-hour ingestion workflow |
@@ -265,9 +271,17 @@ git clone https://github.com/timwong101/ai-infra-terminal.git
 cd ai-infra-terminal
 pnpm install
 cp .env.example .env.local
+# Set SEC_USER_AGENT in .env.local before running source backfills.
 docker compose up -d
 pnpm db:setup
+pnpm research:evidence
+pnpm research:intelligence
 pnpm demo:seed
+```
+
+Start the long-running research worker:
+
+```bash
 pnpm worker:research
 ```
 
@@ -277,7 +291,9 @@ In a second terminal, start the web application:
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The root URL resolves to `/login`; the portfolio demo requires no OAuth configuration. Docker Compose starts PostgreSQL, Redis, and MinIO. The web process accepts research jobs while the independent worker executes them, so queued work survives web-server restarts.
+Open [http://localhost:3000](http://localhost:3000). The root URL resolves to `/login`; the portfolio demo requires no OAuth configuration. Docker Compose starts PostgreSQL, Redis, and MinIO. `db:setup` loads the checked-in SEC and IR catalogs, `research:evidence` projects extracted passages into the analyst evidence model, and `research:intelligence` builds periods, metrics, packages, and change briefs. Opening the site only reads those persisted snapshots.
+
+The web process accepts interactive research jobs while the independent worker executes them, so queued work survives web-server restarts. The worker is not required for ordinary read-only navigation, but it must be running for **Run cycle**, retry, replay, and API-enqueued pipeline controls.
 
 SEC asks automated clients to identify themselves. Replace the example value in `.env.local` with a real application name and contact email:
 
@@ -322,6 +338,7 @@ Without `OPENAI_API_KEY`, memos and answers use the grounded deterministic engin
 
 | Command | Purpose |
 | --- | --- |
+| `pnpm db:migrate` | Apply ordered SQL migrations without rewriting previously applied migrations |
 | `pnpm ingest:sec` | Refresh the checked-in SEC fallback cache and persist new filing metadata |
 | `pnpm ingest:ir` | Refresh configured official IR sources |
 | `pnpm db:backfill` | Extract and persist SEC filing evidence |
@@ -329,18 +346,21 @@ Without `OPENAI_API_KEY`, memos and answers use the grounded deterministic engin
 | `pnpm db:process:ir -- --all` | Drain the durable IR extraction queue |
 | `pnpm artifacts:backfill` | Archive existing raw documents and isolate parser differences as reviewable previews |
 | `pnpm artifacts:verify -- 25` | Retrieve and SHA-256 verify the least-recently checked source artifacts |
+| `pnpm research:evidence` | Project persisted SEC and IR passages into scored, reviewable research evidence |
 | `pnpm research:intelligence` | Rebuild periods, earnings packages, metrics, and change briefs |
 | `pnpm research:events` | Refresh official and GDELT event discovery |
 | `pnpm research:briefing` | Build a briefing from the current research window |
-| `pnpm research:cycle` | Run the complete research pipeline |
+| `pnpm research:cycle` | Start temporary BullMQ workers, run the complete pipeline, and wait for completion |
+| `pnpm research:cycle:scheduled` | Run the same bounded stage graph directly with durable-storage preflight and telemetry |
 | `pnpm worker:research` | Run the durable BullMQ cycle and stage workers |
+| `pnpm demo:seed` | Build or repair the labeled portfolio walkthrough from existing persisted evidence |
 | `pnpm research:quality -- --gate` | Run the versioned benchmark and enforce CI thresholds |
 | `pnpm research:metric-quality -- --gate` | Verify extraction fixtures, anomaly safety, dimensions, and live canonical-fact contracts |
 | `pnpm research:extraction-quality -- --gate` | Replay immutable source documents and enforce parser-release thresholds |
 
 SEC refreshes preserve recurring quarterly and annual coverage before newer event filings. IR ingestion only follows configured official domains, requires publication dates, rejects SEC mirrors, deduplicates repeated cards, and queues unseen documents for bounded retries.
 
-The six-hour GitHub Actions ingestion workflow fails closed unless durable storage is available. Configure repository secrets for `DATABASE_URL`, `SEC_USER_AGENT`, `ARTIFACT_STORAGE_ENDPOINT`, `ARTIFACT_STORAGE_ACCESS_KEY`, and `ARTIFACT_STORAGE_SECRET_KEY`. `ARTIFACT_STORAGE_BUCKET` and `ARTIFACT_STORAGE_REGION` are optional; `OPENAI_API_KEY` remains optional. A scheduled run never writes database pointers to a GitHub runner's temporary filesystem.
+The six-hour GitHub Actions ingestion workflow (`17 */6 * * *`, UTC) fails closed unless durable storage is available. Configure repository secrets for `DATABASE_URL`, `SEC_USER_AGENT`, `ARTIFACT_STORAGE_ENDPOINT`, `ARTIFACT_STORAGE_ACCESS_KEY`, and `ARTIFACT_STORAGE_SECRET_KEY`. `ARTIFACT_STORAGE_BUCKET` and `ARTIFACT_STORAGE_REGION` are optional; `OPENAI_API_KEY` remains optional. The hosted database and object store must be reachable from GitHub-hosted runners. A scheduled run uses the direct bounded runner, does not require Redis, and never writes database pointers to a runner's temporary filesystem.
 
 ## Verification
 
@@ -352,21 +372,23 @@ pnpm test
 
 The current suite includes:
 
-- **143 deterministic tests** covering ingestion, immutable source hashing, durable-storage policy, parser replay diffs, normalization, extraction, SEC Company Facts, metric reconciliation and anomaly policy, evidence policy, semantic and numeric claim verification, content-bound review approval, production regression contracts, report publishing, quality scoring, request validation, company intelligence, events, replay, durable and direct-cycle contracts, route contracts, rate-limit isolation, and bundle budgets.
+- **145 fast build-coupled tests:** 143 TypeScript domain and contract tests covering ingestion, immutable source hashing, durable-storage policy, parser replay diffs, normalization, extraction, SEC Company Facts, metric reconciliation and anomaly policy, evidence policy, semantic and numeric claim verification, content-bound review approval, production regression contracts, report publishing, quality scoring, request validation, company intelligence, events, replay, durable and direct-cycle contracts, route contracts, and rate-limit isolation; plus two JavaScript checks for the rendered loading shell and production bundle budgets.
 - **32 curated research-quality cases plus versioned production cases** covering four companies, topic retrieval, pairwise comparisons, source policy, synthesis, refusal behavior, and analyst-reported failures.
 - **11 metric-quality cases** covering golden extraction fixtures, value and unit normalization, scope and period dimensions, anomaly suppression, and live canonical-fact contracts.
 - **8 immutable real-document extraction cases** spanning all four Neoclouds, including production false-positive guards and issuer-specific fiscal calendars.
-- **20 independently reseeded Chromium journeys** covering login, explicit routes and browser history, real 404 handling, the curated demo, responsive layouts, all four Neoclouds, immutable source download, parser replay and analyst promotion, evidence review, commitments, two-user memo approval, team roles, public report publishing and export, assistant persistence, failure-to-regression promotion, orchestration retries, benchmarks, lineage, workspace isolation, and audit history. The queue-control journey explicitly uses deterministic stage fixtures; the sourced pipeline test below exercises real archive, extraction, persistence, evidence synchronization, and briefing services.
-- **1 isolated sourced-fixture integration test** that migrates a dedicated database, archives a sanitized excerpt from a named SEC filing through S3-compatible storage, extracts evidence, persists it to PostgreSQL, verifies its checksum, synchronizes research evidence, and produces an analyst briefing without external network access.
+- **20 independently reseeded Chromium journeys** covering login, explicit routes and browser history, real 404 handling, the curated demo, responsive layouts, all four Neoclouds, immutable source download, parser replay and analyst promotion, evidence review, commitments, two-user memo approval, team roles, public report publishing and export, assistant persistence, failure-to-regression promotion, orchestration retries, benchmarks, lineage, workspace isolation, and audit history. Each journey resets its dedicated PostgreSQL fixtures and Redis database. The queue-control journey explicitly uses deterministic stage fixtures; the sourced pipeline test below exercises real archive, extraction, persistence, evidence synchronization, and briefing services.
+- **1 isolated sourced-fixture integration test** that runs against a migrated dedicated database, archives a sanitized excerpt from a named SEC filing through S3-compatible storage, extracts evidence, persists it to PostgreSQL, verifies its checksum, synchronizes research evidence, and produces an analyst briefing without external network access.
 
 CI runs three quality gates. Research answers require at least 85 overall, at least an 85% case pass rate, 100% citation precision and groundedness, and no source-policy, insufficiency, or production-regression failures. Memo publication applies the same numeric thresholds and blocks behavioral regressions, while treating missing source coverage as a corpus gap rather than a defect in an otherwise reviewed memo. Metrics require at least 90 overall with 100% anomaly safety and live-contract health. Source extraction requires every archived fixture to pass with 100% false-positive and fiscal-period safety.
 
-To run the browser suite against a dedicated local database:
+To run the browser and sourced-pipeline suites against dedicated local databases, create each database once and then run:
 
 ```bash
 docker compose exec -T postgres createdb -U ai_infra ai_infra_e2e
 E2E_DATABASE_URL="postgresql://ai_infra:ai_infra@localhost:5432/ai_infra_e2e" E2E_REDIS_URL="redis://localhost:6379/1" pnpm test:e2e
-E2E_DATABASE_URL="postgresql://ai_infra:ai_infra@localhost:5432/ai_infra_e2e" pnpm test:integration:pipeline
+docker compose exec -T postgres createdb -U ai_infra ai_infra_pipeline_test
+DATABASE_URL="postgresql://ai_infra:ai_infra@localhost:5432/ai_infra_pipeline_test" pnpm db:migrate
+DATABASE_URL="postgresql://ai_infra:ai_infra@localhost:5432/ai_infra_pipeline_test" E2E_DATABASE_URL="postgresql://ai_infra:ai_infra@localhost:5432/ai_infra_pipeline_test" pnpm test:integration:pipeline
 ```
 
 The E2E fixture refuses to truncate a database whose name does not end in `_e2e` or `_test`.
@@ -397,6 +419,7 @@ docs/architecture/      Reviewer map and architecture decision records
 - Live company coverage is limited to the Neocloud theme.
 - There is no live market-price feed or price prediction.
 - SEC and IR evidence is real; generated analysis is optional and always constrained by saved evidence.
+- Research-quality results are corpus-dependent; source-policy cases remain failed until the workspace has sufficient analyst-accepted SEC or IR coverage.
 - GDELT can be rate-limited or unavailable, so it remains a non-blocking discovery source.
 - Other infrastructure themes remain visible as planned coverage until their source and evidence policies are implemented.
 
