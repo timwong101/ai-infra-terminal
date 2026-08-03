@@ -1,0 +1,32 @@
+[
+  {
+    "id": "supported-paraphrase",
+    "evidence": "CoreWeave signed a $2 billion contract for 250 MW of capacity.",
+    "claim": "CoreWeave signed a $2 billion contract covering 250 MW of capacity.",
+    "expected": true
+  },
+  {
+    "id": "negated-contract",
+    "evidence": "CoreWeave signed a $2 billion contract for 250 MW of capacity.",
+    "claim": "CoreWeave did not sign a $2 billion contract for 250 MW of capacity.",
+    "expected": false
+  },
+  {
+    "id": "direction-reversed",
+    "evidence": "Nebius revenue increased by 40 percent during the period.",
+    "claim": "Nebius revenue decreased by 40 percent during the period.",
+    "expected": false
+  },
+  {
+    "id": "unsupported-number",
+    "evidence": "Applied Digital reported 100 MW of available capacity.",
+    "claim": "Applied Digital reported 200 MW of available capacity.",
+    "expected": false
+  },
+  {
+    "id": "unsupported-topic",
+    "evidence": "IREN reported 50 MW of energized data center capacity.",
+    "claim": "IREN secured a new customer contract for cloud services.",
+    "expected": false
+  }
+]

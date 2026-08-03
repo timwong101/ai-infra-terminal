@@ -7,6 +7,7 @@ import { fetchCompanyFacts } from "@/lib/company-intelligence/company-facts";
 import { rebuildMetricConflicts } from "@/lib/company-intelligence/metric-ledger";
 import { analyzeMetricObservation } from "@/lib/company-intelligence/metric-policy";
 import { calendarPeriodForDate, resolveDocumentPeriods } from "@/lib/company-intelligence/period-resolver";
+import { selectDefaultReportingPeriod } from "@/lib/company-intelligence/period-selection";
 import type { CompanyIntelligenceResponse, EarningsChangeBrief, IntelligenceComparison, IntelligencePeriod } from "@/lib/company-intelligence/types";
 import { withDatabase } from "@/lib/db/client";
 import {
@@ -429,10 +430,7 @@ export async function getCompanyIntelligence(workspaceId: string, companyId?: st
     const canonicalMetricIds = new Set(companyCanonicalRows.map((metric) => metric.metricId));
     const canonicalCompanyMetricRows = companyMetricRows.filter((metric) => canonicalMetricIds.has(metric.id));
     const metricPeriodIds = new Set(canonicalCompanyMetricRows.map((metric) => metric.periodId));
-    const current = periods.find((period) => period.id === currentPeriodId)
-      ?? periods.find((period) => metricPeriodIds.has(period.id) && period.periodKind === "quarter" && period.periodBasis !== "calendar-fallback")
-      ?? periods.find((period) => period.periodKind === "quarter" && period.periodBasis !== "calendar-fallback")
-      ?? periods[0];
+    const current = selectDefaultReportingPeriod(periods, currentPeriodId, metricPeriodIds);
     if (!current) throw new Error("This company has no reporting periods yet.");
     const currentIndex = periods.findIndex((period) => period.id === current.id);
     const previous = periods.find((period) => period.id === previousPeriodId && period.periodKind === current.periodKind)
@@ -494,7 +492,7 @@ export async function getCompanyIntelligence(workspaceId: string, companyId?: st
     return {
       companies: companyRows.map((company) => {
         const companyPeriods = allPeriods.filter((period) => period.companyId === company.id);
-        const latest = companyPeriods.find((period) => period.periodKind === "quarter" && period.periodBasis !== "calendar-fallback") ?? companyPeriods[0];
+        const latest = selectDefaultReportingPeriod(companyPeriods);
         return { id: company.id, name: company.name, ticker: company.ticker, periodCount: companyPeriods.length, latestPeriod: latest?.label ?? null };
       }).filter((company) => company.periodCount > 0),
       company: { id: selectedCompany.id, name: selectedCompany.name, ticker: selectedCompany.ticker }, periods: periods.map(toPeriod),

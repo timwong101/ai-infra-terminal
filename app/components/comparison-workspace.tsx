@@ -56,7 +56,7 @@ export function ComparisonWorkspace({ initialMemoId = "", onMemoSelect, onReview
   useEffect(() => {
     const controller = new AbortController();
     Promise.all([
-      fetch("/api/research-evidence?sync=0", { cache: "no-store", signal: controller.signal }).then((response) => response.json()),
+      fetch("/api/research-evidence?sync=0&status=accepted&triage=all&limit=100", { cache: "no-store", signal: controller.signal }).then((response) => response.json()),
       fetch("/api/comparison-memos", { cache: "no-store", signal: controller.signal }).then((response) => response.json()),
     ]).then(([evidenceResult, memoResult]) => {
       if (evidenceResult.error) throw new Error(evidenceResult.error);

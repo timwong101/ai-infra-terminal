@@ -249,10 +249,14 @@ export type EvidenceFilters = {
   sourceKind?: ResearchSourceKind;
   reviewStatus?: EvidenceReviewStatus;
   dateFrom?: string;
+  triage?: "decision-ready" | "review" | "high-value" | "boilerplate" | "duplicates" | "all";
+  cursor?: string;
+  limit?: number;
 };
 
 export type EvidenceWorkspaceResponse = {
   items: ResearchEvidenceItem[];
+  nextCursor: string | null;
   total: number;
   summary: Record<EvidenceReviewStatus, number>;
   companies: Array<{ id: string; name: string; ticker: string; evidenceCount: number }>;

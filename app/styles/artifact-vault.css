@@ -2,7 +2,7 @@
 .source-provenance > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .source-provenance > header span, .source-provenance > header strong { display: block; }
 .source-provenance > header span { color: #6f858f; font-size: 8px; text-transform: uppercase; }
-.source-provenance > header strong { margin-top: 2px; color: #cbd9de; font-size: 11px; }
+.source-provenance > header strong { margin-top: 2px; color: #cbd9de; font-size: 12px; }
 .source-provenance > header em { min-height: 22px; padding: 0 6px; border: 1px solid #2d6849; border-radius: 3px; color: #70d295; background: #092319; display: inline-flex; align-items: center; gap: 4px; font-size: 8px; font-style: normal; text-transform: uppercase; }
 .source-provenance > header em.warning { border-color: #6b5832; color: #e8c366; background: #271f0e; }
 .source-provenance.loading, .source-provenance.legacy { min-height: 58px; color: #768b94; display: flex; align-items: center; gap: 10px; }

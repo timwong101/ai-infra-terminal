@@ -27,6 +27,7 @@
     "research:events": "tsx --env-file-if-exists=.env.local scripts/refresh-live-events.ts",
     "research:evidence": "tsx --env-file-if-exists=.env.local scripts/sync-research-evidence.ts",
     "research:quality": "tsx --env-file-if-exists=.env.local scripts/run-research-quality.ts",
+    "research:quality:ai": "tsx --env-file-if-exists=.env.local scripts/run-research-quality.ts --ai",
     "research:metric-quality": "tsx --env-file-if-exists=.env.local scripts/run-metric-quality.ts",
     "research:extraction-quality": "tsx --env-file-if-exists=.env.local scripts/run-extraction-quality.ts",
     "artifacts:backfill": "tsx --env-file-if-exists=.env.local scripts/backfill-source-artifacts.ts",

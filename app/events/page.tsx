@@ -1,5 +1,5 @@
-import { TerminalApplication } from "@/app/components/terminal-application";
+import { ProtectedTerminalPage } from "@/app/components/protected-terminal-page";
 
-export default function EventsPage() {
-  return <TerminalApplication />;
+export default async function EventsPage() {
+  return <ProtectedTerminalPage route={{ activeNav: "Live Events" }} returnTo="/events" />;
 }

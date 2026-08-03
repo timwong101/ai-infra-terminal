@@ -155,7 +155,7 @@ The same safety policy applies whether generation uses an OpenAI model or the de
 
 3. **Unsupported-claim removal:** Verification runs before an answer or memo is saved. Open questions can remain uncited; factual claims cannot.
 
-4. **Claim-quality gate:** Memo claims must preserve disclosed numeric facts, retain meaningful lexical support, and label exact quotations correctly. Failed synthesis falls back to an exact source passage.
+4. **Claim-quality gate:** Memo claims must preserve disclosed numeric facts, retain meaningful lexical support, reject negation and directional contradictions, and label exact quotations correctly. Failed synthesis falls back to an exact source passage. This deterministic policy is intentionally not described as a semantic model judge.
 
 5. **Frozen evidence packets:** Memos, answers, quality cases, and replay runs persist the exact passages used to produce the output.
 
@@ -173,7 +173,7 @@ SEC filings and IR documents are normalized into citation-ready passages. Determ
 
 ### Evidence To Answer
 
-The Research Assistant retrieves across one or more companies and returns a cited answer, confidence score, evidence quality, source diversity, open questions, and claim-check status. Verification checks citation ownership, lexical support, numeric fidelity, and malformed extraction text. Sessions have durable URLs and retain prompt version, model, token use, latency, retrieval configuration, KPI snapshot, and the exact evidence packet; older verifier versions are visibly stale.
+The Research Assistant retrieves across one or more companies and returns a cited answer, confidence score, evidence quality, source diversity, open questions, and claim-check status. Verification checks citation ownership, lexical support, polarity and directional contradictions, numeric fidelity, and malformed extraction text. Sessions have durable URLs and retain prompt version, model, token use, latency, retrieval configuration, KPI snapshot, and the exact evidence packet; older verifier versions are visibly stale.
 
 ### Production Failure To Evaluation
 
@@ -355,10 +355,11 @@ Without `OPENAI_API_KEY`, memos and answers use the grounded deterministic engin
 | `pnpm worker:research` | Run the durable BullMQ cycle and stage workers |
 | `pnpm demo:seed` | Build or repair the labeled portfolio walkthrough from existing persisted evidence |
 | `pnpm research:quality -- --gate` | Run the versioned benchmark and enforce CI thresholds |
+| `pnpm research:quality:ai` | Run and persist the same benchmark with the configured model for comparison with the deterministic baseline |
 | `pnpm research:metric-quality -- --gate` | Verify extraction fixtures, anomaly safety, dimensions, and live canonical-fact contracts |
 | `pnpm research:extraction-quality -- --gate` | Replay immutable source documents and enforce parser-release thresholds |
 
-SEC refreshes preserve recurring quarterly and annual coverage before newer event filings. IR ingestion only follows configured official domains, requires publication dates, rejects SEC mirrors, deduplicates repeated cards, and queues unseen documents for bounded retries.
+SEC refreshes preserve recurring quarterly and annual coverage before newer event filings. IR ingestion only follows configured official domains, requires publication dates, rejects SEC mirrors, deduplicates repeated cards, and queues unseen documents for bounded retries. Scheduled IR extraction processes `IR_EXTRACTION_BATCH_SIZE` documents per cycle (default 20, maximum 25); the queue can be drained explicitly with `pnpm db:process:ir -- --all`.
 
 The six-hour GitHub Actions ingestion workflow (`17 */6 * * *`, UTC) fails closed unless durable storage is available. Configure repository secrets for `DATABASE_URL`, `SEC_USER_AGENT`, `ARTIFACT_STORAGE_ENDPOINT`, `ARTIFACT_STORAGE_ACCESS_KEY`, and `ARTIFACT_STORAGE_SECRET_KEY`. `ARTIFACT_STORAGE_BUCKET` and `ARTIFACT_STORAGE_REGION` are optional; `OPENAI_API_KEY` remains optional. The hosted database and object store must be reachable from GitHub-hosted runners. A scheduled run uses the direct bounded runner, does not require Redis, and never writes database pointers to a runner's temporary filesystem.
 
@@ -372,14 +373,14 @@ pnpm test
 
 The current suite includes:
 
-- **145 fast build-coupled tests:** 143 TypeScript domain and contract tests covering ingestion, immutable source hashing, durable-storage policy, parser replay diffs, normalization, extraction, SEC Company Facts, metric reconciliation and anomaly policy, evidence policy, semantic and numeric claim verification, content-bound review approval, production regression contracts, report publishing, quality scoring, request validation, company intelligence, events, replay, durable and direct-cycle contracts, route contracts, and rate-limit isolation; plus two JavaScript checks for the rendered loading shell and production bundle budgets.
+- **151 fast build-coupled tests:** 149 TypeScript domain and contract tests covering ingestion, immutable source hashing, durable-storage policy, parser replay diffs, normalization, extraction, SEC Company Facts, metric reconciliation and anomaly policy, evidence policy, lexical, polarity, and numeric claim verification, content-bound review approval, production regression contracts, report publishing, quality scoring, request validation, company intelligence, evidence pagination, events, replay, durable and direct-cycle contracts, route contracts, and rate-limit isolation; plus two JavaScript checks for the rendered loading shell and production bundle budgets.
 - **32 curated research-quality cases plus versioned production cases** covering four companies, topic retrieval, pairwise comparisons, source policy, synthesis, refusal behavior, and analyst-reported failures.
 - **11 metric-quality cases** covering golden extraction fixtures, value and unit normalization, scope and period dimensions, anomaly suppression, and live canonical-fact contracts.
 - **8 immutable real-document extraction cases** spanning all four Neoclouds, including production false-positive guards and issuer-specific fiscal calendars.
 - **20 independently reseeded Chromium journeys** covering login, explicit routes and browser history, real 404 handling, the curated demo, responsive layouts, all four Neoclouds, immutable source download, parser replay and analyst promotion, evidence review, commitments, two-user memo approval, team roles, public report publishing and export, assistant persistence, failure-to-regression promotion, orchestration retries, benchmarks, lineage, workspace isolation, and audit history. Each journey resets its dedicated PostgreSQL fixtures and Redis database. The queue-control journey explicitly uses deterministic stage fixtures; the sourced pipeline test below exercises real archive, extraction, persistence, evidence synchronization, and briefing services.
-- **1 isolated sourced-fixture integration test** that runs against a migrated dedicated database, archives a sanitized excerpt from a named SEC filing through S3-compatible storage, extracts evidence, persists it to PostgreSQL, verifies its checksum, synchronizes research evidence, and produces an analyst briefing without external network access.
+- **1 isolated sourced-fixture integration matrix** that runs against a migrated dedicated database and exercises sanitized SEC and official-IR document shapes for all four covered companies. It archives eight documents through S3-compatible storage, extracts and persists their evidence, verifies every checksum, synchronizes the unified evidence projection, and produces an analyst briefing without external network access.
 
-CI runs three quality gates. Research answers require at least 85 overall, at least an 85% case pass rate, 100% citation precision and groundedness, and no source-policy, insufficiency, or production-regression failures. Memo publication applies the same numeric thresholds and blocks behavioral regressions, while treating missing source coverage as a corpus gap rather than a defect in an otherwise reviewed memo. Metrics require at least 90 overall with 100% anomaly safety and live-contract health. Source extraction requires every archived fixture to pass with 100% false-positive and fiscal-period safety.
+CI runs three deterministic quality gates. Research answers require at least 85 overall, at least an 85% case pass rate, 100% citation precision and groundedness, and no source-policy, insufficiency, or production-regression failures. A separate hand-authored adversarial corpus checks negation, directional reversal, unsupported topics, and numeric drift. Model-backed quality runs are opt-in and persisted for comparison; they are not presented as a reproducible CI guarantee. Memo publication applies the same numeric thresholds and blocks behavioral regressions, while treating missing source coverage as a corpus gap rather than a defect in an otherwise reviewed memo. Metrics require at least 90 overall with 100% anomaly safety and live-contract health. Source extraction requires every archived fixture to pass with 100% false-positive and fiscal-period safety.
 
 To run the browser and sourced-pipeline suites against dedicated local databases, create each database once and then run:
 

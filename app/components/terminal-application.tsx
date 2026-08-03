@@ -35,6 +35,7 @@ import {
   routeEntitySegment,
   slugify,
   themeGroups,
+  type TerminalRoute,
 } from "@/app/terminal-navigation";
 
 const AlertsWorkspace = lazy(() => import("@/app/components/alerts-workspace").then((module) => ({ default: module.AlertsWorkspace })));
@@ -157,12 +158,12 @@ function AppLogo() {
   );
 }
 
-export function TerminalApplication() {
+export function TerminalApplication({ initialAuth, initialRoute }: { initialAuth?: AuthSession; initialRoute?: TerminalRoute } = {}) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [auth, setAuth] = useState<AuthSession | PublicAuthState | null>(null);
-  const [publicReportToken, setPublicReportToken] = useState<string | null>(null);
+  const [auth, setAuth] = useState<AuthSession | PublicAuthState | null>(initialAuth ?? null);
+  const [publicReportToken, setPublicReportToken] = useState<string | null>(initialAuth ? "" : null);
 
   const loadAuth = useCallback(async () => {
     const response = await fetch("/api/auth/session", { cache: "no-store" });
@@ -174,13 +175,14 @@ export function TerminalApplication() {
   }, [pathname, router, searchParams]);
 
   useEffect(() => {
+    if (initialAuth) return;
     queueMicrotask(() => {
       const parts = pathname.split("/").filter(Boolean);
       const token = parts.length === 2 && parts[0] === "reports" && /^[a-f0-9]{64}$/.test(parts[1]) ? parts[1] : "";
       setPublicReportToken(token);
       if (!token) void loadAuth();
     });
-  }, [loadAuth, pathname]);
+  }, [initialAuth, loadAuth, pathname]);
 
   if (publicReportToken === null) return <div className="workspace-state full-page"><LoaderCircle className="drawer-spinner" size={25} /><strong>Opening research workspace</strong></div>;
   if (publicReportToken) return <Suspense fallback={<RouteLoading label="Opening published report" />}><PublishedReportWorkspace token={publicReportToken} /></Suspense>;
@@ -190,18 +192,18 @@ export function TerminalApplication() {
   if (invitationParts.length === 2 && invitationParts[0] === "invite") {
     return <Suspense fallback={<RouteLoading label="Opening invitation" />}><InvitationAcceptance token={invitationParts[1]} auth={auth} onAccepted={loadAuth} /></Suspense>;
   }
-  return <Terminal auth={auth} onAuthChange={loadAuth} />;
+  return <Terminal auth={auth} onAuthChange={loadAuth} initialRoute={initialRoute} />;
 }
 
 function RouteLoading({ label = "Opening workspace" }: { label?: string }) {
   return <div className="workspace-state full-page route-loading"><LoaderCircle className="drawer-spinner" size={25} /><strong>{label}</strong><span>Loading only the tools required for this view.</span></div>;
 }
 
-function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () => Promise<void> }) {
+function Terminal({ auth, onAuthChange, initialRoute: routeFromServer }: { auth: AuthSession; onAuthChange: () => Promise<void>; initialRoute?: TerminalRoute }) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialRoute = parseTerminalRoute(pathname, searchParams);
+  const initialRoute = routeFromServer ?? parseTerminalRoute(pathname, searchParams);
   const [selectedTheme, setSelectedTheme] = useState(initialRoute.selectedTheme ?? LIVE_THEME);
   const [activeThemeGroup, setActiveThemeGroup] = useState("Cloud & Capacity");
   const [activeNav, setActiveNav] = useState(initialRoute.activeNav);
@@ -231,7 +233,7 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
   const detailRequest = useRef<AbortController | null>(null);
 
   const syncRoute = useCallback(() => {
-    const route = parseTerminalRoute(pathname, searchParams);
+    const route = routeFromServer ?? parseTerminalRoute(pathname, searchParams);
     setActiveNav(route.activeNav);
     setRouteCompanyId(route.companyId ?? "");
     setRouteEvidenceCompanyId(route.evidenceCompanyId ?? "");
@@ -244,7 +246,7 @@ function Terminal({ auth, onAuthChange }: { auth: AuthSession; onAuthChange: () 
       const matchingGroup = themeGroups.find((group) => (group.items as readonly string[]).includes(routeTheme));
       if (matchingGroup) setActiveThemeGroup(matchingGroup.title);
     }
-  }, [pathname, searchParams]);
+  }, [pathname, routeFromServer, searchParams]);
 
   const navigate = useCallback((path: string) => {
     const currentPath = `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;

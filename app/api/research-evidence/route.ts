@@ -31,6 +31,9 @@ export async function GET(request: Request) {
       sourceKind: params.get("source") as ResearchSourceKind | undefined,
       reviewStatus: params.get("status") as EvidenceReviewStatus | undefined,
       dateFrom: params.get("dateFrom") ?? undefined,
+      triage: (params.get("triage") as "decision-ready" | "review" | "high-value" | "boilerplate" | "duplicates" | "all" | null) ?? undefined,
+      cursor: params.get("cursor") ?? undefined,
+      limit: Math.max(1, Math.min(100, Number(params.get("limit")) || 50)),
     });
     return Response.json({ ...result, synced: { sec: 0, ir: 0 } }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {

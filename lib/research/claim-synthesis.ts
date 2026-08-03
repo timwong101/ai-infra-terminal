@@ -12,6 +12,15 @@ const STOP_WORDS = new Set([
   "under", "which", "with", "would", "company", "group",
 ]);
 
+export const GROUNDING_POLICY_VERSION = "lexical-numeric-polarity-v3";
+
+const NEGATION_PATTERN = /\b(?:cannot|can't|did not|didn't|does not|doesn't|failed to|has not|hasn't|have not|haven't|is not|isn't|never|no|not|was not|wasn't|were not|weren't|without)\b/i;
+const DIRECTIONAL_TERMS = [
+  { positive: /\b(?:above|exceed(?:ed|s|ing)?|higher|increase(?:d|s|ing)?|grew|growth|rose)\b/i, negative: /\b(?:below|decline(?:d|s|ing)?|decrease(?:d|s|ing)?|fell|lower|shrank)\b/i },
+  { positive: /\b(?:before|earlier)\b/i, negative: /\b(?:after|later)\b/i },
+  { positive: /\b(?:gain(?:ed|s|ing)?|profit(?:able|ability|s)?)\b/i, negative: /\b(?:loss(?:es)?|lost|unprofitable)\b/i },
+] as const;
+
 const SECTION_PATTERNS: Record<Exclude<SectionKey, "questions" | "summary">, RegExp> = {
   exposure: /\b(ai|capacity|cloud|compute|data cent(?:er|re)|gpu|hpc|infrastructure|megawatt|mw\b|gigawatt|gw\b|power)\b/i,
   advantages: /\b(availability|capital investment|contracted|demand|expand|growth|increase|infrastructure business|launch|liquidity|scale|secured|signed)\b/i,
@@ -87,11 +96,28 @@ function contentTokens(value: string) {
 
 export function claimEvidenceSupport(text: string, evidence: ResearchEvidenceItem[]) {
   const claimTokens = contentTokens(text);
-  if (!claimTokens.size) return { passed: false, overlap: 0 };
-  const sourceTokens = contentTokens(evidence.map((item) => item.excerpt).join(" "));
-  const matched = [...claimTokens].filter((token) => sourceTokens.has(token)).length;
-  const overlap = matched / claimTokens.size;
-  return { passed: matched >= Math.min(3, claimTokens.size) && overlap >= 0.24, overlap };
+  if (!claimTokens.size) return { passed: false, overlap: 0, contradiction: false, reason: "no-content-tokens" as const };
+  const sourceScores = evidence.map((item) => {
+    const itemTokens = contentTokens(item.excerpt);
+    const itemMatches = [...claimTokens].filter((token) => itemTokens.has(token)).length;
+    return { item, matched: itemMatches, overlap: itemMatches / claimTokens.size };
+  });
+  const overlap = Math.max(0, ...sourceScores.map((score) => score.overlap));
+  const comparableSources = sourceScores.filter((score) => score.matched >= Math.min(3, claimTokens.size) && score.overlap >= 0.24);
+  const conflicts = comparableSources.filter(({ item }) => {
+    const polarityConflict = NEGATION_PATTERN.test(text) !== NEGATION_PATTERN.test(item.excerpt);
+    const directionalConflict = DIRECTIONAL_TERMS.some(({ positive, negative }) =>
+      (positive.test(text) && negative.test(item.excerpt)) || (negative.test(text) && positive.test(item.excerpt)));
+    return polarityConflict || directionalConflict;
+  });
+  const lexicalSupport = comparableSources.length > 0;
+  const contradiction = lexicalSupport && conflicts.length === comparableSources.length;
+  return {
+    passed: lexicalSupport && !contradiction,
+    overlap,
+    contradiction,
+    reason: !lexicalSupport ? "insufficient-lexical-support" as const : contradiction ? "polarity-conflict" as const : "supported" as const,
+  };
 }
 
 export function isMalformedClaimText(value: string) {

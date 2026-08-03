@@ -1,5 +1,5 @@
-import { TerminalApplication } from "@/app/components/terminal-application";
+import { ProtectedTerminalPage } from "@/app/components/protected-terminal-page";
 
-export default function CompaniesPage() {
-  return <TerminalApplication />;
+export default async function CompaniesPage() {
+  return <ProtectedTerminalPage route={{ activeNav: "Companies" }} returnTo="/companies" />;
 }

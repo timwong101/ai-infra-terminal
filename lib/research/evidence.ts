@@ -1,4 +1,5 @@
-import { and, desc, eq, gte, inArray, lt, lte, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, lt, lte, notInArray, or, sql } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 import { withDatabase } from "@/lib/db/client";
 import {
   companies,
@@ -19,6 +20,7 @@ import {
 } from "@/lib/db/schema";
 import { classifyAlertCategory } from "@/lib/alerts/generate";
 import { assessEvidenceQuality } from "@/lib/research/quality";
+import { decodeEvidenceCursor, encodeEvidenceCursor } from "@/lib/research/evidence-pagination";
 import type { EvidenceFilters, EvidenceReviewStatus, EvidenceSuggestionStatus, ResearchEvidenceItem } from "@/lib/research/types";
 import type { AuthContext } from "@/lib/auth/types";
 import { recordAuditEvent } from "@/lib/auth/session";
@@ -300,6 +302,47 @@ function toItem(row: {
 
 export async function listResearchEvidence(workspaceId: string, filters: EvidenceFilters = {}) {
   const result = await withDatabase(async (db) => {
+    const reviewStatus = sql<string>`coalesce(${workspaceEvidenceReviews.reviewStatus}, 'unreviewed')`;
+    const suggestionStatus = sql<string>`coalesce(${workspaceEvidenceReviews.suggestionStatus}, 'pending')`;
+    const suggestedClaimId = sql<string | null>`coalesce(${workspaceEvidenceReviews.suggestedClaimId}, ${researchEvidence.suggestedClaimId})`;
+    const conditions: SQL[] = [];
+    const query = filters.query?.trim();
+    if (query) conditions.push(or(
+      ilike(companies.name, `%${query}%`), ilike(companies.ticker, `%${query}%`),
+      ilike(researchEvidence.documentTitle, `%${query}%`), ilike(researchEvidence.sectionTitle, `%${query}%`),
+      ilike(researchEvidence.topic, `%${query}%`), ilike(researchEvidence.excerpt, `%${query}%`),
+    )!);
+    if (filters.companyId) conditions.push(eq(researchEvidence.companyId, filters.companyId));
+    if (filters.topic) conditions.push(eq(researchEvidence.topic, filters.topic));
+    if (filters.sourceKind) conditions.push(eq(researchEvidence.sourceKind, filters.sourceKind));
+    if (filters.reviewStatus) conditions.push(sql`${reviewStatus} = ${filters.reviewStatus}`);
+    if (filters.dateFrom) conditions.push(gte(researchEvidence.documentDate, filters.dateFrom));
+    if (filters.triage === "decision-ready") conditions.push(and(
+      sql`${reviewStatus} = 'unreviewed'`,
+      gte(researchEvidence.evidenceQualityScore, 60),
+      lt(researchEvidence.boilerplateRisk, 60),
+      sql`(${researchEvidence.duplicateGroupId} IS NULL OR ${researchEvidence.id} = (
+        SELECT candidate.id FROM research_evidence candidate
+        WHERE candidate.duplicate_group_id = ${researchEvidence.duplicateGroupId}
+        ORDER BY candidate.evidence_quality_score DESC, candidate.document_date DESC, candidate.id DESC LIMIT 1
+      ))`,
+    )!);
+    if (filters.triage === "review") conditions.push(or(
+      sql`${reviewStatus} = 'unreviewed'`,
+      and(sql`${suggestedClaimId} IS NOT NULL`, sql`${suggestionStatus} = 'pending'`),
+    )!);
+    if (filters.triage === "high-value") conditions.push(and(gte(researchEvidence.evidenceQualityScore, 70), lt(researchEvidence.boilerplateRisk, 40))!);
+    if (filters.triage === "boilerplate") conditions.push(gte(researchEvidence.boilerplateRisk, 60));
+    if (filters.triage === "duplicates") conditions.push(gte(researchEvidence.duplicateCount, 2));
+
+    const cursor = decodeEvidenceCursor(filters.cursor);
+    const pageConditions = [...conditions];
+    if (cursor) pageConditions.push(or(
+      lt(researchEvidence.evidenceQualityScore, cursor.quality),
+      and(eq(researchEvidence.evidenceQualityScore, cursor.quality), lt(researchEvidence.documentDate, cursor.date)),
+      and(eq(researchEvidence.evidenceQualityScore, cursor.quality), eq(researchEvidence.documentDate, cursor.date), lt(researchEvidence.id, cursor.id)),
+    )!);
+    const limit = Math.max(1, Math.min(100, filters.limit ?? 50));
     const rows = await db.select({ evidence: researchEvidence, company: companies, review: workspaceEvidenceReviews, reviewer: users })
       .from(researchEvidence)
       .innerJoin(companies, eq(researchEvidence.companyId, companies.id))
@@ -308,42 +351,53 @@ export async function listResearchEvidence(workspaceId: string, filters: Evidenc
         eq(workspaceEvidenceReviews.workspaceId, workspaceId),
       ))
       .leftJoin(users, eq(workspaceEvidenceReviews.reviewedByUserId, users.id))
-      .orderBy(desc(researchEvidence.documentDate), desc(researchEvidence.sourceQuality));
+      .where(and(...pageConditions))
+      .orderBy(desc(researchEvidence.evidenceQualityScore), desc(researchEvidence.documentDate), desc(researchEvidence.id))
+      .limit(limit + 1);
     const claimRows = await db.select().from(researchClaims);
     const claimsById = new Map(claimRows.map((claim) => [claim.id, claim.title]));
-    const query = filters.query?.trim().toLowerCase();
-    const allItems = rows.map((row) => toItem(row, row.evidence.suggestedClaimId ? claimsById.get(row.evidence.suggestedClaimId) : null));
-    const items = allItems.filter((item) =>
-      (!query || [item.companyName, item.ticker, item.documentTitle, item.sectionTitle, item.topic, item.excerpt].join(" ").toLowerCase().includes(query)) &&
-      (!filters.companyId || item.companyId === filters.companyId) &&
-      (!filters.topic || item.topic === filters.topic) &&
-      (!filters.sourceKind || item.sourceKind === filters.sourceKind) &&
-      (!filters.reviewStatus || item.reviewStatus === filters.reviewStatus) &&
-      (!filters.dateFrom || item.documentDate >= filters.dateFrom)
-    );
+    const pageRows = rows.slice(0, limit);
+    const items = pageRows.map((row) => {
+      const claimId = row.review?.suggestedClaimId ?? row.evidence.suggestedClaimId;
+      return toItem(row, claimId ? claimsById.get(claimId) : null);
+    });
+    const last = pageRows.at(-1)?.evidence;
+    const nextCursor = rows.length > limit && last
+      ? encodeEvidenceCursor({ quality: last.evidenceQualityScore, date: last.documentDate, id: last.id })
+      : null;
+
+    const [{ count: total = 0 } = { count: 0 }] = await db.select({ count: sql<number>`count(*)::int` })
+      .from(researchEvidence)
+      .innerJoin(companies, eq(researchEvidence.companyId, companies.id))
+      .leftJoin(workspaceEvidenceReviews, and(eq(workspaceEvidenceReviews.evidenceId, researchEvidence.id), eq(workspaceEvidenceReviews.workspaceId, workspaceId)))
+      .where(and(...conditions));
+    const summaryRows = await db.select({ status: reviewStatus, count: sql<number>`count(*)::int` })
+      .from(researchEvidence)
+      .leftJoin(workspaceEvidenceReviews, and(eq(workspaceEvidenceReviews.evidenceId, researchEvidence.id), eq(workspaceEvidenceReviews.workspaceId, workspaceId)))
+      .groupBy(reviewStatus);
     const summary = { unreviewed: 0, accepted: 0, rejected: 0 };
-    for (const item of allItems) summary[item.reviewStatus] += 1;
-    const companyCounts = new Map<string, { id: string; name: string; ticker: string; evidenceCount: number }>();
-    const topicCounts = new Map<string, number>();
-    for (const item of allItems) {
-      const company = companyCounts.get(item.companyId) ?? { id: item.companyId, name: item.companyName, ticker: item.ticker, evidenceCount: 0 };
-      company.evidenceCount += 1;
-      companyCounts.set(item.companyId, company);
-      topicCounts.set(item.topic, (topicCounts.get(item.topic) ?? 0) + 1);
-    }
+    for (const row of summaryRows) if (row.status in summary) summary[row.status as EvidenceReviewStatus] = row.count;
+    const companyCounts = await db.select({ id: companies.id, name: companies.name, ticker: companies.ticker, evidenceCount: sql<number>`count(*)::int` })
+      .from(researchEvidence).innerJoin(companies, eq(researchEvidence.companyId, companies.id))
+      .groupBy(companies.id, companies.name, companies.ticker).orderBy(desc(sql`count(*)`));
+    const topicCounts = await db.select({ name: researchEvidence.topic, evidenceCount: sql<number>`count(*)::int` })
+      .from(researchEvidence).groupBy(researchEvidence.topic).orderBy(desc(sql`count(*)`));
+    const [quality = { highValue: 0, boilerplateRisk: 0, pendingSuggestions: 0, duplicatePassages: 0 }] = await db.select({
+      highValue: sql<number>`count(*) FILTER (WHERE ${researchEvidence.evidenceQualityScore} >= 70 AND ${researchEvidence.boilerplateRisk} < 40)::int`,
+      boilerplateRisk: sql<number>`count(*) FILTER (WHERE ${researchEvidence.boilerplateRisk} >= 60)::int`,
+      pendingSuggestions: sql<number>`count(*) FILTER (WHERE ${suggestedClaimId} IS NOT NULL AND ${suggestionStatus} = 'pending')::int`,
+      duplicatePassages: sql<number>`count(*) FILTER (WHERE ${researchEvidence.duplicateCount} > 1)::int`,
+    }).from(researchEvidence)
+      .leftJoin(workspaceEvidenceReviews, and(eq(workspaceEvidenceReviews.evidenceId, researchEvidence.id), eq(workspaceEvidenceReviews.workspaceId, workspaceId)));
     return {
-      items: items.slice(0, 1_000),
-      total: items.length,
+      items,
+      nextCursor,
+      total,
       summary,
-      companies: [...companyCounts.values()].sort((a, b) => b.evidenceCount - a.evidenceCount),
-      topics: [...topicCounts].map(([name, evidenceCount]) => ({ name, evidenceCount })).sort((a, b) => b.evidenceCount - a.evidenceCount),
+      companies: companyCounts,
+      topics: topicCounts,
       claims: claimRows.map((claim) => ({ id: claim.id, companyId: claim.companyId, title: claim.title, kind: claim.kind })),
-      qualitySummary: {
-        highValue: allItems.filter((item) => item.evidenceQualityScore >= 70 && item.boilerplateRisk < 40).length,
-        boilerplateRisk: allItems.filter((item) => item.boilerplateRisk >= 60).length,
-        pendingSuggestions: allItems.filter((item) => item.suggestedClaimId && item.suggestionStatus === "pending").length,
-        duplicatePassages: allItems.filter((item) => item.duplicateCount > 1).length,
-      },
+      qualitySummary: quality,
     };
   });
   if (!result) throw new Error("Postgres is required for the research evidence workspace.");

@@ -1,5 +1,5 @@
-import { TerminalApplication } from "@/app/components/terminal-application";
+import { ProtectedTerminalPage } from "@/app/components/protected-terminal-page";
 
-export default function MemosPage() {
-  return <TerminalApplication />;
+export default async function MemosPage() {
+  return <ProtectedTerminalPage route={{ activeNav: "Memos" }} returnTo="/memos" />;
 }

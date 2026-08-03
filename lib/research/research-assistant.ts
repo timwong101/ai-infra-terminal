@@ -7,7 +7,7 @@ import type { ResearchAssistantClaim, ResearchAssistantFilters, ResearchAssistan
 import type { AuthContext } from "@/lib/auth/types";
 import { recordAuditEvent } from "@/lib/auth/session";
 import { getAcceptedMetricSnapshot } from "@/lib/company-intelligence/metric-ledger";
-import { claimEvidenceSupport, createDeterministicMemoClaim, isMalformedClaimText, verifyNumericFidelity } from "@/lib/research/claim-synthesis";
+import { claimEvidenceSupport, createDeterministicMemoClaim, GROUNDING_POLICY_VERSION, isMalformedClaimText, verifyNumericFidelity } from "@/lib/research/claim-synthesis";
 
 const researchAssistantOutputSchema = z.object({
   claims: z.array(z.object({
@@ -37,7 +37,7 @@ const RESEARCH_ASSISTANT_CONFIG = {
   perCompanyLimit: 6,
   evidencePacketLimit: 24,
   maxOutputTokens: 2200,
-  verifierVersion: "semantic-numeric-grounding-v2",
+  verifierVersion: GROUNDING_POLICY_VERSION,
 } as const;
 
 function sentence(item: ResearchEvidenceItem) {

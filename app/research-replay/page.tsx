@@ -1,5 +1,5 @@
-import { TerminalApplication } from "@/app/components/terminal-application";
+import { ProtectedTerminalPage } from "@/app/components/protected-terminal-page";
 
-export default function ResearchReplayPage() {
-  return <TerminalApplication />;
+export default async function ResearchReplayPage() {
+  return <ProtectedTerminalPage route={{ activeNav: "Research Replay" }} returnTo="/research-replay" />;
 }

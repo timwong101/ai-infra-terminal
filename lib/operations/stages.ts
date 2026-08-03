@@ -53,7 +53,8 @@ async function executeLiveStage(stage: ResearchStageName, data: ResearchStageJob
     case "ingesting-ir": {
       const cache = await refreshIrEvidence({ previousCache: irCacheJson as unknown as IrEvidenceCache });
       const catalog = await syncIrCatalog(cache);
-      const extraction = await processIrExtractionQueue(5);
+      const extractionBatchSize = Math.max(1, Math.min(25, Number(process.env.IR_EXTRACTION_BATCH_SIZE) || 20));
+      const extraction = await processIrExtractionQueue(extractionBatchSize);
       assertIngestionSucceeded("IR", extraction);
       return { documents: cache.documents.length, sourceErrors: cache.errors.length, ...summarize(catalog), ...summarize(extraction) };
     }

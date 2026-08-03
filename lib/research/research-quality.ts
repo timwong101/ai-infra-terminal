@@ -10,7 +10,7 @@ import { listResearchQualityCases } from "@/lib/research/quality-feedback";
 import { TRACKED_COMPANY_SUMMARIES } from "@/data/company-registry";
 export { RESEARCH_QUALITY_GATES, researchQualityGate } from "@/lib/research/research-quality-policy";
 
-export const RESEARCH_QUALITY_SUITE_VERSION = "neocloud-grounding-v4";
+export const RESEARCH_QUALITY_SUITE_VERSION = "neocloud-grounding-v5";
 
 const TRACKED_COMPANIES = TRACKED_COMPANY_SUMMARIES;
 
@@ -142,7 +142,7 @@ export function scoreResearchQualityCase(input: {
   if (retrievalCoverage < 70) failureReasons.push(`Expected company-topic retrieval coverage was ${retrievalCoverage}%.`);
   if (rejectedClaims > 0) failureReasons.push(`${rejectedClaims} generated claim${rejectedClaims === 1 ? " was" : "s were"} rejected by citation verification.`);
   if (citationPrecision < 100 && rejectedClaims === 0) failureReasons.push("One or more citations did not resolve to evidence for the claimed company.");
-  if (groundedness < 100 && rejectedClaims === 0) failureReasons.push("One or more claims lacked semantic, numeric, or readability support from its cited passage.");
+  if (groundedness < 100 && rejectedClaims === 0) failureReasons.push("One or more claims lacked lexical, polarity, numeric, or readability support from its cited passage.");
   if (companyAccuracy < 100) failureReasons.push("One or more expected companies had no supported claim.");
   if (citationIds.length < benchmark.expectations.minimumCitations) failureReasons.push(`Only ${citationIds.length} of ${benchmark.expectations.minimumCitations} expected citations were returned.`);
   const scores: ResearchQualityScores = { retrievalCoverage, citationPrecision, groundedness, companyAccuracy, answerCompleteness, overall };
